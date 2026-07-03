@@ -16,3 +16,4 @@ This repository currently contains the product, frontend, and backend architectu
 ## Documentation
 
 - [Project architecture](docs/ARCHITECTURE.md)
+- [Implementation plan (RU)](docs/IMPLEMENTATION_PLAN_rus.md)
