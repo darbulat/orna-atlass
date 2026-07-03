@@ -97,6 +97,7 @@ web/
       GlobalPlayer.tsx
       SessionPlayer.tsx
       WaveformTimeline.tsx
+      BirdPartsTimeline.tsx
       PlaybackGrantBoundary.tsx
     sessions/
       SessionHero.tsx
@@ -151,6 +152,10 @@ Selecting a point should not feel like opening a track. The interaction should z
 #### Global audio player
 
 Playback should continue across route transitions. A global player store should hold current session, playback state, current time, duration, signed URL expiry, and visible mini-player/full-player mode.
+
+#### Bird parts in the player
+
+The player should show each bird's vocal parts on the recording timeline. These data are not calculated on the frontend: the backend returns intervals, species, confidence, and additional metadata from PostgreSQL. The user should be able to see which bird is audible at a given moment, jump between parts, and filter the timeline by species or confidence level.
 
 #### Recording integrity UI
 
@@ -251,6 +256,7 @@ orna_atlas/
       s3.py
       redis.py
       sunrise.py
+      bird_analysis.py
     tests/
 ```
 
@@ -355,6 +361,27 @@ Important fields:
 - `confidence`
 - `metadata_json`
 
+#### BirdVocalPart
+
+A detected vocal part of a specific bird within a recording. Part metadata is stored in PostgreSQL and used by the player to render the species timeline. The calculation is performed by an external audio analysis service, while the backend stores the normalized result.
+
+Important fields:
+
+- `id`
+- `session_id`
+- `species_code`
+- `species_common_name`
+- `species_scientific_name`
+- `starts_at_seconds`
+- `ends_at_seconds`
+- `confidence`
+- `channel`
+- `call_type`: song, call, alarm, drumming, unknown
+- `analysis_provider`
+- `analysis_model_version`
+- `metadata_json`
+- `created_at`
+
 #### Collection
 
 Editorial grouping of locations or sessions.
@@ -455,15 +482,25 @@ When an editor uploads a new master recording:
 3. Worker extracts technical metadata.
 4. Worker creates streaming renditions.
 5. Worker generates waveform and optional spectrogram.
-6. Worker stores derived files in S3.
-7. Worker updates `AudioSession.recording_status=ready` if required assets exist.
-8. Worker warms Redis cache for session cards and atlas views.
+6. Worker sends the recording or a derived audio segment to the external bird analysis service.
+7. Worker stores detected `BirdVocalPart` records in PostgreSQL.
+8. Worker stores derived files in S3.
+9. Worker updates `AudioSession.recording_status=ready` if required assets exist.
+10. Worker warms Redis cache for session cards, bird parts payloads, and atlas views.
+
+Bird analysis service integration:
+
+- The external service is a compute source, not a source of truth.
+- The backend stores normalized bird parts in `bird_vocal_parts`.
+- Re-analysis of the same recording should update parts by `analysis_provider` and `analysis_model_version` idempotently.
+- The player reads parts only through the ORNA Atlas API, not directly from the external service.
 
 Failure handling:
 
 - Processing steps must be idempotent.
 - Failed jobs should store `error_code`, `error_message`, and retry count.
 - Masters must never be deleted automatically after processing failure.
+- Bird analysis failure should not block session publication if audio and required media assets are ready; in that case, the UI shows the recording without the bird parts timeline.
 
 ## 11. Dawn-line and local-time architecture
 
@@ -503,6 +540,7 @@ GET /api/v1/search?q={query}
 POST /api/v1/sessions/{session_id}/playback-grants
 GET /api/v1/sessions/{session_id}/waveform
 GET /api/v1/sessions/{session_id}/annotations
+GET /api/v1/sessions/{session_id}/bird-parts
 ```
 
 ### Auth and membership endpoints
@@ -576,6 +614,28 @@ PATCH /api/v1/admin/collections/{id}
     "microphone_setup": "ORTF field pair",
     "recordist_notes": "Unattended recording before sunrise after light rain."
   }
+}
+```
+
+### Bird parts
+
+```json
+{
+  "session_id": "ses_01HXYZ",
+  "analysis_provider": "external-bird-audio-service",
+  "analysis_model_version": "2026-06",
+  "parts": [
+    {
+      "id": "bird_part_01JABC",
+      "species_code": "turdus_merula",
+      "species_common_name": "Common blackbird",
+      "species_scientific_name": "Turdus merula",
+      "starts_at_seconds": 184.2,
+      "ends_at_seconds": 191.8,
+      "confidence": 0.93,
+      "call_type": "song"
+    }
+  ]
 }
 ```
 
@@ -671,6 +731,8 @@ JWT_REFRESH_TOKEN_TTL_SECONDS=2592000
 - Background processing worker.
 - Waveform generation.
 - Streaming renditions.
+- External bird analysis service integration.
+- Store `BirdVocalPart` metadata in PostgreSQL.
 
 ### Phase 4: Dawn experience
 
@@ -694,13 +756,14 @@ JWT_REFRESH_TOKEN_TTL_SECONDS=2592000
 - Search.
 - Featured sessions.
 - Recording integrity display.
+- Bird parts timeline in the session player.
 - Protected-coordinate mode for sensitive locations.
 
-## 19. Open decisions
+## 19. Accepted decisions
 
-1. Use HLS for long-form playback from the beginning, or start with signed MP3/AAC files and add HLS later.
-2. Use Three.js-only globe, MapLibre-only map, or a hybrid globe/map interface for the first release.
-3. Choose worker framework: Celery, RQ, Dramatiq, or Arq.
-4. Choose auth approach: custom JWT, managed auth provider, or hybrid.
-5. Decide whether exact coordinates are always public or can be obfuscated by location.
-6. Decide whether memberships are implemented internally or via Stripe Customer Portal integration.
+1. Start long-form playback with single files and add HLS later if needed.
+2. Use a hybrid globe/map interface for the first release.
+3. Use RQ as the worker framework.
+4. Use a hybrid auth approach.
+5. Exact coordinates are always public.
+6. Memberships are implemented internally.
