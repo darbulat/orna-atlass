@@ -20,7 +20,7 @@ The system must preserve three product principles:
 | Database | PostgreSQL + PostGIS | Source of truth for users, locations, sessions, geo queries, metadata |
 | Cache | Redis | Hot map data, session cards, signed URL metadata, rate limits, background job state |
 | Object storage | S3-compatible storage | Audio masters, streaming renditions, images, waveform assets, transcripts/annotations |
-| Background workers | Celery, RQ, or Dramatiq with Redis broker | Audio processing, waveform generation, metadata extraction, cache warming |
+| Background workers | RQ with Redis broker | Audio processing, waveform generation, metadata extraction, cache warming |
 | Migrations | Alembic | Versioned schema evolution |
 | Observability | OpenTelemetry + structured logs | Request traces, latency, worker diagnostics, playback URL monitoring |
 
@@ -141,6 +141,8 @@ web/
 
 The atlas shell owns the map/globe viewport, selected location, active time mode, filters, and side panels. It calls `GET /api/v1/atlas/points` for visible points and `GET /api/v1/atlas/dawn/current` for the current dawn experience.
 
+`GET /api/v1/atlas/points` must accept `bbox`, `zoom`, habitat filters, time mode, and a response limit. At low zoom levels the backend may return clusters or aggregate points; at high zoom levels it returns individual locations. The contract must handle the anti-meridian and provide a stable Redis cache key.
+
 #### Dawn terminator
 
 The frontend should render a moving dawn line visually, but the backend remains authoritative for which locations are considered active near dawn. This keeps visual motion smooth while preserving consistent product logic for featured dawn sessions.
@@ -152,6 +154,8 @@ Selecting a point should not feel like opening a track. The interaction should z
 #### Global audio player
 
 Playback should continue across route transitions. A global player store should hold current session, playback state, current time, duration, signed URL expiry, and visible mini-player/full-player mode.
+
+The player lifecycle must be explicit: `idle -> requesting_grant -> ready -> playing -> paused -> refreshing_grant -> stalled -> ended -> error`. If a signed URL is about to expire during playback, the frontend moves into `refreshing_grant`, requests a new playback grant, and continues playback without changing user context. The real audio element should live in the root layout/provider; route-level components only control state and subscriptions.
 
 #### Bird parts in the player
 
@@ -205,7 +209,7 @@ Optimization priorities:
 
 The atlas should be immersive but not dependent on WebGL-only interaction. Required fallbacks:
 
-- A list mode for locations and collections.
+- A list mode for locations and collections as a first-class `/atlas?view=list` option, not a secondary fallback.
 - Keyboard-accessible cards, markers, drawers, and player controls.
 - Reduced-motion mode for globe transitions and dawn-line animation.
 - Text equivalents for location, time, weather, and recording integrity.
@@ -259,6 +263,21 @@ orna_atlas/
       bird_analysis.py
     tests/
 ```
+
+Each domain module should use the same internal layers:
+
+```text
+modules/<domain>/
+  router.py        # HTTP endpoints only
+  schemas.py       # Pydantic request/response DTOs
+  service.py       # use cases and orchestration
+  repository.py    # database queries
+  models.py        # SQLAlchemy models
+  permissions.py   # authorization decisions
+  events.py        # domain events and worker triggers
+```
+
+Admin endpoints must not bypass domain services. `modules/admin` contains only HTTP wrappers and admin-specific schemas; publishing, archiving, asset uploads, and audit events are executed through the relevant domain services.
 
 ## 6. Domain model
 
@@ -314,7 +333,9 @@ Important fields:
 - `starts_at_utc`
 - `starts_at_local`
 - `duration_seconds`
-- `recording_status`: draft, processing, ready, archived
+- `processing_status`: uploaded, processing, ready, failed
+- `publication_status`: draft, published, unpublished, archived
+- `access_policy`: public_preview, members_only, private
 - `human_noise_level`: none_detected, minimal, present, unknown
 - `purity_notes`
 - `weather_summary`
@@ -324,6 +345,8 @@ Important fields:
 - `moon_phase`
 - `is_featured`
 - `is_public`
+
+The technical recording lifecycle and editorial publication lifecycle must be separate. `processing_status` represents media pipeline readiness, `publication_status` represents editorial state, and `access_policy` represents playback access rules. A session can be `ready` but not `published`, and it can be published as a public preview or members-only content.
 
 #### MediaAsset
 
@@ -343,6 +366,8 @@ Important fields:
 - `checksum`
 - `processing_status`
 - `created_at`
+
+Polymorphic ownership through `owner_type` + `owner_id` is acceptable for the MVP, but services must validate owner existence and prevent dangling assets. A stricter future schema can replace this with nullable foreign keys `location_id`, `session_id`, and `collection_id` plus a CHECK constraint that exactly one owner is set.
 
 #### SessionAnnotation
 
@@ -398,6 +423,8 @@ Important fields:
 - `is_public`
 - `sort_order`
 
+Collection membership should be stored in separate `collection_locations` and `collection_sessions` tables with `sort_order`, so editorial ordering and mixed collections do not require duplicating entities.
+
 #### PlaybackGrant
 
 Short-lived access record for protected audio playback.
@@ -423,6 +450,15 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS unaccent;
 ```
 
+Sensitive ecological objects need separate coordinate fields:
+
+- `exact_coordinates`: exact point, visible only to admins/editors with permission.
+- `public_coordinates`: public point, which may be approximate.
+- `coordinate_visibility`: `exact_public`, `approximate_public`, `hidden_public`.
+- `sensitivity_level`: `none`, `low`, `medium`, `high`.
+
+Public atlas APIs return only `public_coordinates` when `coordinate_visibility` is not `exact_public`.
+
 Core indexing strategy:
 
 - GiST index on `locations.coordinates` for map viewport and distance queries.
@@ -445,6 +481,13 @@ Recommended keys:
 | `playback:url:{session_id}:{user_id}` | 1-10m | Cached signed playback metadata |
 | `rate:user:{user_id}` | short | API rate limiting |
 | `job:audio:{asset_id}` | until completion | Audio processing job state |
+
+Invalidation rules:
+
+- Publishing or hiding a location/session invalidates affected session cards, viewport caches, and nearby dawn cache entries.
+- Changing coordinates or timezone invalidates viewport, dawn, and search projections.
+- Replacing media assets invalidates session detail, waveform/spectrogram payloads, and CDN objects when public.
+- Revoking membership or changing access policy invalidates playback grant cache for affected users/sessions.
 
 ## 9. S3 object storage design
 
@@ -473,6 +516,8 @@ Access rules:
 - Public previews can be distributed through CDN.
 - S3 keys are stored in `media_assets`; never store full signed URLs in PostgreSQL.
 
+Long-form playback must be designed as rendition-based from day one. The MVP may start playback from `stream_320.mp3`, but the asset model, API, and storage layout must remain compatible with HLS (`stream_hls/master.m3u8`) without a domain migration.
+
 ## 10. Audio processing pipeline
 
 When an editor uploads a new master recording:
@@ -485,7 +530,7 @@ When an editor uploads a new master recording:
 6. Worker sends the recording or a derived audio segment to the external bird analysis service.
 7. Worker stores detected `BirdVocalPart` records in PostgreSQL.
 8. Worker stores derived files in S3.
-9. Worker updates `AudioSession.recording_status=ready` if required assets exist.
+9. Worker updates `AudioSession.processing_status=ready` if required assets exist; publication remains a separate editorial action.
 10. Worker warms Redis cache for session cards, bird parts payloads, and atlas views.
 
 Bird analysis service integration:
@@ -502,6 +547,10 @@ Failure handling:
 - Masters must never be deleted automatically after processing failure.
 - Bird analysis failure should not block session publication if audio and required media assets are ready; in that case, the UI shows the recording without the bird parts timeline.
 
+Processing state must be stored not only in Redis but also in a PostgreSQL `processing_jobs` table: `id`, `asset_id`, `job_type`, `status`, `attempt_count`, `error_code`, `error_message`, `started_at`, `finished_at`, `created_at`. Redis is used for operational state; PostgreSQL is used for audit, retries, and diagnostics.
+
+Each pipeline step must have an idempotency rule: deterministic S3 keys for derived files, upserting analysis results by `session_id`, `analysis_provider`, and `analysis_model_version`, and safe waveform/rendition regeneration.
+
 ## 11. Dawn-line and local-time architecture
 
 The dawn experience should be calculated from coordinates, date, and timezone. The backend should expose API-ready dawn candidates without forcing the frontend to calculate everything.
@@ -512,6 +561,8 @@ Recommended approach:
 - Calculate sunrise/sunset and civil dawn windows using a deterministic astronomy library or internal service.
 - Cache current dawn candidates in Redis.
 - Update dawn cache every 1-5 minutes.
+- Explicitly define the dawn window, for example `near_dawn_window_minutes_before=45` and `near_dawn_window_minutes_after=30`, so frontend and backend share the same `is_near_dawn_now` semantics.
+- Derive a location timezone from coordinates at creation, allow editor override, validate it when coordinates change, and audit changes.
 
 Important API concepts:
 
@@ -562,6 +613,20 @@ PATCH /api/v1/admin/sessions/{id}
 POST /api/v1/admin/sessions/{id}/assets
 POST /api/v1/admin/collections
 PATCH /api/v1/admin/collections/{id}
+```
+
+List endpoints (`collections`, `search`, atlas views) must support `limit` and cursor/page parameters. Public detail endpoints may use `slug`, but protected playback mutations must use stable `session_id` values obtained from detail responses.
+
+Standard API error shape:
+
+```json
+{
+  "error": {
+    "code": "playback_membership_required",
+    "message": "Membership is required to play this session.",
+    "request_id": "req_01JABC"
+  }
+}
 ```
 
 ## 13. Response examples
@@ -644,9 +709,9 @@ PATCH /api/v1/admin/collections/{id}
 Recommended first-version model:
 
 - JWT access token with short expiration.
-- Refresh token stored securely server-side or rotated through an auth provider.
+- Refresh token stored server-side and issued to the client through secure httpOnly cookies with rotation.
 - Role-based access control for admin/editor operations.
-- Membership-based playback rules for protected sessions.
+- Membership-based playback rules and entitlement checks for protected sessions.
 
 Authorization rules:
 
@@ -684,7 +749,7 @@ Required controls:
 - No secrets in source code.
 - Structured audit events for publishing, asset uploads, and admin changes.
 
-Sensitive ecological locations may require coordinate obfuscation. Some protected habitats should expose approximate coordinates publicly while keeping exact coordinates visible only to admins.
+Sensitive ecological locations require coordinate obfuscation through `coordinate_visibility`. Some protected habitats expose approximate coordinates or are hidden from the public atlas while exact coordinates remain visible only to admins and authorized editors.
 
 ## 17. Environment variables
 
@@ -714,27 +779,40 @@ JWT_REFRESH_TOKEN_TTL_SECONDS=2592000
 - Alembic migrations.
 - Health checks.
 
-### Phase 2: Atlas and content model
+### Phase 2: Content model and minimal admin
 
 - Locations CRUD.
 - Sessions CRUD.
 - Media assets model.
-- Public atlas points endpoint.
+- Admin upload shell.
+- Publication/access policy lifecycle.
+- Audit events for publishing and asset changes.
+
+### Phase 3: Public session and audio foundation
+
 - Session detail endpoint.
-- Atlas frontend shell with list fallback.
 - Session page frontend with global player.
-
-### Phase 3: Audio pipeline
-
-- Admin upload flow.
+- Playback lifecycle and grant refresh.
 - S3 private master storage.
+- Streaming rendition model.
+
+### Phase 4: Atlas experience
+
+- Public atlas points endpoint.
+- Atlas frontend shell with `/atlas?view=list` fallback.
+- Backend clustering/viewport contract.
+- Search.
+
+### Phase 5: Audio pipeline
+
 - Background processing worker.
+- Persistent `processing_jobs`.
 - Waveform generation.
 - Streaming renditions.
 - External bird analysis service integration.
 - Store `BirdVocalPart` metadata in PostgreSQL.
 
-### Phase 4: Dawn experience
+### Phase 6: Dawn experience
 
 - Sunrise and local-time calculations.
 - Current dawn endpoint.
@@ -742,18 +820,17 @@ JWT_REFRESH_TOKEN_TTL_SECONDS=2592000
 - Frontend dawn terminator rendering.
 - Redis cache warming.
 
-### Phase 5: Membership and protected playback
+### Phase 7: Membership and protected playback
 
 - Auth.
 - User roles.
-- Membership state.
+- Membership state and entitlements.
 - Signed playback grants.
 - Rate limits and audit logs.
 
-### Phase 6: Editorial polish
+### Phase 8: Editorial polish
 
 - Collections.
-- Search.
 - Featured sessions.
 - Recording integrity display.
 - Bird parts timeline in the session player.
@@ -761,9 +838,9 @@ JWT_REFRESH_TOKEN_TTL_SECONDS=2592000
 
 ## 19. Accepted decisions
 
-1. Start long-form playback with single files and add HLS later if needed.
-2. Use a hybrid globe/map interface for the first release.
+1. Use a rendition-based model for long-form playback; the MVP may start with an MP3 rendition, but storage/API must be HLS-ready.
+2. Use a hybrid globe/map interface for the first release with a required list fallback.
 3. Use RQ as the worker framework.
-4. Use a hybrid auth approach.
-5. Exact coordinates are always public.
-6. Memberships are implemented internally.
+4. Use internal JWT auth with server-side refresh-token rotation through secure httpOnly cookies.
+5. Exact coordinates are public only for `coordinate_visibility=exact_public`; sensitive locations use approximate or hidden public coordinates.
+6. Memberships are implemented internally through membership state and entitlements, with room for a future billing provider integration.
