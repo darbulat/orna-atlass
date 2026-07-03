@@ -1,0 +1,35 @@
+[project]
+name = "orna-atlas"
+version = "0.1.0"
+description = "Map-first audio platform backend for ORNA Atlas."
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.13.2",
+  "asyncpg>=0.29.0",
+  "fastapi>=0.111.0",
+  "pydantic-settings>=2.3.4",
+  "psycopg[binary]>=3.2.1",
+  "redis>=5.0.7",
+  "sqlalchemy[asyncio]>=2.0.31",
+  "uvicorn[standard]>=0.30.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27.0",
+  "pytest>=8.2.2",
+  "pytest-asyncio>=0.23.7",
+  "ruff>=0.5.0",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["orna_atlas"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["orna_atlas/app/tests"]
+
+[tool.setuptools.packages.find]
+include = ["orna_atlas*"]
+exclude = ["web*"]
