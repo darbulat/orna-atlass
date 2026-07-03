@@ -7,7 +7,9 @@ from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.db.base import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("+asyncpg", ""))
+config.set_main_option(
+    "sqlalchemy.url", get_settings().database_url.replace("+asyncpg", "+psycopg")
+)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
