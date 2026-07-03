@@ -5,6 +5,9 @@ from sqlalchemy import engine_from_config, pool
 
 from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.db.base import Base
+from orna_atlas.app.modules.locations.models import Location  # noqa: F401
+from orna_atlas.app.modules.media.models import MediaAsset  # noqa: F401
+from orna_atlas.app.modules.sessions.models import RecordingSession  # noqa: F401
 
 config = context.config
 config.set_main_option(
