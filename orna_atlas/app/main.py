@@ -10,6 +10,9 @@ from orna_atlas.app.core.errors import register_error_handlers
 from orna_atlas.app.core.logging import configure_logging
 from orna_atlas.app.db.session import engine
 from orna_atlas.app.integrations.redis import get_redis_client
+from orna_atlas.app.modules.admin.router import router as admin_router
+from orna_atlas.app.modules.locations.router import router as locations_router
+from orna_atlas.app.modules.sessions.router import router as sessions_router
 
 
 class DependencyStatus(BaseModel):
@@ -36,6 +39,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     register_error_handlers(app)
+    app.include_router(admin_router, prefix=settings.api_prefix)
+    app.include_router(locations_router, prefix=settings.api_prefix)
+    app.include_router(sessions_router, prefix=settings.api_prefix)
     return app
 
 

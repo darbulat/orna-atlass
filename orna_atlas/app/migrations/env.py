@@ -5,6 +5,9 @@ from sqlalchemy import engine_from_config, pool
 
 from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.db.base import Base
+from orna_atlas.app.modules.locations.models import Location  # noqa: F401
+from orna_atlas.app.modules.media.models import MediaAsset  # noqa: F401
+from orna_atlas.app.modules.sessions.models import RecordingSession  # noqa: F401
 
 config = context.config
 config.set_main_option(
@@ -17,10 +20,17 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def include_object(object_, name, type_, reflected, compare_to):  # noqa: ANN001, ANN201
+    if type_ == "table" and reflected and compare_to is None:
+        return False
+    return True
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -37,7 +47,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(connection=connection, target_metadata=target_metadata, include_object=include_object)
 
         with context.begin_transaction():
             context.run_migrations()
