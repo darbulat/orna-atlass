@@ -16,17 +16,35 @@ async def require_session(session: AsyncSession, session_id: UUID) -> RecordingS
     return recording
 
 
+async def require_session_for_admin(session: AsyncSession, session_id: UUID) -> RecordingSession:
+    recording = await repository.get_session_for_admin(session, session_id)
+    if recording is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    return recording
+
+
+async def require_public_session_by_slug(session: AsyncSession, slug: str) -> RecordingSession:
+    recording = await repository.get_session_by_slug(session, slug)
+    if recording is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    return recording
+
+
 async def create_session(session: AsyncSession, data: SessionCreate) -> RecordingSession:
     await require_location(session, data.location_id)
-    if await repository.get_session_by_slug(session, data.slug):
+    if await repository.get_session_by_slug_for_admin(session, data.slug):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session slug exists")
     return await repository.create_session(session, data)
 
 
 async def update_session(session: AsyncSession, session_id: UUID, data: SessionUpdate) -> RecordingSession:
-    recording = await require_session(session, session_id)
+    recording = await require_session_for_admin(session, session_id)
     if data.location_id is not None:
         await require_location(session, data.location_id)
-    if data.slug and data.slug != recording.slug and await repository.get_session_by_slug(session, data.slug):
+    if (
+        data.slug
+        and data.slug != recording.slug
+        and await repository.get_session_by_slug_for_admin(session, data.slug)
+    ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session slug exists")
     return await repository.update_session(session, recording, data)

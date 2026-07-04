@@ -15,6 +15,13 @@ async def require_location(session: AsyncSession, location_id: UUID) -> Location
     return location
 
 
+async def require_location_by_slug(session: AsyncSession, slug: str) -> Location:
+    location = await repository.get_location_by_slug(session, slug)
+    if location is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Location not found")
+    return location
+
+
 async def create_location(session: AsyncSession, data: LocationCreate) -> Location:
     if await repository.get_location_by_slug(session, data.slug):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Location slug exists")

@@ -20,6 +20,7 @@ async def list_sessions(session: AsyncSession, *, limit: int = 50, offset: int =
     result = await session.execute(
         select(RecordingSession)
         .options(selectinload(RecordingSession.media_assets))
+        .where(RecordingSession.access_level == "public")
         .order_by(RecordingSession.recorded_at.desc())
         .limit(limit)
         .offset(offset)
@@ -31,12 +32,30 @@ async def get_session(session: AsyncSession, session_id: UUID) -> RecordingSessi
     result = await session.execute(
         select(RecordingSession)
         .options(selectinload(RecordingSession.media_assets))
+        .where(RecordingSession.id == session_id, RecordingSession.access_level == "public")
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_session_for_admin(session: AsyncSession, session_id: UUID) -> RecordingSession | None:
+    result = await session.execute(
+        select(RecordingSession)
+        .options(selectinload(RecordingSession.media_assets))
         .where(RecordingSession.id == session_id)
     )
     return result.scalar_one_or_none()
 
 
 async def get_session_by_slug(session: AsyncSession, slug: str) -> RecordingSession | None:
+    result = await session.execute(
+        select(RecordingSession)
+        .options(selectinload(RecordingSession.media_assets))
+        .where(RecordingSession.slug == slug, RecordingSession.access_level == "public")
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_session_by_slug_for_admin(session: AsyncSession, slug: str) -> RecordingSession | None:
     result = await session.execute(select(RecordingSession).where(RecordingSession.slug == slug))
     return result.scalar_one_or_none()
 

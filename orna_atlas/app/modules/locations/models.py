@@ -18,8 +18,12 @@ class Location(Base):
     country_code: Mapped[str | None] = mapped_column(String(2), index=True)
     region: Mapped[str | None] = mapped_column(String(120))
     habitat: Mapped[str | None] = mapped_column(String(120), index=True)
-    latitude: Mapped[float] = mapped_column(Float)
-    longitude: Mapped[float] = mapped_column(Float)
+    exact_latitude: Mapped[float] = mapped_column(Float)
+    exact_longitude: Mapped[float] = mapped_column(Float)
+    public_latitude: Mapped[float | None] = mapped_column(Float)
+    public_longitude: Mapped[float | None] = mapped_column(Float)
+    coordinate_visibility: Mapped[str] = mapped_column(String(40), default="exact_public", index=True)
+    sensitivity_level: Mapped[str] = mapped_column(String(40), default="none", index=True)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
@@ -28,3 +32,19 @@ class Location(Base):
     )
 
     sessions = relationship("RecordingSession", back_populates="location", cascade="all, delete-orphan")
+
+    @property
+    def latitude(self) -> float | None:
+        if self.coordinate_visibility == "hidden_public":
+            return None
+        if self.coordinate_visibility == "exact_public":
+            return self.exact_latitude
+        return self.public_latitude
+
+    @property
+    def longitude(self) -> float | None:
+        if self.coordinate_visibility == "hidden_public":
+            return None
+        if self.coordinate_visibility == "exact_public":
+            return self.exact_longitude
+        return self.public_longitude
