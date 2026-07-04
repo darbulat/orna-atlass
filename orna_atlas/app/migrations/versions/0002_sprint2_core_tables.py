@@ -79,15 +79,16 @@ def upgrade() -> None:
         sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["session_id"], ["recording_sessions.id"], ondelete="CASCADE"),
+        sa.UniqueConstraint("storage_key"),
     )
     op.create_index("ix_media_assets_session_id", "media_assets", ["session_id"])
-    op.create_index("ix_media_assets_storage_key", "media_assets", ["storage_key"], unique=True)
+    op.create_index("ix_recording_sessions_title", "recording_sessions", ["title"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_media_assets_storage_key", table_name="media_assets")
     op.drop_index("ix_media_assets_session_id", table_name="media_assets")
     op.drop_table("media_assets")
+    op.drop_index("ix_recording_sessions_title", table_name="recording_sessions")
     op.drop_index("ix_recording_sessions_access_level", table_name="recording_sessions")
     op.drop_index("ix_recording_sessions_recorded_at", table_name="recording_sessions")
     op.drop_index("ix_recording_sessions_location_id", table_name="recording_sessions")
