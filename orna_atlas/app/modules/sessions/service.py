@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from orna_atlas.app.modules.locations.service import require_location
 from orna_atlas.app.modules.sessions import repository
 from orna_atlas.app.modules.sessions.models import RecordingSession
-from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionUpdate
+from orna_atlas.app.modules.sessions.schemas import (
+    SessionAnnotationRead,
+    SessionCreate,
+    SessionUpdate,
+    WaveformRead,
+)
 
 
 async def require_session(session: AsyncSession, session_id: UUID) -> RecordingSession:
@@ -28,6 +33,22 @@ async def require_public_session_by_slug(session: AsyncSession, slug: str) -> Re
     if recording is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     return recording
+
+
+def waveform_for_session(recording: RecordingSession) -> WaveformRead:
+    metadata = recording.metadata_ if isinstance(recording.metadata_, dict) else {}
+    waveform = metadata.get("waveform") if isinstance(metadata.get("waveform"), dict) else {}
+    return WaveformRead(
+        session_id=recording.id,
+        duration_seconds=recording.duration_seconds,
+        **waveform,
+    )
+
+
+def annotations_for_session(recording: RecordingSession) -> list[SessionAnnotationRead]:
+    metadata = recording.metadata_ if isinstance(recording.metadata_, dict) else {}
+    annotations = metadata.get("annotations") if isinstance(metadata.get("annotations"), list) else []
+    return [SessionAnnotationRead.model_validate(annotation) for annotation in annotations]
 
 
 async def create_session(session: AsyncSession, data: SessionCreate) -> RecordingSession:
