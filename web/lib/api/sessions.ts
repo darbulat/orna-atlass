@@ -71,10 +71,12 @@ export type PlaybackGrant = {
   refresh_after_seconds: number;
 };
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const browserApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const serverApiBaseUrl = process.env.API_SERVER_URL ?? browserApiBaseUrl;
 
 export function apiUrl(path: string): string {
-  return `${apiBaseUrl}${path}`;
+  const baseUrl = typeof window === "undefined" ? serverApiBaseUrl : browserApiBaseUrl;
+  return `${baseUrl}${path}`;
 }
 
 export async function fetchSessionDetail(slug: string): Promise<SessionDetail | null> {

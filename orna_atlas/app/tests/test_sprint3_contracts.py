@@ -5,7 +5,8 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from orna_atlas.app.main import app
-from orna_atlas.app.modules.sessions.schemas import SessionDetailRead
+from orna_atlas.app.modules.sessions import service
+from orna_atlas.app.modules.sessions.schemas import PlaybackGrantRead, SessionDetailRead
 
 
 def test_sprint3_public_audio_routes_are_registered() -> None:
@@ -95,3 +96,64 @@ def test_playback_grant_schema_documents_mock_lifecycle() -> None:
     assert {"session_id", "status", "stream_url", "expires_at", "refresh_after_seconds"}.issubset(
         grant_schema
     )
+    assert PlaybackGrantRead.mock_for_session(uuid4()).stream_url.endswith("/mock-stream")
+
+
+def test_waveform_metadata_overrides_defaults_without_duplicate_kwargs() -> None:
+    session_id = uuid4()
+    recording = SimpleNamespace(
+        id=session_id,
+        duration_seconds=3600,
+        metadata_={"waveform": {"duration_seconds": 120, "peaks": [0.2], "status": "ready"}},
+    )
+
+    waveform = service.waveform_for_session(recording)
+
+    assert waveform.session_id == session_id
+    assert waveform.duration_seconds == 120
+    assert waveform.peaks == [0.2]
+    assert waveform.status == "ready"
+
+
+def test_session_detail_ignores_non_list_annotation_metadata() -> None:
+    now = datetime.now(UTC)
+    location = SimpleNamespace(
+        id=uuid4(),
+        slug="misty-wetland",
+        name="Misty Wetland",
+        description=None,
+        country_code="MN",
+        region=None,
+        habitat="wetland",
+        latitude=48.1,
+        longitude=107.2,
+        public_latitude=48.1,
+        public_longitude=107.2,
+        coordinate_visibility="approximate_public",
+        sensitivity_level="medium",
+        timezone="Asia/Ulaanbaatar",
+        metadata_={},
+        created_at=now,
+        updated_at=now,
+    )
+    recording = SimpleNamespace(
+        id=uuid4(),
+        location_id=location.id,
+        slug="misty-dawn",
+        title="Misty Dawn",
+        description=None,
+        recorded_at=now,
+        duration_seconds=3600,
+        recorder=None,
+        weather=None,
+        access_level="public",
+        metadata_={"annotations": None},
+        created_at=now,
+        updated_at=now,
+        media_assets=[],
+        location=location,
+    )
+
+    detail = SessionDetailRead.model_validate(recording)
+
+    assert detail.annotations == []

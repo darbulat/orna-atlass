@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.db.session import get_db_session
@@ -37,6 +37,12 @@ async def get_waveform(session_id: UUID, session: AsyncSession = Depends(get_db_
 async def get_annotations(session_id: UUID, session: AsyncSession = Depends(get_db_session)):
     recording = await service.require_session(session, session_id)
     return service.annotations_for_session(recording)
+
+
+@router.get("/{session_id}/mock-stream", include_in_schema=False)
+async def get_mock_stream(session_id: UUID, session: AsyncSession = Depends(get_db_session)):
+    await service.require_session(session, session_id)
+    return Response(content=service.mock_wav_bytes(), media_type="audio/wav")
 
 
 @router.get("/{locator}", response_model=SessionDetailRead)

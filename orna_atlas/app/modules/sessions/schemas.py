@@ -68,7 +68,7 @@ class PlaybackGrantRead(BaseModel):
     def mock_for_session(cls, session_id: UUID) -> "PlaybackGrantRead":
         return cls(
             session_id=session_id,
-            stream_url=f"/mock-audio/sessions/{session_id}/stream_320.mp3",
+            stream_url=f"/api/v1/sessions/{session_id}/mock-stream",
             expires_at=datetime.now(UTC) + timedelta(minutes=15),
         )
 
@@ -159,5 +159,6 @@ class SessionDetailRead(SessionRead):
         if isinstance(waveform, dict):
             waveform = {"session_id": data.get("id"), "duration_seconds": data.get("duration_seconds"), **waveform}
         data.setdefault("waveform", waveform)
-        data.setdefault("annotations", metadata.get("annotations", []))
+        annotations = metadata.get("annotations", [])
+        data.setdefault("annotations", annotations if isinstance(annotations, list) else [])
         return data
