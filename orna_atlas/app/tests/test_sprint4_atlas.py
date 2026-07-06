@@ -14,6 +14,9 @@ def test_sprint4_routes_are_registered() -> None:
     assert "/api/v1/atlas/points" in schema["paths"]
     assert "/api/v1/locations/{locator}" in schema["paths"]
     assert "/api/v1/search" in schema["paths"]
+    points_params = schema["paths"]["/api/v1/atlas/points"]["get"]["parameters"]
+    time_mode = next(param for param in points_params if param["name"] == "time_mode")
+    assert time_mode["schema"]["enum"] == ["local", "utc", "dawn"]
 
 
 def test_atlas_cache_key_is_stable_for_normalized_filters() -> None:
@@ -80,3 +83,53 @@ def test_atlas_point_uses_public_coordinates_and_latest_public_session() -> None
     assert payload["latest_session"]["slug"] == "dawn-public"
     assert payload["session_count"] == 1
     assert "exact_latitude" not in payload
+
+
+async def test_low_zoom_atlas_applies_limit_after_clustering(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    requested_limits = []
+    locations = [
+        SimpleNamespace(
+            id=uuid4(),
+            slug=f"location-{index}",
+            name=f"Location {index}",
+            description=None,
+            country_code="NZ",
+            region="South Island",
+            habitat="wetland",
+            latitude=-45.0 + index * 10,
+            longitude=169.0,
+            timezone="Pacific/Auckland",
+            sensitivity_level="none",
+            sessions=[
+                SimpleNamespace(
+                    id=uuid4(),
+                    slug=f"session-{index}",
+                    title=f"Session {index}",
+                    recorded_at=now,
+                    duration_seconds=60,
+                    access_level="public",
+                )
+            ],
+        )
+        for index in range(3)
+    ]
+
+    async def fake_list_atlas_locations(session, *, bbox, habitats, limit):
+        requested_limits.append(limit)
+        return locations
+
+    monkeypatch.setattr(service.repository, "list_atlas_locations", fake_list_atlas_locations)
+
+    response = await service.get_atlas_points(
+        SimpleNamespace(),
+        bbox=None,
+        zoom=3,
+        habitats=None,
+        time_mode="local",
+        limit=2,
+    )
+
+    assert requested_limits == [None]
+    assert response.mode == "clusters"
+    assert len(response.points) == 2

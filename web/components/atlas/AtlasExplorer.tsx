@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AtlasCluster, AtlasPoint } from "../../lib/api/sessions";
+import { fetchAtlasPoints } from "../../lib/api/sessions";
 
 type Props = {
   initialView: "map" | "list";
@@ -20,26 +21,60 @@ function markerStyle(point: AtlasPoint | AtlasCluster) {
   };
 }
 
+const habitatOptions = ["forest", "wetland", "steppe", "coast"];
+
 export function AtlasExplorer({ initialView, points }: Props) {
   const [view, setView] = useState(initialView);
-  const locations = useMemo(() => points.filter(isPoint), [points]);
+  const [atlasPoints, setAtlasPoints] = useState(points);
+  const [selectedHabitats, setSelectedHabitats] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const locations = useMemo(() => atlasPoints.filter(isPoint), [atlasPoints]);
   const [selectedSlug, setSelectedSlug] = useState(locations[0]?.slug ?? null);
   const selected = locations.find((point) => point.slug === selectedSlug) ?? locations[0] ?? null;
+
+  useEffect(() => {
+    if (selectedSlug && locations.some((point) => point.slug === selectedSlug)) {
+      return;
+    }
+    setSelectedSlug(locations[0]?.slug ?? null);
+  }, [locations, selectedSlug]);
+
+  async function toggleHabitat(habitat: string) {
+    const nextHabitats = selectedHabitats.includes(habitat)
+      ? selectedHabitats.filter((item) => item !== habitat)
+      : [...selectedHabitats, habitat];
+    setSelectedHabitats(nextHabitats);
+    setIsLoading(true);
+    try {
+      const atlas = await fetchAtlasPoints(view, nextHabitats);
+      setAtlasPoints(atlas.points);
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   return (
     <section className="atlas-workspace">
       <div className="atlas-toolbar" aria-label="Atlas controls">
         <div className="segmented" role="tablist" aria-label="Atlas view">
-          <button type="button" aria-selected={view === "map"} onClick={() => setView("map")}>
+          <button type="button" role="tab" aria-selected={view === "map"} onClick={() => setView("map")}>
             Map
           </button>
-          <button type="button" aria-selected={view === "list"} onClick={() => setView("list")}>
+          <button type="button" role="tab" aria-selected={view === "list"} onClick={() => setView("list")}>
             List
           </button>
         </div>
         <div className="filter-row" aria-label="Habitat filters">
-          {["forest", "wetland", "steppe", "coast"].map((habitat) => (
-            <span key={habitat}>{habitat}</span>
+          {habitatOptions.map((habitat) => (
+            <button
+              type="button"
+              key={habitat}
+              aria-pressed={selectedHabitats.includes(habitat)}
+              disabled={isLoading}
+              onClick={() => toggleHabitat(habitat)}
+            >
+              {habitat}
+            </button>
           ))}
         </div>
       </div>
@@ -48,7 +83,7 @@ export function AtlasExplorer({ initialView, points }: Props) {
         <div className="atlas-grid">
           <div className="atlas-map" aria-label="Location map">
             <div className="map-grid" />
-            {points.map((point) => (
+            {atlasPoints.map((point) => (
               <button
                 type="button"
                 key={`${point.type}-${point.id}`}

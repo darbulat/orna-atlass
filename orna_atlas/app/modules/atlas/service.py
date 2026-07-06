@@ -16,7 +16,8 @@ from orna_atlas.app.modules.atlas.schemas import (
     SearchResult,
 )
 from orna_atlas.app.modules.locations.models import Location
-from orna_atlas.app.modules.sessions.models import RecordingSession
+
+TimeMode = Literal["local", "utc", "dawn"]
 
 
 def parse_bbox(value: str | None) -> BoundingBox | None:
@@ -60,7 +61,7 @@ def stable_cache_key(
     bbox: BoundingBox | None,
     zoom: int,
     habitats: list[str] | None,
-    time_mode: str,
+    time_mode: TimeMode,
     limit: int,
 ) -> str:
     payload = {
@@ -142,20 +143,20 @@ async def get_atlas_points(
     bbox: str | None,
     zoom: int,
     habitats: list[str] | None,
-    time_mode: str,
+    time_mode: TimeMode,
     limit: int,
 ) -> AtlasPointsResponse:
     parsed_bbox = parse_bbox(bbox)
     normalized_habitats = normalize_habitats(habitats)
+    mode: Literal["points", "clusters"] = "clusters" if zoom < 5 else "points"
     locations = await repository.list_atlas_locations(
         session,
         bbox=parsed_bbox,
         habitats=normalized_habitats,
-        limit=limit,
+        limit=None if mode == "clusters" else limit,
     )
     points = [point for location in locations if (point := point_from_location(location)) is not None]
-    mode: Literal["points", "clusters"] = "clusters" if zoom < 5 else "points"
-    payload_points = cluster_points(points, zoom) if mode == "clusters" else points
+    payload_points = cluster_points(points, zoom)[:limit] if mode == "clusters" else points
     return AtlasPointsResponse(
         bbox=None
         if parsed_bbox is None
@@ -173,10 +174,15 @@ async def get_atlas_points(
     )
 
 
-async def search(session: AsyncSession, *, query: str, limit: int) -> list[SearchResult]:
+async def search(session: AsyncSession, *, query: str, limit: int, offset: int) -> list[SearchResult]:
     if len(query.strip()) < 2:
         return []
-    rows = await repository.search_locations_and_sessions(session, query=query.strip(), limit=limit)
+    rows = await repository.search_locations_and_sessions(
+        session,
+        query=query.strip(),
+        limit=limit,
+        offset=offset,
+    )
     results: list[SearchResult] = []
     for row in rows:
         if isinstance(row, Location):

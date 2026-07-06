@@ -136,16 +136,26 @@ export async function fetchSessionDetail(slug: string): Promise<SessionDetail | 
   }
 }
 
-export async function fetchAtlasPoints(view: string | undefined): Promise<AtlasPointsResponse> {
-  const zoom = view === "list" ? 5 : 3;
-  const response = await fetch(apiUrl(`/api/v1/atlas/points?zoom=${zoom}&limit=250`), {
-    next: { revalidate: 60 },
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) {
+export async function fetchAtlasPoints(
+  _view: string | undefined,
+  habitats: string[] = [],
+): Promise<AtlasPointsResponse> {
+  const zoom = 5;
+  const params = new URLSearchParams({ zoom: String(zoom), limit: "250" });
+  habitats.forEach((habitat) => params.append("habitat", habitat));
+
+  try {
+    const response = await fetch(apiUrl(`/api/v1/atlas/points?${params.toString()}`), {
+      next: { revalidate: 60 },
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      return { bbox: null, zoom, mode: "points", points: [], cache_key: "atlas:points:empty" };
+    }
+    return (await response.json()) as AtlasPointsResponse;
+  } catch {
     return { bbox: null, zoom, mode: "points", points: [], cache_key: "atlas:points:empty" };
   }
-  return (await response.json()) as AtlasPointsResponse;
 }
 
 export async function requestPlaybackGrant(sessionId: string): Promise<PlaybackGrant> {

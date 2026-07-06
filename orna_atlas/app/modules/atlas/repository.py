@@ -61,14 +61,17 @@ async def list_atlas_locations(
     *,
     bbox: BoundingBox | None,
     habitats: list[str] | None,
-    limit: int,
+    limit: int | None,
 ) -> list[Location]:
-    result = await session.execute(_published_location_query(bbox, habitats).limit(limit))
+    query = _published_location_query(bbox, habitats)
+    if limit is not None:
+        query = query.limit(limit)
+    result = await session.execute(query)
     return list(result.scalars().unique())
 
 
 async def search_locations_and_sessions(
-    session: AsyncSession, *, query: str, limit: int
+    session: AsyncSession, *, query: str, limit: int, offset: int
 ) -> list[Location | RecordingSession]:
     term = f"%{query}%"
     location_result = await session.execute(
@@ -82,6 +85,7 @@ async def search_locations_and_sessions(
         )
         .order_by(Location.name)
         .distinct()
+        .offset(offset)
         .limit(limit)
     )
     session_result = await session.execute(
@@ -94,6 +98,7 @@ async def search_locations_and_sessions(
             or_(RecordingSession.title.ilike(term), RecordingSession.description.ilike(term)),
         )
         .order_by(RecordingSession.recorded_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     combined: list[Location | RecordingSession] = []

@@ -69,7 +69,9 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
 .segmented button { border: 0; border-radius: 999px; min-width: 86px; padding: 10px 16px; }
 .segmented button[aria-selected="true"] { background: #9bd8bd; color: #07110f; }
 .filter-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.filter-row span { border: 1px solid rgba(155,216,189,0.32); border-radius: 999px; color: #c8d8d1; font-size: 0.9rem; padding: 8px 12px; }
+.filter-row button { border-color: rgba(155,216,189,0.32); color: #c8d8d1; font-size: 0.9rem; padding: 8px 12px; }
+.filter-row button[aria-pressed="true"] { background: #f6c46b; border-color: #f6c46b; color: #07110f; }
+.filter-row button:disabled { cursor: progress; opacity: 0.7; }
 .atlas-grid, .atlas-list-layout { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); }
 .atlas-map {
   aspect-ratio: 16 / 9;
