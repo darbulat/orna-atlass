@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import UTC, datetime, timedelta
 from math import floor
 from typing import Literal
 
@@ -13,11 +14,20 @@ from orna_atlas.app.modules.atlas.schemas import (
     AtlasPoint,
     AtlasPointsResponse,
     AtlasSessionSummary,
+    DawnCurrentResponse,
+    DawnFollowResponse,
+    DawnLocation,
+    DawnWindowConfig,
     SearchResult,
 )
+from orna_atlas.app.integrations.sunrise import dawn_window, get_timezone
 from orna_atlas.app.modules.locations.models import Location
 
 TimeMode = Literal["local", "utc", "dawn"]
+DawnState = Literal["active", "upcoming", "past", "polar"]
+DAWN_BEFORE_MINUTES = 45
+DAWN_AFTER_MINUTES = 30
+DAWN_CACHE_SECONDS = 60
 
 
 def parse_bbox(value: str | None) -> BoundingBox | None:
@@ -75,6 +85,11 @@ def stable_cache_key(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()[:20]
     return f"atlas:points:{digest}"
+
+
+def stable_dawn_cache_key(*, kind: Literal["current", "follow"], now: datetime, limit: int) -> str:
+    bucket = int(now.timestamp()) // DAWN_CACHE_SECONDS
+    return f"atlas:dawn:{kind}:{bucket}:{limit}"
 
 
 def point_from_location(location: Location) -> AtlasPoint | None:
@@ -171,6 +186,129 @@ async def get_atlas_points(
             time_mode=time_mode,
             limit=limit,
         ),
+    )
+
+
+def _dawn_location_from_point(
+    point: AtlasPoint, *, now: datetime, roll_past_forward: bool = False
+) -> DawnLocation:
+    window = dawn_window(
+        latitude=point.latitude,
+        longitude=point.longitude,
+        timezone=point.timezone,
+        now=now,
+        before_minutes=DAWN_BEFORE_MINUTES,
+        after_minutes=DAWN_AFTER_MINUTES,
+    )
+    if roll_past_forward and window.window_ends_at is not None and now > window.window_ends_at:
+        window = dawn_window(
+            latitude=point.latitude,
+            longitude=point.longitude,
+            timezone=point.timezone,
+            now=now + timedelta(days=1),
+            before_minutes=DAWN_BEFORE_MINUTES,
+            after_minutes=DAWN_AFTER_MINUTES,
+        )
+    local_now = now.astimezone(get_timezone(point.timezone))
+    state: DawnState
+    minutes_until_sunrise: int | None = None
+    if window.sunrise_at is None or window.window_starts_at is None or window.window_ends_at is None:
+        state = "polar"
+    else:
+        minutes_until_sunrise = round((window.sunrise_at - now).total_seconds() / 60)
+        if window.window_starts_at <= now <= window.window_ends_at:
+            state = "active"
+        elif now < window.window_starts_at:
+            state = "upcoming"
+        else:
+            state = "past"
+    return DawnLocation(
+        location=point,
+        local_date=window.local_date.isoformat(),
+        local_time=local_now.strftime("%H:%M"),
+        civil_dawn_at=window.civil_dawn_at,
+        sunrise_at=window.sunrise_at,
+        window_starts_at=window.window_starts_at,
+        window_ends_at=window.window_ends_at,
+        minutes_until_sunrise=minutes_until_sunrise,
+        state=state,
+    )
+
+
+def _sort_dawn_locations(locations: list[DawnLocation]) -> list[DawnLocation]:
+    def sort_key(item: DawnLocation) -> tuple[int, float, str]:
+        groups = {"active": 0, "upcoming": 1, "past": 2, "polar": 3}
+        minutes = item.minutes_until_sunrise
+        return (groups[item.state], abs(minutes) if minutes is not None else 10_000, item.location.name)
+
+    return sorted(locations, key=sort_key)
+
+
+async def get_current_dawn(
+    session: AsyncSession, *, now: datetime | None = None, limit: int = 12
+) -> DawnCurrentResponse:
+    generated_at = now or datetime.now(UTC)
+    if generated_at.tzinfo is None:
+        generated_at = generated_at.replace(tzinfo=UTC)
+    locations = await repository.list_atlas_locations(
+        session,
+        bbox=None,
+        habitats=None,
+        limit=None,
+    )
+    dawn_locations = [
+        _dawn_location_from_point(point, now=generated_at)
+        for location in locations
+        if (point := point_from_location(location)) is not None
+    ]
+    next_dawn_locations = [
+        _dawn_location_from_point(point, now=generated_at, roll_past_forward=True)
+        for location in locations
+        if (point := point_from_location(location)) is not None
+    ]
+    return DawnCurrentResponse(
+        generated_at=generated_at,
+        window=DawnWindowConfig(
+            before_minutes=DAWN_BEFORE_MINUTES,
+            after_minutes=DAWN_AFTER_MINUTES,
+            refresh_seconds=DAWN_CACHE_SECONDS,
+        ),
+        active_locations=_sort_dawn_locations(
+            [item for item in dawn_locations if item.state == "active"]
+        )[:limit],
+        next_locations=_sort_dawn_locations(
+            [item for item in next_dawn_locations if item.state == "upcoming"]
+        )[:limit],
+        cache_key=stable_dawn_cache_key(kind="current", now=generated_at, limit=limit),
+    )
+
+
+async def get_follow_dawn(
+    session: AsyncSession, *, now: datetime | None = None, limit: int = 24
+) -> DawnFollowResponse:
+    generated_at = now or datetime.now(UTC)
+    if generated_at.tzinfo is None:
+        generated_at = generated_at.replace(tzinfo=UTC)
+    locations = await repository.list_atlas_locations(
+        session,
+        bbox=None,
+        habitats=None,
+        limit=None,
+    )
+    dawn_locations = [
+        _dawn_location_from_point(point, now=generated_at, roll_past_forward=True)
+        for location in locations
+        if (point := point_from_location(location)) is not None
+    ]
+    return DawnFollowResponse(
+        generated_at=generated_at,
+        window=DawnWindowConfig(
+            before_minutes=DAWN_BEFORE_MINUTES,
+            after_minutes=DAWN_AFTER_MINUTES,
+            refresh_seconds=DAWN_CACHE_SECONDS,
+        ),
+        locations=_sort_dawn_locations(dawn_locations)[:limit],
+        cache_key=stable_dawn_cache_key(kind="follow", now=generated_at, limit=limit),
     )
 
 

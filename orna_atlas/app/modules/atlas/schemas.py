@@ -47,6 +47,39 @@ class AtlasPointsResponse(BaseModel):
     cache_key: str
 
 
+class DawnWindowConfig(BaseModel):
+    before_minutes: int = Field(ge=1)
+    after_minutes: int = Field(ge=1)
+    refresh_seconds: int = Field(ge=1)
+
+
+class DawnLocation(BaseModel):
+    location: AtlasPoint
+    local_date: str
+    local_time: str
+    civil_dawn_at: datetime | None = None
+    sunrise_at: datetime | None = None
+    window_starts_at: datetime | None = None
+    window_ends_at: datetime | None = None
+    minutes_until_sunrise: int | None = None
+    state: Literal["active", "upcoming", "past", "polar"]
+
+
+class DawnCurrentResponse(BaseModel):
+    generated_at: datetime
+    window: DawnWindowConfig
+    active_locations: list[DawnLocation]
+    next_locations: list[DawnLocation]
+    cache_key: str
+
+
+class DawnFollowResponse(BaseModel):
+    generated_at: datetime
+    window: DawnWindowConfig
+    locations: list[DawnLocation]
+    cache_key: str
+
+
 class SearchResult(BaseModel):
     type: Literal["location", "session"]
     id: UUID

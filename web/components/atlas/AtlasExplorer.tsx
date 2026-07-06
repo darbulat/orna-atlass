@@ -2,12 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { AtlasCluster, AtlasPoint, SearchResult } from "../../lib/api/sessions";
-import { fetchAtlasPoints, searchAtlas } from "../../lib/api/sessions";
+import type {
+  AtlasCluster,
+  AtlasPoint,
+  DawnCurrentResponse,
+  DawnFollowResponse,
+  DawnLocation,
+  SearchResult,
+} from "../../lib/api/sessions";
+import { fetchAtlasPoints, fetchCurrentDawn, fetchFollowDawn, searchAtlas } from "../../lib/api/sessions";
 
 type Props = {
   initialView: "map" | "list";
   points: Array<AtlasPoint | AtlasCluster>;
+  dawn: DawnCurrentResponse;
 };
 
 function isPoint(item: AtlasPoint | AtlasCluster): item is AtlasPoint {
@@ -23,9 +31,13 @@ function markerStyle(point: AtlasPoint | AtlasCluster) {
 
 const habitatOptions = ["forest", "wetland", "steppe", "coast"];
 
-export function AtlasExplorer({ initialView, points }: Props) {
+export function AtlasExplorer({ initialView, points, dawn }: Props) {
   const [view, setView] = useState(initialView);
   const [atlasPoints, setAtlasPoints] = useState(points);
+  const [dawnView, setDawnView] = useState<"current" | "follow">("current");
+  const [currentDawn, setCurrentDawn] = useState(dawn);
+  const [followDawn, setFollowDawn] = useState<DawnFollowResponse | null>(null);
+  const [isLoadingDawn, setIsLoadingDawn] = useState(false);
   const [selectedHabitats, setSelectedHabitats] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -34,6 +46,22 @@ export function AtlasExplorer({ initialView, points }: Props) {
   const locations = useMemo(() => atlasPoints.filter(isPoint), [atlasPoints]);
   const [selectedSlug, setSelectedSlug] = useState(locations[0]?.slug ?? null);
   const selected = locations.find((point) => point.slug === selectedSlug) ?? locations[0] ?? null;
+  const dawnLocations =
+    dawnView === "follow" && followDawn
+      ? followDawn.locations
+      : [...currentDawn.active_locations, ...currentDawn.next_locations];
+  const activeDawnSlugs = useMemo(
+    () => new Set(currentDawn.active_locations.map((item) => item.location.slug)),
+    [currentDawn.active_locations],
+  );
+  const dawnLineLeft = useMemo(() => {
+    const generatedAt = new Date(currentDawn.generated_at);
+    const utcHours =
+      generatedAt.getUTCHours() + generatedAt.getUTCMinutes() / 60 + generatedAt.getUTCSeconds() / 3600;
+    const sunriseLongitude = 90 - utcHours * 15;
+    const normalizedLongitude = ((((sunriseLongitude + 180) % 360) + 360) % 360) - 180;
+    return `${((normalizedLongitude + 180) / 360) * 100}%`;
+  }, [currentDawn.generated_at]);
 
   useEffect(() => {
     if (selectedSlug && locations.some((point) => point.slug === selectedSlug)) {
@@ -66,6 +94,22 @@ export function AtlasExplorer({ initialView, points }: Props) {
     };
   }, [query]);
 
+  useEffect(() => {
+    let isCurrent = true;
+    const refreshMs = Math.max(currentDawn.window.refresh_seconds, 1) * 1000;
+    const intervalId = window.setInterval(async () => {
+      const nextDawn = await fetchCurrentDawn();
+      if (isCurrent) {
+        setCurrentDawn(nextDawn);
+      }
+    }, refreshMs);
+
+    return () => {
+      isCurrent = false;
+      window.clearInterval(intervalId);
+    };
+  }, [currentDawn.window.refresh_seconds]);
+
   async function toggleHabitat(habitat: string) {
     const nextHabitats = selectedHabitats.includes(habitat)
       ? selectedHabitats.filter((item) => item !== habitat)
@@ -77,6 +121,18 @@ export function AtlasExplorer({ initialView, points }: Props) {
       setAtlasPoints(atlas.points);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function switchDawnView(nextView: "current" | "follow") {
+    setDawnView(nextView);
+    if (nextView === "follow" && !followDawn) {
+      setIsLoadingDawn(true);
+      try {
+        setFollowDawn(await fetchFollowDawn());
+      } finally {
+        setIsLoadingDawn(false);
+      }
     }
   }
 
@@ -96,6 +152,18 @@ export function AtlasExplorer({ initialView, points }: Props) {
     setQuery("");
   }
 
+  function selectDawnLocation(point: AtlasPoint) {
+    if (!locations.some((location) => location.slug === point.slug)) {
+      setAtlasPoints((currentPoints) =>
+        currentPoints.some((item) => isPoint(item) && item.slug === point.slug)
+          ? currentPoints
+          : [point, ...currentPoints],
+      );
+    }
+    setSelectedSlug(point.slug);
+    setView("list");
+  }
+
   return (
     <section className="atlas-workspace">
       <div className="atlas-toolbar" aria-label="Atlas controls">
@@ -105,6 +173,24 @@ export function AtlasExplorer({ initialView, points }: Props) {
           </button>
           <button type="button" role="tab" aria-selected={view === "list"} onClick={() => setView("list")}>
             List
+          </button>
+        </div>
+        <div className="segmented" role="tablist" aria-label="Dawn mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={dawnView === "current"}
+            onClick={() => switchDawnView("current")}
+          >
+            Dawn now
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={dawnView === "follow"}
+            onClick={() => switchDawnView("follow")}
+          >
+            Follow dawn
           </button>
         </div>
         <div className="filter-row" aria-label="Habitat filters">
@@ -160,11 +246,17 @@ export function AtlasExplorer({ initialView, points }: Props) {
         <div className="atlas-grid">
           <div className="atlas-map" aria-label="Location map">
             <div className="map-grid" />
+            <div className="dawn-terminator" style={{ left: dawnLineLeft }} aria-hidden="true" />
             {atlasPoints.map((point) => (
               <button
                 type="button"
                 key={`${point.type}-${point.id}`}
-                className={point.type === "cluster" ? "atlas-marker cluster" : "atlas-marker"}
+                className={[
+                  point.type === "cluster" ? "atlas-marker cluster" : "atlas-marker",
+                  isPoint(point) && activeDawnSlugs.has(point.slug) ? "is-dawn" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 style={markerStyle(point)}
                 onClick={() => {
                   if (isPoint(point)) setSelectedSlug(point.slug);
@@ -175,7 +267,12 @@ export function AtlasExplorer({ initialView, points }: Props) {
               </button>
             ))}
           </div>
-          <LocationDrawer location={selected} />
+          <LocationDrawer
+            location={selected}
+            dawnLocations={dawnLocations}
+            isLoadingDawn={isLoadingDawn}
+            onSelectLocation={selectDawnLocation}
+          />
         </div>
       ) : (
         <div className="atlas-list-layout">
@@ -189,14 +286,36 @@ export function AtlasExplorer({ initialView, points }: Props) {
               </li>
             ))}
           </ol>
-          <LocationDrawer location={selected} />
+          <LocationDrawer
+            location={selected}
+            dawnLocations={dawnLocations}
+            isLoadingDawn={isLoadingDawn}
+            onSelectLocation={selectDawnLocation}
+          />
         </div>
       )}
     </section>
   );
 }
 
-function LocationDrawer({ location }: { location: AtlasPoint | null }) {
+function formatMinutes(value: number | null) {
+  if (value === null) return "No sunrise today";
+  if (value === 0) return "at sunrise";
+  if (value > 0) return `in ${value} min`;
+  return `${Math.abs(value)} min ago`;
+}
+
+function LocationDrawer({
+  location,
+  dawnLocations,
+  isLoadingDawn,
+  onSelectLocation,
+}: {
+  location: AtlasPoint | null;
+  dawnLocations: DawnLocation[];
+  isLoadingDawn: boolean;
+  onSelectLocation: (point: AtlasPoint) => void;
+}) {
   if (!location) {
     return (
       <aside className="atlas-drawer">
@@ -229,6 +348,22 @@ function LocationDrawer({ location }: { location: AtlasPoint | null }) {
           Open session
         </Link>
       ) : null}
+      <div className="dawn-panel">
+        <h3>Dawn</h3>
+        {isLoadingDawn ? <p>Loading dawn path...</p> : null}
+        <ol>
+          {dawnLocations.slice(0, 5).map((item) => (
+            <li key={`${item.location.id}-${item.state}`}>
+              <button type="button" onClick={() => onSelectLocation(item.location)}>
+                <strong>{item.location.name}</strong>
+                <span>
+                  {item.local_time} local / {formatMinutes(item.minutes_until_sunrise)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      </div>
     </aside>
   );
 }

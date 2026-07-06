@@ -156,6 +156,21 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
   z-index: 2;
 }
 .atlas-marker.cluster { background: rgba(246, 196, 107, 0.92); border-color: #f6c46b; color: #07110f; }
+.atlas-marker.is-dawn {
+  background: #f6c46b;
+  border-color: #fff4c2;
+  box-shadow: 0 0 0 8px rgba(246,196,107,0.18), 0 0 28px rgba(246,196,107,0.52);
+  color: #07110f;
+}
+.dawn-terminator {
+  background: linear-gradient(90deg, transparent, rgba(246,196,107,0.34), transparent);
+  bottom: 0;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%) skewX(-14deg);
+  width: 18%;
+  z-index: 1;
+}
 .atlas-drawer {
   align-self: stretch;
   background: rgba(255,255,255,0.08);
@@ -172,6 +187,37 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
 .drawer-meta dt { color: #9bd8bd; font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; }
 .drawer-meta dd { margin: 6px 0 0; }
 .drawer-link { border: 1px solid #9bd8bd; border-radius: 999px; justify-self: start; padding: 12px 18px; text-decoration: none; }
+.dawn-panel {
+  border-top: 1px solid rgba(255,255,255,0.14);
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+}
+.dawn-panel h3 {
+  font-size: 1rem;
+  letter-spacing: 0.14em;
+  margin: 0;
+  text-transform: uppercase;
+}
+.dawn-panel p { font-size: 0.98rem; margin: 0; }
+.dawn-panel ol {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.dawn-panel button {
+  border-color: rgba(155,216,189,0.22);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+.dawn-panel span { color: #c8d8d1; font-size: 0.9rem; }
 .atlas-list { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
 .atlas-list button {
   align-items: flex-start;

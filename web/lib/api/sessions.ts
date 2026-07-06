@@ -113,6 +113,39 @@ export type AtlasPointsResponse = {
   cache_key: string;
 };
 
+export type DawnWindowConfig = {
+  before_minutes: number;
+  after_minutes: number;
+  refresh_seconds: number;
+};
+
+export type DawnLocation = {
+  location: AtlasPoint;
+  local_date: string;
+  local_time: string;
+  civil_dawn_at: string | null;
+  sunrise_at: string | null;
+  window_starts_at: string | null;
+  window_ends_at: string | null;
+  minutes_until_sunrise: number | null;
+  state: "active" | "upcoming" | "past" | "polar";
+};
+
+export type DawnCurrentResponse = {
+  generated_at: string;
+  window: DawnWindowConfig;
+  active_locations: DawnLocation[];
+  next_locations: DawnLocation[];
+  cache_key: string;
+};
+
+export type DawnFollowResponse = {
+  generated_at: string;
+  window: DawnWindowConfig;
+  locations: DawnLocation[];
+  cache_key: string;
+};
+
 export type SearchResult = {
   type: "location" | "session";
   id: string;
@@ -189,6 +222,47 @@ export async function searchAtlas(query: string, limit = 8): Promise<SearchResul
     return (await response.json()) as SearchResult[];
   } catch {
     return [];
+  }
+}
+
+export async function fetchCurrentDawn(): Promise<DawnCurrentResponse> {
+  try {
+    const response = await fetch(apiUrl("/api/v1/atlas/dawn/current"), {
+      next: { revalidate: 60 },
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      throw new Error("Unable to load dawn");
+    }
+    return (await response.json()) as DawnCurrentResponse;
+  } catch {
+    return {
+      generated_at: new Date().toISOString(),
+      window: { before_minutes: 45, after_minutes: 30, refresh_seconds: 60 },
+      active_locations: [],
+      next_locations: [],
+      cache_key: "atlas:dawn:current:empty",
+    };
+  }
+}
+
+export async function fetchFollowDawn(): Promise<DawnFollowResponse> {
+  try {
+    const response = await fetch(apiUrl("/api/v1/atlas/dawn/follow"), {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      throw new Error("Unable to load follow dawn");
+    }
+    return (await response.json()) as DawnFollowResponse;
+  } catch {
+    return {
+      generated_at: new Date().toISOString(),
+      window: { before_minutes: 45, after_minutes: 30, refresh_seconds: 60 },
+      locations: [],
+      cache_key: "atlas:dawn:follow:empty",
+    };
   }
 }
 
