@@ -22,7 +22,13 @@ This repository contains the Sprint 1 production foundation for the first versio
 docker compose up --build
 ```
 
-3. Open the frontend at <http://localhost:3000> and the API at <http://localhost:8000>.
+3. Add local atlas test data:
+
+```bash
+docker compose exec api python -m orna_atlas.app.seed_atlas
+```
+
+4. Open the frontend at <http://localhost:3000> and the API at <http://localhost:8000>.
 
 ## Backend checks
 
