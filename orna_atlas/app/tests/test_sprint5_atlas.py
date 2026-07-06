@@ -71,23 +71,23 @@ async def test_search_trims_short_queries_and_maps_locations(monkeypatch) -> Non
 
     async def fake_search(session, *, query, limit, offset):
         calls.append((query, limit, offset))
-        return [
-            Location(
-                id=location_id,
-                slug="oak-forest",
-                name="Oak Forest",
-                region="Vidzeme",
-                country_code="LV",
-                habitat="forest",
-                exact_latitude=57.3,
-                exact_longitude=25.2,
-                public_latitude=None,
-                public_longitude=None,
-                coordinate_visibility="exact_public",
-                sensitivity_level="none",
-                timezone="Europe/Riga",
-            )
-        ]
+        location = Location(
+            id=location_id,
+            slug="oak-forest",
+            name="Oak Forest",
+            region="Vidzeme",
+            country_code="LV",
+            habitat="forest",
+            exact_latitude=57.3,
+            exact_longitude=25.2,
+            public_latitude=None,
+            public_longitude=None,
+            coordinate_visibility="exact_public",
+            sensitivity_level="none",
+            timezone="Europe/Riga",
+        )
+        location.sessions = []
+        return [location]
 
     monkeypatch.setattr(service.repository, "search_locations_and_sessions", fake_search)
 
@@ -99,3 +99,6 @@ async def test_search_trims_short_queries_and_maps_locations(monkeypatch) -> Non
     assert results[0].type == "location"
     assert results[0].id == location_id
     assert results[0].slug == "oak-forest"
+    assert results[0].atlas_point is not None
+    assert results[0].atlas_point.slug == "oak-forest"
+    assert results[0].atlas_point.timezone == "Europe/Riga"

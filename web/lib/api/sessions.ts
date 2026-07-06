@@ -123,6 +123,7 @@ export type SearchResult = {
   latitude: number | null;
   longitude: number | null;
   session_slug: string | null;
+  atlas_point: AtlasPoint | null;
 };
 
 const browserApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";

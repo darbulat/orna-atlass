@@ -80,19 +80,16 @@ export function AtlasExplorer({ initialView, points }: Props) {
     }
   }
 
-  async function selectSearchResult(result: SearchResult) {
+  function selectSearchResult(result: SearchResult) {
     if (result.type === "session" && result.session_slug) {
       return;
     }
     if (!locations.some((location) => location.slug === result.slug)) {
-      setIsLoading(true);
-      try {
-        const atlas = await fetchAtlasPoints(view);
-        setSelectedHabitats([]);
-        setAtlasPoints(atlas.points);
-      } finally {
-        setIsLoading(false);
+      const atlasPoint = result.atlas_point;
+      if (!atlasPoint) {
+        return;
       }
+      setAtlasPoints((currentPoints) => [atlasPoint, ...currentPoints]);
     }
     setSelectedSlug(result.slug);
     setView("list");

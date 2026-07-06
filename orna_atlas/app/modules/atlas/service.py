@@ -186,6 +186,7 @@ async def search(session: AsyncSession, *, query: str, limit: int, offset: int) 
     results: list[SearchResult] = []
     for row in rows:
         if isinstance(row, Location):
+            atlas_point = point_from_location(row)
             results.append(
                 SearchResult(
                     type="location",
@@ -196,6 +197,7 @@ async def search(session: AsyncSession, *, query: str, limit: int, offset: int) 
                     habitat=row.habitat,
                     latitude=row.latitude,
                     longitude=row.longitude,
+                    atlas_point=atlas_point,
                 )
             )
         else:
