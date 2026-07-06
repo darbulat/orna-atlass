@@ -1,4 +1,6 @@
+from io import BytesIO
 from uuid import UUID
+import wave
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from orna_atlas.app.modules.locations.service import require_location
 from orna_atlas.app.modules.sessions import repository
 from orna_atlas.app.modules.sessions.models import RecordingSession
-from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionUpdate
+from orna_atlas.app.modules.sessions.schemas import (
+    SessionAnnotationRead,
+    SessionCreate,
+    SessionUpdate,
+    WaveformRead,
+)
 
 
 async def require_session(session: AsyncSession, session_id: UUID) -> RecordingSession:
@@ -28,6 +35,33 @@ async def require_public_session_by_slug(session: AsyncSession, slug: str) -> Re
     if recording is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     return recording
+
+
+def waveform_for_session(recording: RecordingSession) -> WaveformRead:
+    metadata = recording.metadata_ if isinstance(recording.metadata_, dict) else {}
+    waveform = metadata.get("waveform") if isinstance(metadata.get("waveform"), dict) else {}
+    payload = {
+        "session_id": recording.id,
+        "duration_seconds": recording.duration_seconds,
+        **waveform,
+    }
+    return WaveformRead(**payload)
+
+
+def annotations_for_session(recording: RecordingSession) -> list[SessionAnnotationRead]:
+    metadata = recording.metadata_ if isinstance(recording.metadata_, dict) else {}
+    annotations = metadata.get("annotations") if isinstance(metadata.get("annotations"), list) else []
+    return [SessionAnnotationRead.model_validate(annotation) for annotation in annotations]
+
+
+def mock_wav_bytes() -> bytes:
+    buffer = BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(8000)
+        wav_file.writeframes(b"\x00\x00" * 8000)
+    return buffer.getvalue()
 
 
 async def create_session(session: AsyncSession, data: SessionCreate) -> RecordingSession:
