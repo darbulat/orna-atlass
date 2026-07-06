@@ -1,9 +1,9 @@
 import { AtlasExplorer } from "../../components/atlas/AtlasExplorer";
-import { fetchAtlasPoints } from "../../lib/api/sessions";
+import { fetchAtlasPoints, fetchCurrentDawn } from "../../lib/api/sessions";
 
 export default async function Page({ searchParams }: { searchParams?: { view?: string } }) {
   const view = searchParams?.view === "list" ? "list" : "map";
-  const atlas = await fetchAtlasPoints(view);
+  const [atlas, dawn] = await Promise.all([fetchAtlasPoints(view), fetchCurrentDawn()]);
 
   return (
     <main className="shell atlas-shell">
@@ -12,7 +12,7 @@ export default async function Page({ searchParams }: { searchParams?: { view?: s
         <h1>Atlas</h1>
         <p>Published field locations, habitats, local context, and long-form recordings.</p>
       </section>
-      <AtlasExplorer initialView={view} points={atlas.points} />
+      <AtlasExplorer initialView={view} points={atlas.points} dawn={dawn} />
     </main>
   );
 }
