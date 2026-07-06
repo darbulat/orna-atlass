@@ -113,6 +113,18 @@ export type AtlasPointsResponse = {
   cache_key: string;
 };
 
+export type SearchResult = {
+  type: "location" | "session";
+  id: string;
+  slug: string;
+  title: string;
+  subtitle: string | null;
+  habitat: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  session_slug: string | null;
+};
+
 const browserApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const serverApiBaseUrl = process.env.API_SERVER_URL ?? browserApiBaseUrl;
 
@@ -155,6 +167,27 @@ export async function fetchAtlasPoints(
     return (await response.json()) as AtlasPointsResponse;
   } catch {
     return { bbox: null, zoom, mode: "points", points: [], cache_key: "atlas:points:empty" };
+  }
+}
+
+export async function searchAtlas(query: string, limit = 8): Promise<SearchResult[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) {
+    return [];
+  }
+  const params = new URLSearchParams({ q: trimmed, limit: String(limit) });
+
+  try {
+    const response = await fetch(apiUrl(`/api/v1/search?${params.toString()}`), {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      return [];
+    }
+    return (await response.json()) as SearchResult[];
+  } catch {
+    return [];
   }
 }
 

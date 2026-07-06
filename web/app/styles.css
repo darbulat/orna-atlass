@@ -72,6 +72,58 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
 .filter-row button { border-color: rgba(155,216,189,0.32); color: #c8d8d1; font-size: 0.9rem; padding: 8px 12px; }
 .filter-row button[aria-pressed="true"] { background: #f6c46b; border-color: #f6c46b; color: #07110f; }
 .filter-row button:disabled { cursor: progress; opacity: 0.7; }
+.atlas-search {
+  display: grid;
+  gap: 10px;
+  max-width: 720px;
+  position: relative;
+}
+.atlas-search label {
+  color: #9bd8bd;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.atlas-search input {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(155,216,189,0.32);
+  border-radius: 8px;
+  color: #edf7f2;
+  font: inherit;
+  min-height: 52px;
+  padding: 0 16px;
+}
+.atlas-search input::placeholder { color: rgba(200,216,209,0.72); }
+.search-results {
+  background: rgba(7,17,15,0.96);
+  border: 1px solid rgba(155,216,189,0.22);
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.32);
+  display: grid;
+  left: 0;
+  overflow: hidden;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 8;
+}
+.search-results p { font-size: 0.98rem; margin: 0; padding: 14px 16px; }
+.search-results a,
+.search-results button {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-radius: 0;
+  color: #edf7f2;
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  text-align: left;
+  text-decoration: none;
+}
+.search-results a:hover,
+.search-results button:hover { background: rgba(155,216,189,0.12); }
+.search-results span { color: #c8d8d1; font-size: 0.95rem; }
 .atlas-grid, .atlas-list-layout { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); }
 .atlas-map {
   aspect-ratio: 16 / 9;
