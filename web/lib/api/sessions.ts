@@ -71,6 +71,48 @@ export type PlaybackGrant = {
   refresh_after_seconds: number;
 };
 
+export type AtlasSessionSummary = {
+  id: string;
+  slug: string;
+  title: string;
+  recorded_at: string;
+  duration_seconds: number | null;
+};
+
+export type AtlasPoint = {
+  type: "point";
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  country_code: string | null;
+  region: string | null;
+  habitat: string | null;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  sensitivity_level: string;
+  session_count: number;
+  latest_session: AtlasSessionSummary | null;
+};
+
+export type AtlasCluster = {
+  type: "cluster";
+  id: string;
+  latitude: number;
+  longitude: number;
+  count: number;
+  habitats: string[];
+};
+
+export type AtlasPointsResponse = {
+  bbox: [number, number, number, number] | null;
+  zoom: number;
+  mode: "points" | "clusters";
+  points: Array<AtlasPoint | AtlasCluster>;
+  cache_key: string;
+};
+
 const browserApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const serverApiBaseUrl = process.env.API_SERVER_URL ?? browserApiBaseUrl;
 
@@ -91,6 +133,28 @@ export async function fetchSessionDetail(slug: string): Promise<SessionDetail | 
     return (await response.json()) as SessionDetail;
   } catch {
     return null;
+  }
+}
+
+export async function fetchAtlasPoints(
+  _view: string | undefined,
+  habitats: string[] = [],
+): Promise<AtlasPointsResponse> {
+  const zoom = 5;
+  const params = new URLSearchParams({ zoom: String(zoom), limit: "250" });
+  habitats.forEach((habitat) => params.append("habitat", habitat));
+
+  try {
+    const response = await fetch(apiUrl(`/api/v1/atlas/points?${params.toString()}`), {
+      next: { revalidate: 60 },
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      return { bbox: null, zoom, mode: "points", points: [], cache_key: "atlas:points:empty" };
+    }
+    return (await response.json()) as AtlasPointsResponse;
+  } catch {
+    return { bbox: null, zoom, mode: "points", points: [], cache_key: "atlas:points:empty" };
   }
 }
 
