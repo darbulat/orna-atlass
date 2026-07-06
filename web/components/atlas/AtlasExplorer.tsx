@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { AtlasCluster, AtlasPoint } from "../../lib/api/sessions";
-import { fetchAtlasPoints } from "../../lib/api/sessions";
+import type { AtlasCluster, AtlasPoint, SearchResult } from "../../lib/api/sessions";
+import { fetchAtlasPoints, searchAtlas } from "../../lib/api/sessions";
 
 type Props = {
   initialView: "map" | "list";
@@ -28,6 +28,9 @@ export function AtlasExplorer({ initialView, points }: Props) {
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [selectedHabitats, setSelectedHabitats] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const locations = useMemo(() => atlasPoints.filter(isPoint), [atlasPoints]);
   const [selectedSlug, setSelectedSlug] = useState(locations[0]?.slug ?? null);
   const selected = locations.find((point) => point.slug === selectedSlug) ?? locations[0] ?? null;
@@ -38,6 +41,30 @@ export function AtlasExplorer({ initialView, points }: Props) {
     }
     setSelectedSlug(locations[0]?.slug ?? null);
   }, [locations, selectedSlug]);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsSearching(true);
+    const timeoutId = window.setTimeout(async () => {
+      const results = await searchAtlas(trimmed);
+      if (isCurrent) {
+        setSearchResults(results);
+        setIsSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [query]);
 
   async function toggleHabitat(habitat: string) {
     const nextHabitats = selectedHabitats.includes(habitat)
@@ -51,6 +78,22 @@ export function AtlasExplorer({ initialView, points }: Props) {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function selectSearchResult(result: SearchResult) {
+    if (result.type === "session" && result.session_slug) {
+      return;
+    }
+    if (!locations.some((location) => location.slug === result.slug)) {
+      const atlasPoint = result.atlas_point;
+      if (!atlasPoint) {
+        return;
+      }
+      setAtlasPoints((currentPoints) => [atlasPoint, ...currentPoints]);
+    }
+    setSelectedSlug(result.slug);
+    setView("list");
+    setQuery("");
   }
 
   return (
@@ -77,6 +120,40 @@ export function AtlasExplorer({ initialView, points }: Props) {
             </button>
           ))}
         </div>
+      </div>
+      <div className="atlas-search">
+        <label htmlFor="atlas-search">Search atlas</label>
+        <input
+          id="atlas-search"
+          type="search"
+          value={query}
+          placeholder="Location, habitat, or session"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        {query.trim().length >= 2 ? (
+          <div className="search-results" aria-live="polite">
+            {isSearching ? <p>Searching...</p> : null}
+            {!isSearching && searchResults.length === 0 ? <p>No public results found.</p> : null}
+            {searchResults.map((result) =>
+              result.type === "session" && result.session_slug ? (
+                <Link key={`${result.type}-${result.id}`} href={`/sessions/${result.session_slug}`}>
+                  <strong>{result.title}</strong>
+                  <span>{[result.subtitle, result.habitat].filter(Boolean).join(" / ")}</span>
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  key={`${result.type}-${result.id}`}
+                  disabled={isLoading}
+                  onClick={() => selectSearchResult(result)}
+                >
+                  <strong>{result.title}</strong>
+                  <span>{[result.subtitle, result.habitat].filter(Boolean).join(" / ")}</span>
+                </button>
+              ),
+            )}
+          </div>
+        ) : null}
       </div>
 
       {view === "map" ? (

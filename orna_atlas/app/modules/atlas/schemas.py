@@ -57,3 +57,4 @@ class SearchResult(BaseModel):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     session_slug: str | None = None
+    atlas_point: AtlasPoint | None = None

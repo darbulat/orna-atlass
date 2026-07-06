@@ -6,5 +6,6 @@ __pycache__/
 .venv/
 node_modules/
 .next/
+.next-codex/
 out/
 .DS_Store
