@@ -23,6 +23,7 @@ class RecordingSession(Base):
     recorder: Mapped[str | None] = mapped_column(String(160))
     weather: Mapped[str | None] = mapped_column(String(240))
     access_level: Mapped[str] = mapped_column(String(40), default="public", index=True)
+    processing_status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(

@@ -10,6 +10,7 @@ dependencies = [
   "pydantic-settings>=2.3.4",
   "psycopg[binary]>=3.2.1",
   "redis>=5.0.7",
+  "rq>=2.0.0",
   "sqlalchemy[asyncio]>=2.0.31",
   "uvicorn[standard]>=0.30.1",
 ]

@@ -8,6 +8,12 @@ from orna_atlas.app.db.session import get_db_session
 from orna_atlas.app.modules.locations import repository as locations_repository
 from orna_atlas.app.modules.locations import service as locations_service
 from orna_atlas.app.modules.locations.schemas import LocationCreate, LocationRead, LocationUpdate
+from orna_atlas.app.modules.media import service as media_service
+from orna_atlas.app.modules.media.schemas import (
+    AdminMediaAssetRead,
+    MediaAssetCreate,
+    ProcessingStatusRead,
+)
 from orna_atlas.app.modules.sessions import repository as sessions_repository
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionRead, SessionUpdate
@@ -68,6 +74,38 @@ async def update_session(
     _: CurrentUser = admin_dependency,
 ):
     return await sessions_service.update_session(session, session_id, data)
+
+
+@router.post(
+    "/sessions/{session_id}/assets",
+    response_model=AdminMediaAssetRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_session_asset(
+    session_id: UUID,
+    data: MediaAssetCreate,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+):
+    return await media_service.create_asset_for_session(session, session_id, data)
+
+
+@router.get("/sessions/{session_id}/processing", response_model=ProcessingStatusRead)
+async def read_session_processing(
+    session_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+):
+    return await media_service.processing_status_for_session(session, session_id)
+
+
+@router.post("/media-assets/{asset_id}/process", response_model=ProcessingStatusRead)
+async def retry_asset_processing(
+    asset_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+):
+    return await media_service.retry_asset_processing(session, asset_id)
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

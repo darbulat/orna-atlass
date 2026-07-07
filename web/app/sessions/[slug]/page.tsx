@@ -1,5 +1,6 @@
 import { SessionPlayer } from "../../../components/audio/SessionPlayer";
 import { AnnotationTimeline } from "../../../components/sessions/AnnotationTimeline";
+import { ProcessingStatusPanel } from "../../../components/sessions/ProcessingStatusPanel";
 import { RecordingIntegrityPanel } from "../../../components/sessions/RecordingIntegrityPanel";
 import { fetchSessionDetail, type SessionDetail } from "../../../lib/api/sessions";
 
@@ -52,6 +53,7 @@ function SessionDetailView({ session }: { session: SessionDetail }) {
       </section>
 
       <SessionPlayer session={session} />
+      <ProcessingStatusPanel status={session.processing_status} assets={session.media_assets} />
       <RecordingIntegrityPanel integrity={session.recording_integrity} />
       <AnnotationTimeline annotations={session.annotations} waveform={session.waveform} />
     </main>
