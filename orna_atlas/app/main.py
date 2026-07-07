@@ -12,6 +12,7 @@ from orna_atlas.app.db.session import engine
 from orna_atlas.app.integrations.redis import get_redis_client
 from orna_atlas.app.modules.admin.router import router as admin_router
 from orna_atlas.app.modules.atlas.router import router as atlas_router
+from orna_atlas.app.modules.collections.router import router as collections_router
 from orna_atlas.app.modules.locations.router import router as locations_router
 from orna_atlas.app.modules.sessions.router import router as sessions_router
 
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
     app.include_router(admin_router, prefix=settings.api_prefix)
     app.include_router(atlas_router, prefix=settings.api_prefix)
+    app.include_router(collections_router, prefix=settings.api_prefix)
     app.include_router(locations_router, prefix=settings.api_prefix)
     app.include_router(sessions_router, prefix=settings.api_prefix)
     return app

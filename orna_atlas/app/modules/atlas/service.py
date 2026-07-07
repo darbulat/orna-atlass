@@ -112,6 +112,7 @@ def point_from_location(location: Location) -> AtlasPoint | None:
         latitude=location.latitude,
         longitude=location.longitude,
         timezone=location.timezone,
+        coordinate_visibility=getattr(location, "coordinate_visibility", "exact_public"),
         sensitivity_level=location.sensitivity_level,
         session_count=len(public_sessions),
         latest_session=None

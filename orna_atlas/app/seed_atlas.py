@@ -8,9 +8,10 @@ from sqlalchemy import select
 
 from orna_atlas.app.db.session import AsyncSessionLocal, engine
 from orna_atlas.app.integrations.redis import get_redis_client
+from orna_atlas.app.modules.collections.models import Collection, CollectionLocation, CollectionSession
 from orna_atlas.app.modules.locations.models import Location
 from orna_atlas.app.modules.media.models import MediaAsset  # noqa: F401
-from orna_atlas.app.modules.sessions.models import RecordingSession
+from orna_atlas.app.modules.sessions.models import BirdVocalPart, RecordingSession
 
 
 SEED_LOCATIONS: list[dict[str, Any]] = [
@@ -119,6 +120,76 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
 ]
 
 
+SEED_COLLECTIONS: list[dict[str, Any]] = [
+    {
+        "slug": "dawn-archive",
+        "title": "Dawn Archive",
+        "description": "Editorial journeys through first-light recordings across the atlas.",
+        "sort_order": 0,
+        "location_slugs": ["valdaysky-dawn-forest", "polistovsky-protected-marsh"],
+        "session_slugs": ["valdaysky-dawn-chorus"],
+    },
+    {
+        "slug": "wetlands",
+        "title": "Wetlands",
+        "description": "Reedbeds, bogs, and coastal marshes with layered aquatic soundscapes.",
+        "sort_order": 1,
+        "location_slugs": ["lahemaa-coastal-reeds", "polistovsky-protected-marsh"],
+        "session_slugs": ["lahemaa-reedbed-morning", "polistovsky-bog-before-sunrise"],
+    },
+    {
+        "slug": "no-human-noise",
+        "title": "No Human Noise",
+        "description": "Sessions selected for minimal anthropogenic disturbance.",
+        "sort_order": 2,
+        "location_slugs": ["valdaysky-dawn-forest", "kazakh-steppe-evening"],
+        "session_slugs": ["kazakh-steppe-after-rain"],
+    },
+]
+
+FEATURED_SESSION_SLUGS = ["valdaysky-dawn-chorus", "lahemaa-reedbed-morning", "polistovsky-bog-before-sunrise"]
+
+BIRD_PARTS_BY_SESSION: dict[str, list[dict[str, Any]]] = {
+    "valdaysky-dawn-chorus": [
+        {
+            "species_code": "turdus_merula",
+            "species_common_name": "Common blackbird",
+            "species_scientific_name": "Turdus merula",
+            "starts_at_seconds": 184.2,
+            "ends_at_seconds": 191.8,
+            "confidence": 0.93,
+            "call_type": "song",
+            "analysis_provider": "external-bird-audio-service",
+            "analysis_model_version": "2026-06",
+        },
+        {
+            "species_code": "parus_major",
+            "species_common_name": "Great tit",
+            "species_scientific_name": "Parus major",
+            "starts_at_seconds": 420.0,
+            "ends_at_seconds": 432.5,
+            "confidence": 0.88,
+            "call_type": "call",
+            "analysis_provider": "external-bird-audio-service",
+            "analysis_model_version": "2026-06",
+        },
+    ],
+    "lahemaa-reedbed-morning": [
+        {
+            "species_code": "acrocephalus_scirpaceus",
+            "species_common_name": "Eurasian reed warbler",
+            "species_scientific_name": "Acrocephalus scirpaceus",
+            "starts_at_seconds": 96.0,
+            "ends_at_seconds": 108.4,
+            "confidence": 0.91,
+            "call_type": "song",
+            "analysis_provider": "external-bird-audio-service",
+            "analysis_model_version": "2026-06",
+        },
+    ],
+}
+
+
 def _session_metadata(location: Location) -> dict[str, Any]:
     return {
         "seed": True,
@@ -166,7 +237,7 @@ async def _upsert_location(session, payload: dict[str, Any]) -> Location:
     return location
 
 
-async def _upsert_session(session, location: Location, payload: dict[str, Any]) -> None:
+async def _upsert_session(session, location: Location, payload: dict[str, Any]) -> RecordingSession:
     recording = await session.scalar(
         select(RecordingSession).where(RecordingSession.slug == payload["slug"])
     )
@@ -177,10 +248,77 @@ async def _upsert_session(session, location: Location, payload: dict[str, Any]) 
         "metadata_": _session_metadata(location),
     }
     if recording is None:
-        session.add(RecordingSession(**session_data))
+        recording = RecordingSession(**session_data)
+        session.add(recording)
     else:
         for key, value in session_data.items():
             setattr(recording, key, value)
+    await session.flush()
+    return recording
+
+
+async def _mark_featured_sessions(session) -> None:
+    for index, slug in enumerate(FEATURED_SESSION_SLUGS):
+        recording = await session.scalar(select(RecordingSession).where(RecordingSession.slug == slug))
+        if recording is not None:
+            recording.is_featured = True
+            recording.featured_sort_order = index
+
+
+async def _seed_bird_parts(session) -> None:
+    for session_slug, parts in BIRD_PARTS_BY_SESSION.items():
+        recording = await session.scalar(select(RecordingSession).where(RecordingSession.slug == session_slug))
+        if recording is None:
+            continue
+        existing = await session.scalars(
+            select(BirdVocalPart).where(BirdVocalPart.session_id == recording.id)
+        )
+        for part in existing:
+            await session.delete(part)
+        for part in parts:
+            session.add(BirdVocalPart(session_id=recording.id, metadata_={"seed": True}, **part))
+
+
+async def _seed_collections(session) -> None:
+    slug_to_location = {
+        row.slug: row
+        for row in (await session.scalars(select(Location))).all()
+    }
+    slug_to_session = {
+        row.slug: row
+        for row in (await session.scalars(select(RecordingSession))).all()
+    }
+    for payload in SEED_COLLECTIONS:
+        collection = await session.scalar(select(Collection).where(Collection.slug == payload["slug"]))
+        if collection is None:
+            collection = Collection(
+                slug=payload["slug"],
+                title=payload["title"],
+                description=payload["description"],
+                sort_order=payload["sort_order"],
+                metadata_={"seed": True},
+            )
+            session.add(collection)
+            await session.flush()
+        else:
+            collection.title = payload["title"]
+            collection.description = payload["description"]
+            collection.sort_order = payload["sort_order"]
+            collection.location_links.clear()
+            collection.session_links.clear()
+            await session.flush()
+        for index, location_slug in enumerate(payload["location_slugs"]):
+            location = slug_to_location.get(location_slug)
+            if location is not None:
+                collection.location_links.append(
+                    CollectionLocation(collection_id=collection.id, location_id=location.id, sort_order=index)
+                )
+        for index, session_slug in enumerate(payload["session_slugs"]):
+            recording = slug_to_session.get(session_slug)
+            if recording is not None:
+                collection.session_links.append(
+                    CollectionSession(collection_id=collection.id, session_id=recording.id, sort_order=index)
+                )
 
 
 async def _clear_atlas_cache() -> None:
@@ -202,6 +340,9 @@ async def seed() -> None:
             await session.flush()
             for session_payload in location_payload["sessions"]:
                 await _upsert_session(session, location, session_payload)
+        await _mark_featured_sessions(session)
+        await _seed_bird_parts(session)
+        await _seed_collections(session)
         await session.commit()
     await _clear_atlas_cache()
     await engine.dispose()
@@ -209,7 +350,7 @@ async def seed() -> None:
 
 def main() -> None:
     asyncio.run(seed())
-    print(f"Seeded {len(SEED_LOCATIONS)} atlas locations.")
+    print(f"Seeded {len(SEED_LOCATIONS)} atlas locations and {len(SEED_COLLECTIONS)} collections.")
 
 
 if __name__ == "__main__":

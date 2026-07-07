@@ -25,6 +25,7 @@ class AtlasPoint(BaseModel):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     timezone: str
+    coordinate_visibility: str
     sensitivity_level: str
     session_count: int = Field(ge=0)
     latest_session: AtlasSessionSummary | None = None

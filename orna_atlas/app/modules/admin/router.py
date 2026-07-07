@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.core.security import CurrentUser, get_current_admin
 from orna_atlas.app.db.session import get_db_session
+from orna_atlas.app.modules.collections import service as collections_service
+from orna_atlas.app.modules.collections.schemas import CollectionAdminRead, CollectionCreate, CollectionUpdate
 from orna_atlas.app.modules.locations import repository as locations_repository
 from orna_atlas.app.modules.locations import service as locations_service
 from orna_atlas.app.modules.locations.schemas import LocationCreate, LocationRead, LocationUpdate
@@ -117,3 +119,22 @@ async def delete_session(
     recording = await sessions_service.require_session_for_admin(session, session_id)
     await sessions_repository.delete_session(session, recording)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/collections", response_model=CollectionAdminRead, status_code=status.HTTP_201_CREATED)
+async def create_collection(
+    data: CollectionCreate,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+):
+    return await collections_service.create_collection(session, data)
+
+
+@router.patch("/collections/{collection_id}", response_model=CollectionAdminRead)
+async def update_collection(
+    collection_id: UUID,
+    data: CollectionUpdate,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+):
+    return await collections_service.update_collection(session, collection_id, data)

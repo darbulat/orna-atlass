@@ -8,6 +8,9 @@ export type LocationRead = {
   habitat: string | null;
   latitude: number | null;
   longitude: number | null;
+  coordinate_visibility: string;
+  sensitivity_level: string;
+  coordinates_protected: boolean;
   timezone: string;
 };
 
@@ -63,6 +66,37 @@ export type SessionAnnotation = {
   metadata: Record<string, unknown>;
 };
 
+export type BirdVocalPart = {
+  id: string;
+  species_code: string;
+  species_common_name: string;
+  species_scientific_name: string | null;
+  starts_at_seconds: number;
+  ends_at_seconds: number;
+  confidence: number | null;
+  channel: string | null;
+  call_type: string;
+  metadata: Record<string, unknown>;
+};
+
+export type BirdPartsResponse = {
+  session_id: string;
+  analysis_provider: string | null;
+  analysis_model_version: string | null;
+  parts: BirdVocalPart[];
+};
+
+export type FeaturedSession = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  recorded_at: string;
+  duration_seconds: number | null;
+  featured_sort_order: number | null;
+  location: LocationRead;
+};
+
 export type SessionDetail = {
   id: string;
   location_id: string;
@@ -80,6 +114,8 @@ export type SessionDetail = {
   recording_integrity: RecordingIntegrity;
   waveform: Waveform;
   annotations: SessionAnnotation[];
+  bird_parts: BirdPartsResponse | null;
+  is_featured: boolean;
 };
 
 export type PlaybackGrant = {
@@ -110,6 +146,7 @@ export type AtlasPoint = {
   latitude: number;
   longitude: number;
   timezone: string;
+  coordinate_visibility: string;
   sensitivity_level: string;
   session_count: number;
   latest_session: AtlasSessionSummary | null;
@@ -184,6 +221,36 @@ const serverApiBaseUrl = process.env.API_SERVER_URL ?? browserApiBaseUrl;
 export function apiUrl(path: string): string {
   const baseUrl = typeof window === "undefined" ? serverApiBaseUrl : browserApiBaseUrl;
   return `${baseUrl}${path}`;
+}
+
+export async function fetchFeaturedSessions(limit = 6): Promise<FeaturedSession[]> {
+  try {
+    const response = await fetch(apiUrl(`/api/v1/sessions/featured?limit=${limit}`), {
+      next: { revalidate: 120 },
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      return [];
+    }
+    return (await response.json()) as FeaturedSession[];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchBirdParts(sessionId: string): Promise<BirdPartsResponse | null> {
+  try {
+    const response = await fetch(apiUrl(`/api/v1/sessions/${sessionId}/bird-parts`), {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as BirdPartsResponse;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchSessionDetail(slug: string): Promise<SessionDetail | null> {

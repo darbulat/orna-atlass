@@ -44,6 +44,41 @@ class SessionAnnotationRead(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class BirdVocalPartRead(BaseModel):
+    id: UUID
+    species_code: str
+    species_common_name: str
+    species_scientific_name: str | None = None
+    starts_at_seconds: float = Field(ge=0)
+    ends_at_seconds: float = Field(ge=0)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    channel: str | None = None
+    call_type: str = "unknown"
+    metadata: dict = Field(default_factory=dict, validation_alias="metadata_")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class BirdPartsResponse(BaseModel):
+    session_id: UUID
+    analysis_provider: str | None = None
+    analysis_model_version: str | None = None
+    parts: list[BirdVocalPartRead] = Field(default_factory=list)
+
+
+class FeaturedSessionRead(BaseModel):
+    id: UUID
+    slug: str
+    title: str
+    description: str | None
+    recorded_at: datetime
+    duration_seconds: int | None
+    featured_sort_order: int | None = None
+    location: LocationRead
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PlaybackGrantRead(BaseModel):
     session_id: UUID
     status: str = "ready"
@@ -71,6 +106,8 @@ class SessionBase(BaseModel):
     weather: str | None = None
     access_level: str = "public"
     processing_status: str = "pending"
+    is_featured: bool = False
+    featured_sort_order: int | None = None
     metadata: dict = Field(default_factory=dict)
 
 
@@ -89,6 +126,8 @@ class SessionUpdate(BaseModel):
     weather: str | None = None
     access_level: str | None = None
     processing_status: str | None = None
+    is_featured: bool | None = None
+    featured_sort_order: int | None = None
     metadata: dict | None = None
 
     @model_validator(mode="before")
@@ -104,6 +143,8 @@ class SessionUpdate(BaseModel):
                     "recorded_at",
                     "access_level",
                     "processing_status",
+                    "is_featured",
+                    "featured_sort_order",
                     "metadata",
                 },
             )
@@ -125,30 +166,35 @@ class SessionDetailRead(SessionRead):
     recording_integrity: RecordingIntegrityRead = Field(default_factory=RecordingIntegrityRead)
     waveform: WaveformRead = Field(default_factory=WaveformRead)
     annotations: list[SessionAnnotationRead] = Field(default_factory=list)
+    bird_parts: BirdPartsResponse | None = None
 
     @model_validator(mode="before")
     @classmethod
     def hydrate_detail_fields(cls, data: object) -> object:
+        source = data
         if isinstance(data, dict):
             metadata = data.get("metadata") or data.get("metadata_") or {}
             data = dict(data)
         else:
             metadata = _metadata_from_obj(data)
+            source = data
             data = {
-                "id": getattr(data, "id"),
-                "location_id": getattr(data, "location_id"),
-                "slug": getattr(data, "slug"),
-                "title": getattr(data, "title"),
-                "description": getattr(data, "description"),
-                "recorded_at": getattr(data, "recorded_at"),
-                "duration_seconds": getattr(data, "duration_seconds"),
-                "recorder": getattr(data, "recorder"),
-                "weather": getattr(data, "weather"),
-                "access_level": getattr(data, "access_level"),
+                "id": data.id,
+                "location_id": data.location_id,
+                "slug": data.slug,
+                "title": data.title,
+                "description": data.description,
+                "recorded_at": data.recorded_at,
+                "duration_seconds": data.duration_seconds,
+                "recorder": data.recorder,
+                "weather": data.weather,
+                "access_level": data.access_level,
                 "processing_status": getattr(data, "processing_status", "pending"),
+                "is_featured": getattr(data, "is_featured", False),
+                "featured_sort_order": getattr(data, "featured_sort_order", None),
                 "metadata_": metadata,
-                "created_at": getattr(data, "created_at"),
-                "updated_at": getattr(data, "updated_at"),
+                "created_at": data.created_at,
+                "updated_at": data.updated_at,
                 "media_assets": getattr(data, "media_assets", []),
                 "location": getattr(data, "location"),
             }
@@ -159,4 +205,15 @@ class SessionDetailRead(SessionRead):
         data.setdefault("waveform", waveform)
         annotations = metadata.get("annotations", [])
         data.setdefault("annotations", annotations if isinstance(annotations, list) else [])
+        if isinstance(source, dict):
+            parts = list(source.get("bird_vocal_parts") or [])
+        else:
+            parts = list(getattr(source, "bird_vocal_parts", []) or [])
+        if parts:
+            data["bird_parts"] = {
+                "session_id": data.get("id"),
+                "analysis_provider": parts[0].analysis_provider,
+                "analysis_model_version": parts[0].analysis_model_version,
+                "parts": parts,
+            }
         return data
