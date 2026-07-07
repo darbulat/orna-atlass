@@ -24,7 +24,7 @@ export function AnnotationTimeline({ annotations, waveform }: { annotations: Ses
           ))}
         </ol>
       ) : (
-        <p>No editorial annotations yet. Bird parts arrive in a later sprint.</p>
+        <p>No editorial annotations yet.</p>
       )}
     </section>
   );

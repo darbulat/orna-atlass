@@ -12,6 +12,9 @@ from orna_atlas.app.modules.locations.service import require_location
 from orna_atlas.app.modules.sessions import repository
 from orna_atlas.app.modules.sessions.models import RecordingSession
 from orna_atlas.app.modules.sessions.schemas import (
+    BirdPartsResponse,
+    BirdVocalPartRead,
+    FeaturedSessionRead,
     PlaybackGrantRead,
     SessionAnnotationRead,
     SessionCreate,
@@ -58,6 +61,23 @@ def annotations_for_session(recording: RecordingSession) -> list[SessionAnnotati
     metadata = recording.metadata_ if isinstance(recording.metadata_, dict) else {}
     annotations = metadata.get("annotations") if isinstance(metadata.get("annotations"), list) else []
     return [SessionAnnotationRead.model_validate(annotation) for annotation in annotations]
+
+
+def bird_parts_for_session(recording: RecordingSession) -> BirdPartsResponse:
+    parts = list(recording.bird_vocal_parts) if recording.bird_vocal_parts else []
+    if not parts:
+        return BirdPartsResponse(session_id=recording.id, parts=[])
+    return BirdPartsResponse(
+        session_id=recording.id,
+        analysis_provider=parts[0].analysis_provider,
+        analysis_model_version=parts[0].analysis_model_version,
+        parts=[BirdVocalPartRead.model_validate(part) for part in parts],
+    )
+
+
+async def list_featured_sessions(session: AsyncSession, *, limit: int = 12) -> list[FeaturedSessionRead]:
+    recordings = await repository.list_featured_sessions(session, limit=limit)
+    return [FeaturedSessionRead.model_validate(recording) for recording in recordings]
 
 
 def mock_wav_bytes() -> bytes:

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 def _reject_required_nulls(data: dict, fields: set[str]) -> dict:
@@ -89,3 +89,9 @@ class LocationRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @computed_field
+    @property
+    def coordinates_protected(self) -> bool:
+        sensitive_levels = {"protected", "high", "medium"}
+        return self.coordinate_visibility != "exact_public" or self.sensitivity_level in sensitive_levels

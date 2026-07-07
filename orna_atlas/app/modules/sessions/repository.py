@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from orna_atlas.app.modules.media.models import MediaAsset  # noqa: F401
-from orna_atlas.app.modules.sessions.models import RecordingSession
+from orna_atlas.app.modules.sessions.models import BirdVocalPart, RecordingSession
 from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionUpdate
 
 
@@ -20,7 +20,28 @@ def _session_load_options():
     return (
         selectinload(RecordingSession.media_assets).selectinload(MediaAsset.processing_jobs),
         selectinload(RecordingSession.location),
+        selectinload(RecordingSession.bird_vocal_parts),
     )
+
+
+async def list_featured_sessions(session: AsyncSession, *, limit: int = 12) -> list[RecordingSession]:
+    result = await session.execute(
+        select(RecordingSession)
+        .options(selectinload(RecordingSession.location))
+        .where(RecordingSession.access_level == "public", RecordingSession.is_featured.is_(True))
+        .order_by(RecordingSession.featured_sort_order.nulls_last(), RecordingSession.recorded_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars())
+
+
+async def list_bird_vocal_parts(session: AsyncSession, session_id: UUID) -> list[BirdVocalPart]:
+    result = await session.execute(
+        select(BirdVocalPart)
+        .where(BirdVocalPart.session_id == session_id)
+        .order_by(BirdVocalPart.starts_at_seconds)
+    )
+    return list(result.scalars())
 
 
 async def list_sessions(session: AsyncSession, *, limit: int = 50, offset: int = 0) -> list[RecordingSession]:

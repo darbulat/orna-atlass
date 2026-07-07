@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from sqlalchemy import Select, case, or_, select
+from sqlalchemy import Select, and_, case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,12 +21,16 @@ def _coordinate_filters(bbox: BoundingBox | None):
     if bbox is None:
         return filters
 
+    exact_public_coords = and_(
+        Location.coordinate_visibility == "exact_public",
+        Location.sensitivity_level.notin_(("protected", "high", "medium")),
+    )
     public_latitude = case(
-        (Location.coordinate_visibility == "exact_public", Location.exact_latitude),
+        (exact_public_coords, Location.exact_latitude),
         else_=Location.public_latitude,
     )
     public_longitude = case(
-        (Location.coordinate_visibility == "exact_public", Location.exact_longitude),
+        (exact_public_coords, Location.exact_longitude),
         else_=Location.public_longitude,
     )
     filters.append(public_latitude.between(bbox.south, bbox.north))
