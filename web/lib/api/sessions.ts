@@ -16,9 +16,27 @@ export type MediaAssetRead = {
   session_id: string;
   kind: string;
   mime_type: string;
+  processing_status: string;
   duration_seconds: number | null;
   size_bytes: number | null;
   checksum: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  processing_jobs?: ProcessingJobRead[];
+};
+
+export type ProcessingJobRead = {
+  id: string;
+  asset_id: string;
+  job_type: string;
+  status: string;
+  attempt_count: number;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type RecordingIntegrity = {
@@ -56,6 +74,7 @@ export type SessionDetail = {
   recorder: string | null;
   weather: string | null;
   access_level: string;
+  processing_status: string;
   media_assets: MediaAssetRead[];
   location: LocationRead;
   recording_integrity: RecordingIntegrity;

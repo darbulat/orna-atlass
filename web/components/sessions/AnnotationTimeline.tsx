@@ -6,7 +6,7 @@ export function AnnotationTimeline({ annotations, waveform }: { annotations: Ses
   return (
     <section className="timeline-card" aria-label="Annotation timeline">
       <div>
-        <p className="eyebrow">Waveform placeholder</p>
+        <p className="eyebrow">Waveform</p>
         <h2>Annotation timeline</h2>
       </div>
       <div className="waveform" aria-label={`Waveform status: ${waveform.status}`}>

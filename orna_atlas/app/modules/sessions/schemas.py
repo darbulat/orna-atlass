@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from orna_atlas.app.modules.locations.schemas import LocationRead
+from orna_atlas.app.modules.media.schemas import MediaAssetRead
 
 
 def _reject_required_nulls(data: dict, fields: set[str]) -> dict:
@@ -17,20 +18,6 @@ def _reject_required_nulls(data: dict, fields: set[str]) -> dict:
 def _metadata_from_obj(obj: object) -> dict:
     metadata = getattr(obj, "metadata_", {})
     return metadata if isinstance(metadata, dict) else {}
-
-
-class MediaAssetRead(BaseModel):
-    id: UUID
-    session_id: UUID
-    kind: str
-    mime_type: str
-    duration_seconds: int | None
-    size_bytes: int | None
-    checksum: str | None
-    metadata: dict = Field(validation_alias="metadata_")
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class RecordingIntegrityRead(BaseModel):
@@ -83,6 +70,7 @@ class SessionBase(BaseModel):
     recorder: str | None = None
     weather: str | None = None
     access_level: str = "public"
+    processing_status: str = "pending"
     metadata: dict = Field(default_factory=dict)
 
 
@@ -100,6 +88,7 @@ class SessionUpdate(BaseModel):
     recorder: str | None = None
     weather: str | None = None
     access_level: str | None = None
+    processing_status: str | None = None
     metadata: dict | None = None
 
     @model_validator(mode="before")
@@ -108,7 +97,15 @@ class SessionUpdate(BaseModel):
         if isinstance(data, dict):
             return _reject_required_nulls(
                 data,
-                {"location_id", "slug", "title", "recorded_at", "access_level", "metadata"},
+                {
+                    "location_id",
+                    "slug",
+                    "title",
+                    "recorded_at",
+                    "access_level",
+                    "processing_status",
+                    "metadata",
+                },
             )
         return data
 
@@ -148,6 +145,7 @@ class SessionDetailRead(SessionRead):
                 "recorder": getattr(data, "recorder"),
                 "weather": getattr(data, "weather"),
                 "access_level": getattr(data, "access_level"),
+                "processing_status": getattr(data, "processing_status", "pending"),
                 "metadata_": metadata,
                 "created_at": getattr(data, "created_at"),
                 "updated_at": getattr(data, "updated_at"),
