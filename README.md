@@ -10,7 +10,7 @@ This repository contains the Sprint 6 production foundation for the first versio
 - **Database:** PostgreSQL with PostGIS
 - **Cache and jobs:** Redis
 - **Audio processing:** RQ worker, persistent processing jobs, waveform metadata
-- **Audio storage:** S3-compatible object storage wrapper
+- **Audio storage:** S3-compatible object storage (MinIO in local compose) with presigned playback URLs
 - **Frontend:** Next.js / React, TypeScript, WebGL map/globe layer, audio-first interaction design
 - **Primary domain:** locations, audio sessions, dawn line discovery, playback metadata, memberships, and editorial collections
 

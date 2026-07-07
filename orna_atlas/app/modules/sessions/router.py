@@ -24,7 +24,7 @@ async def list_sessions(limit: int = 50, offset: int = 0, session: AsyncSession 
 @router.post("/{session_id}/playback-grants", response_model=PlaybackGrantRead)
 async def create_playback_grant(session_id: UUID, session: AsyncSession = Depends(get_db_session)):
     recording = await service.require_session(session, session_id)
-    return PlaybackGrantRead.mock_for_session(recording.id)
+    return service.create_playback_grant(recording)
 
 
 @router.get("/{session_id}/waveform", response_model=WaveformRead)
