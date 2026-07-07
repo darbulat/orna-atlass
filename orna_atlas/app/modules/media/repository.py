@@ -22,7 +22,10 @@ async def get_asset(session: AsyncSession, asset_id: UUID) -> MediaAsset | None:
         select(MediaAsset)
         .options(
             selectinload(MediaAsset.processing_jobs),
-            selectinload(MediaAsset.session).selectinload(RecordingSession.media_assets),
+            selectinload(MediaAsset.session)
+            .selectinload(RecordingSession.media_assets),
+            selectinload(MediaAsset.session)
+            .selectinload(RecordingSession.location),
         )
         .where(MediaAsset.id == asset_id)
     )

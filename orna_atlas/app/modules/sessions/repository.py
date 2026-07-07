@@ -1,9 +1,10 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from orna_atlas.app.integrations.bird_analysis import BirdDetection
 from orna_atlas.app.modules.media.models import MediaAsset  # noqa: F401
 from orna_atlas.app.modules.sessions.models import BirdVocalPart, RecordingSession
 from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionUpdate
@@ -107,3 +108,40 @@ async def update_session(session: AsyncSession, recording: RecordingSession, dat
 async def delete_session(session: AsyncSession, recording: RecordingSession) -> None:
     await session.delete(recording)
     await session.commit()
+
+
+async def replace_bird_vocal_parts(
+    session: AsyncSession,
+    session_id: UUID,
+    detections: list[BirdDetection],
+    *,
+    analysis_provider: str,
+    analysis_model_version: str,
+) -> list[BirdVocalPart]:
+    """Replace bird vocal parts for a session and analysis model version."""
+    await session.execute(
+        delete(BirdVocalPart).where(
+            BirdVocalPart.session_id == session_id,
+            BirdVocalPart.analysis_provider == analysis_provider,
+            BirdVocalPart.analysis_model_version == analysis_model_version,
+        )
+    )
+    parts = [
+        BirdVocalPart(
+            session_id=session_id,
+            species_code=detection.species_code,
+            species_common_name=detection.species_common_name,
+            species_scientific_name=detection.species_scientific_name,
+            starts_at_seconds=detection.starts_at_seconds,
+            ends_at_seconds=detection.ends_at_seconds,
+            confidence=detection.confidence,
+            call_type=detection.call_type,
+            analysis_provider=analysis_provider,
+            analysis_model_version=analysis_model_version,
+            metadata_=detection.metadata,
+        )
+        for detection in detections
+    ]
+    session.add_all(parts)
+    await session.flush()
+    return parts
