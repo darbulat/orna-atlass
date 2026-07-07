@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from uuid import UUID
 import wave
@@ -5,15 +6,20 @@ import wave
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orna_atlas.app.core.config import get_settings
+from orna_atlas.app.integrations.s3 import get_object_storage_client
 from orna_atlas.app.modules.locations.service import require_location
 from orna_atlas.app.modules.sessions import repository
 from orna_atlas.app.modules.sessions.models import RecordingSession
 from orna_atlas.app.modules.sessions.schemas import (
+    PlaybackGrantRead,
     SessionAnnotationRead,
     SessionCreate,
     SessionUpdate,
     WaveformRead,
 )
+
+STREAMING_RENDITION_KIND = "streaming_rendition"
 
 
 async def require_session(session: AsyncSession, session_id: UUID) -> RecordingSession:
@@ -62,6 +68,32 @@ def mock_wav_bytes() -> bytes:
         wav_file.setframerate(8000)
         wav_file.writeframes(b"\x00\x00" * 8000)
     return buffer.getvalue()
+
+
+def create_playback_grant(recording: RecordingSession) -> PlaybackGrantRead:
+    rendition = _ready_streaming_rendition(recording)
+    storage_client = get_object_storage_client()
+    if rendition is not None and storage_client.is_configured():
+        if not storage_client.object_exists(rendition.storage_key):
+            return PlaybackGrantRead.mock_for_session(recording.id)
+        settings = get_settings()
+        expires_in = settings.s3_presign_expires_seconds
+        stream_url = storage_client.generate_presigned_get_url(rendition.storage_key, expires_in=expires_in)
+        return PlaybackGrantRead(
+            session_id=recording.id,
+            stream_url=stream_url,
+            expires_at=datetime.now(UTC) + timedelta(seconds=expires_in),
+            refresh_after_seconds=min(600, max(60, expires_in - 60)),
+        )
+    return PlaybackGrantRead.mock_for_session(recording.id)
+
+
+def _ready_streaming_rendition(recording: RecordingSession):
+    assets = list(recording.media_assets)
+    for asset in assets:
+        if asset.kind == STREAMING_RENDITION_KIND and asset.processing_status == "ready":
+            return asset
+    return None
 
 
 async def create_session(session: AsyncSession, data: SessionCreate) -> RecordingSession:

@@ -86,7 +86,7 @@ def test_streaming_rendition_key_is_deterministic() -> None:
         metadata_={},
     )
 
-    assert streaming_rendition_key(asset) == f"sessions/{session_id}/renditions/stream_320.mp3"
+    assert streaming_rendition_key(asset) == f"sessions/{session_id}/renditions/stream_rendition.wav"
 
 
 def _write_test_wav(path: Path) -> None:

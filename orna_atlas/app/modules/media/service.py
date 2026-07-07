@@ -12,12 +12,14 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.integrations.redis import get_redis_client
+from orna_atlas.app.integrations.s3 import get_object_storage_client
 from orna_atlas.app.modules.media import repository
 from orna_atlas.app.modules.media.models import MediaAsset, ProcessingJob
 from orna_atlas.app.modules.media.schemas import (
     MediaAssetCreate,
     ProcessingStatusRead,
 )
+from orna_atlas.app.modules.media.storage import materialize_storage, storage_reference
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.sessions.models import RecordingSession
 
@@ -109,7 +111,8 @@ async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAss
         metadata = extract_audio_metadata(asset)
         waveform = generate_waveform(asset, metadata=metadata)
         _apply_pipeline_results(asset, metadata=metadata, waveform=waveform)
-        await _ensure_streaming_rendition(session, asset, metadata=metadata)
+        rendition = await _ensure_streaming_rendition(session, asset, metadata=metadata)
+        _upload_streaming_rendition(asset, rendition)
         asset.session.processing_status = _recording_processing_status(asset.session)
         _mark_job_succeeded(job)
         await session.commit()
@@ -124,14 +127,14 @@ async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAss
 
 def extract_audio_metadata(asset: MediaAsset) -> dict:
     metadata = asset.metadata_ if isinstance(asset.metadata_, dict) else {}
-    path = storage_key_path(asset.storage_key)
-    if path is not None:
-        wav_metadata = _extract_wav_metadata(path)
-        return {
-            **wav_metadata,
-            "checksum": asset.checksum or sha256_file(path),
-            "source": "wave",
-        }
+    with materialize_storage(asset.storage_key) as path:
+        if path is not None:
+            wav_metadata = _extract_wav_metadata(path)
+            return {
+                **wav_metadata,
+                "checksum": asset.checksum or sha256_file(path),
+                "source": "wave",
+            }
 
     declared_duration = asset.duration_seconds or _int_or_none(metadata.get("duration_seconds"))
     return {
@@ -146,11 +149,11 @@ def extract_audio_metadata(asset: MediaAsset) -> dict:
 
 
 def generate_waveform(asset: MediaAsset, *, metadata: dict | None = None) -> dict:
-    path = storage_key_path(asset.storage_key)
-    if path is not None:
-        peaks = _waveform_peaks_from_wav(path)
-    else:
-        peaks = _deterministic_peaks(asset)
+    with materialize_storage(asset.storage_key) as path:
+        if path is not None:
+            peaks = _waveform_peaks_from_wav(path)
+        else:
+            peaks = _deterministic_peaks(asset)
 
     duration_seconds = _int_or_none((metadata or {}).get("duration_seconds")) or asset.duration_seconds
     sample_rate = 1
@@ -163,12 +166,26 @@ def generate_waveform(asset: MediaAsset, *, metadata: dict | None = None) -> dic
     }
 
 
-def storage_key_path(storage_key: str) -> Path | None:
-    candidate = storage_key[7:] if storage_key.startswith("file://") else storage_key
-    path = Path(candidate)
-    if path.exists() and path.is_file():
-        return path
-    return None
+def _upload_streaming_rendition(source_asset: MediaAsset, rendition: MediaAsset) -> None:
+    storage_client = get_object_storage_client()
+    if not storage_client.is_configured():
+        return
+
+    destination_key = rendition.storage_key
+    source_ref = storage_reference(source_asset.storage_key, client=storage_client)
+    if source_ref.kind == "s3" and source_ref.key is not None:
+        storage_client.copy_object(
+            source_ref.key,
+            destination_key,
+            source_bucket=source_ref.bucket,
+            content_type=rendition.mime_type,
+        )
+        return
+
+    with materialize_storage(source_asset.storage_key, client=storage_client) as path:
+        if path is None:
+            raise FileNotFoundError(f"Source audio not found: {source_asset.storage_key}")
+        storage_client.upload_file(path, destination_key, content_type=rendition.mime_type)
 
 
 def sha256_file(path: Path) -> str:
@@ -180,7 +197,7 @@ def sha256_file(path: Path) -> str:
 
 
 def streaming_rendition_key(asset: MediaAsset) -> str:
-    return f"sessions/{asset.session_id}/renditions/stream_320.mp3"
+    return f"sessions/{asset.session_id}/renditions/stream_rendition.wav"
 
 
 def public_audio_metadata(metadata: dict) -> dict:
@@ -290,20 +307,22 @@ async def _ensure_streaming_rendition(
     storage_key = streaming_rendition_key(asset)
     rendition = await repository.get_asset_by_storage_key(session, storage_key)
     duration_seconds = _int_or_none(metadata.get("duration_seconds")) or asset.duration_seconds
+    rendition_mime_type = "audio/wav"
     if rendition is None:
         rendition = MediaAsset(
             session=asset.session,
             kind=STREAMING_RENDITION_KIND,
             storage_key=storage_key,
-            mime_type="audio/mpeg",
+            mime_type=rendition_mime_type,
             processing_status="ready",
             duration_seconds=duration_seconds,
             size_bytes=None,
             checksum=asset.checksum,
             metadata_={
-                "bitrate_kbps": 320,
+                "bitrate_kbps": None,
                 "source_asset_id": str(asset.id),
                 "storage_policy": "deterministic_s3_key",
+                "transcoding": "copy_source_wav",
             },
         )
         session.add(rendition)
@@ -315,9 +334,10 @@ async def _ensure_streaming_rendition(
         rendition.checksum = rendition.checksum or asset.checksum
         rendition.metadata_ = {
             **existing,
-            "bitrate_kbps": 320,
+            "bitrate_kbps": None,
             "source_asset_id": str(asset.id),
             "storage_policy": "deterministic_s3_key",
+            "transcoding": "copy_source_wav",
         }
     return rendition
 
