@@ -197,7 +197,7 @@ def sha256_file(path: Path) -> str:
 
 
 def streaming_rendition_key(asset: MediaAsset) -> str:
-    return f"sessions/{asset.session_id}/renditions/stream_320.mp3"
+    return f"sessions/{asset.session_id}/renditions/stream_rendition.wav"
 
 
 def public_audio_metadata(metadata: dict) -> dict:
@@ -307,7 +307,7 @@ async def _ensure_streaming_rendition(
     storage_key = streaming_rendition_key(asset)
     rendition = await repository.get_asset_by_storage_key(session, storage_key)
     duration_seconds = _int_or_none(metadata.get("duration_seconds")) or asset.duration_seconds
-    rendition_mime_type = asset.mime_type if asset.mime_type.startswith("audio/") else "audio/mpeg"
+    rendition_mime_type = "audio/wav"
     if rendition is None:
         rendition = MediaAsset(
             session=asset.session,
@@ -319,9 +319,10 @@ async def _ensure_streaming_rendition(
             size_bytes=None,
             checksum=asset.checksum,
             metadata_={
-                "bitrate_kbps": 320,
+                "bitrate_kbps": None,
                 "source_asset_id": str(asset.id),
                 "storage_policy": "deterministic_s3_key",
+                "transcoding": "copy_source_wav",
             },
         )
         session.add(rendition)
@@ -333,9 +334,10 @@ async def _ensure_streaming_rendition(
         rendition.checksum = rendition.checksum or asset.checksum
         rendition.metadata_ = {
             **existing,
-            "bitrate_kbps": 320,
+            "bitrate_kbps": None,
             "source_asset_id": str(asset.id),
             "storage_policy": "deterministic_s3_key",
+            "transcoding": "copy_source_wav",
         }
     return rendition
 

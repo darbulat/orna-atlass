@@ -149,19 +149,22 @@ def test_create_playback_grant_uses_presigned_url_when_rendition_ready(monkeypat
     rendition = SimpleNamespace(
         kind="streaming_rendition",
         processing_status="ready",
-        storage_key=f"sessions/{session_id}/renditions/stream_320.mp3",
+        storage_key=f"sessions/{session_id}/renditions/stream_rendition.wav",
     )
     recording = SimpleNamespace(id=session_id, media_assets=[rendition])
     client = ObjectStorageClient(
         ObjectStorageConfig(
-            endpoint_url="http://localhost:9000",
+            endpoint_url="http://minio:9000",
+            public_endpoint_url="http://localhost:9000",
             access_key_id="test",
             secret_access_key="test",
             presign_expires_seconds=900,
         )
     )
     client._client = MagicMock()
-    client._client.generate_presigned_url.return_value = "https://minio.local/presigned"
+    client._presign_client = MagicMock()
+    client._presign_client.generate_presigned_url.return_value = "http://localhost:9000/presigned"
+    client.object_exists = MagicMock(return_value=True)
 
     import orna_atlas.app.modules.sessions.service as sessions_service
 
@@ -169,9 +172,36 @@ def test_create_playback_grant_uses_presigned_url_when_rendition_ready(monkeypat
 
     grant = create_playback_grant(recording)
 
-    assert grant.stream_url == "https://minio.local/presigned"
+    assert grant.stream_url == "http://localhost:9000/presigned"
     assert grant.session_id == session_id
     assert grant.expires_at > datetime.now(UTC)
+    client.object_exists.assert_called_once_with(rendition.storage_key)
+
+
+def test_create_playback_grant_falls_back_to_mock_when_object_missing(monkeypatch) -> None:
+    session_id = uuid4()
+    rendition = SimpleNamespace(
+        kind="streaming_rendition",
+        processing_status="ready",
+        storage_key=f"sessions/{session_id}/renditions/stream_rendition.wav",
+    )
+    recording = SimpleNamespace(id=session_id, media_assets=[rendition])
+    client = ObjectStorageClient(
+        ObjectStorageConfig(
+            endpoint_url="http://minio:9000",
+            access_key_id="test",
+            secret_access_key="test",
+        )
+    )
+    client.object_exists = MagicMock(return_value=False)
+
+    import orna_atlas.app.modules.sessions.service as sessions_service
+
+    monkeypatch.setattr(sessions_service, "get_object_storage_client", lambda: client)
+
+    grant = create_playback_grant(recording)
+
+    assert grant.stream_url.endswith("/mock-stream")
 
 
 def test_create_playback_grant_falls_back_to_mock_without_s3() -> None:
@@ -181,6 +211,24 @@ def test_create_playback_grant_falls_back_to_mock_without_s3() -> None:
     grant = create_playback_grant(recording)
 
     assert grant.stream_url.endswith("/mock-stream")
+
+
+def test_object_storage_config_requires_credentials() -> None:
+    assert ObjectStorageConfig(endpoint_url="http://localhost:9000").is_configured() is False
+    assert ObjectStorageConfig(access_key_id="key", secret_access_key="secret").is_configured() is True
+
+
+def test_presign_client_uses_public_endpoint() -> None:
+    config = ObjectStorageConfig(
+        endpoint_url="http://minio:9000",
+        public_endpoint_url="http://localhost:9000",
+        access_key_id="test",
+        secret_access_key="test",
+    )
+    client = ObjectStorageClient(config)
+    presign_client = client._get_presign_client()
+
+    assert presign_client.meta.endpoint_url == "http://localhost:9000"
 
 
 def test_storage_key_path_returns_local_file(tmp_path: Path) -> None:

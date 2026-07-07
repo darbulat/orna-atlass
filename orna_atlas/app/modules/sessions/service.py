@@ -74,6 +74,8 @@ def create_playback_grant(recording: RecordingSession) -> PlaybackGrantRead:
     rendition = _ready_streaming_rendition(recording)
     storage_client = get_object_storage_client()
     if rendition is not None and storage_client.is_configured():
+        if not storage_client.object_exists(rendition.storage_key):
+            return PlaybackGrantRead.mock_for_session(recording.id)
         settings = get_settings()
         expires_in = settings.s3_presign_expires_seconds
         stream_url = storage_client.generate_presigned_get_url(rendition.storage_key, expires_in=expires_in)

@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile.api
     env_file: .env
+    environment:
+      S3_PUBLIC_ENDPOINT_URL: http://localhost:9000
     ports:
       - "8000:8000"
     depends_on:
@@ -84,7 +86,7 @@ services:
     volumes:
       - minio-data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "/usr/bin/curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s
       timeout: 5s
       retries: 10

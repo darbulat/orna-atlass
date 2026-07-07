@@ -18,6 +18,7 @@ S3_URI_PREFIX = "s3://"
 @dataclass(frozen=True)
 class ObjectStorageConfig:
     endpoint_url: str | None = None
+    public_endpoint_url: str | None = None
     region: str = "us-east-1"
     private_bucket: str = "orna-audio-private"
     public_bucket: str = "orna-media-public"
@@ -29,6 +30,7 @@ class ObjectStorageConfig:
     def from_settings(cls, settings: Settings) -> ObjectStorageConfig:
         return cls(
             endpoint_url=settings.s3_endpoint_url,
+            public_endpoint_url=settings.s3_public_endpoint_url,
             region=settings.s3_region,
             private_bucket=settings.s3_private_bucket,
             public_bucket=settings.s3_public_bucket,
@@ -38,7 +40,10 @@ class ObjectStorageConfig:
         )
 
     def is_configured(self) -> bool:
-        return bool(self.endpoint_url or (self.access_key_id and self.secret_access_key))
+        return bool(self.access_key_id and self.secret_access_key)
+
+    def presign_endpoint_url(self) -> str | None:
+        return self.public_endpoint_url or self.endpoint_url
 
 
 @dataclass(frozen=True)
@@ -72,16 +77,23 @@ class ObjectStorageClient:
     def __init__(self, config: ObjectStorageConfig | None = None) -> None:
         self.config = config or ObjectStorageConfig.from_settings(get_settings())
         self._client: BaseClient | None = None
+        self._presign_client: BaseClient | None = None
 
     def is_configured(self) -> bool:
         return self.config.is_configured()
+
+    def _resolve_object_location(self, storage_key: str, *, bucket: str | None = None) -> tuple[str, str]:
+        reference = parse_storage_reference(storage_key, default_bucket=bucket or self.config.private_bucket)
+        if reference.kind != "s3" or reference.bucket is None or reference.key is None:
+            raise ValueError(f"Storage key does not reference an S3 object: {storage_key}")
+        return reference.bucket, reference.key
 
     def public_url(self, key: str, *, bucket: str | None = None) -> str:
         bucket_name = bucket or self.config.private_bucket
         return f"{S3_URI_PREFIX}{bucket_name}/{key}"
 
-    def object_exists(self, key: str, *, bucket: str | None = None) -> bool:
-        bucket_name = bucket or self.config.private_bucket
+    def object_exists(self, storage_key: str, *, bucket: str | None = None) -> bool:
+        bucket_name, key = self._resolve_object_location(storage_key, bucket=bucket)
         try:
             self._get_client().head_object(Bucket=bucket_name, Key=key)
             return True
@@ -150,14 +162,14 @@ class ObjectStorageClient:
 
     def generate_presigned_get_url(
         self,
-        key: str,
+        storage_key: str,
         *,
         bucket: str | None = None,
         expires_in: int | None = None,
     ) -> str:
-        bucket_name = bucket or self.config.private_bucket
+        bucket_name, key = self._resolve_object_location(storage_key, bucket=bucket)
         expiry = expires_in if expires_in is not None else self.config.presign_expires_seconds
-        return self._get_client().generate_presigned_url(
+        return self._get_presign_client().generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket_name, "Key": key},
             ExpiresIn=expiry,
@@ -175,17 +187,27 @@ class ObjectStorageClient:
         if self._client is None:
             if not self.is_configured():
                 raise RuntimeError("Object storage is not configured")
-            session = boto3.session.Session(
-                aws_access_key_id=self.config.access_key_id,
-                aws_secret_access_key=self.config.secret_access_key,
-                region_name=self.config.region,
-            )
-            self._client = session.client(
-                "s3",
-                endpoint_url=self.config.endpoint_url,
-                config=Config(signature_version="s3v4"),
-            )
+            self._client = self._build_client(self.config.endpoint_url)
         return self._client
+
+    def _get_presign_client(self) -> BaseClient:
+        if self._presign_client is None:
+            if not self.is_configured():
+                raise RuntimeError("Object storage is not configured")
+            self._presign_client = self._build_client(self.config.presign_endpoint_url())
+        return self._presign_client
+
+    def _build_client(self, endpoint_url: str | None) -> BaseClient:
+        session = boto3.session.Session(
+            aws_access_key_id=self.config.access_key_id,
+            aws_secret_access_key=self.config.secret_access_key,
+            region_name=self.config.region,
+        )
+        return session.client(
+            "s3",
+            endpoint_url=endpoint_url,
+            config=Config(signature_version="s3v4"),
+        )
 
 
 @lru_cache
