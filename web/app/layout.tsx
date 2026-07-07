@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PlayerProvider } from "../components/audio/PlayerProvider";
+import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./styles.css";
 
 export const metadata: Metadata = {

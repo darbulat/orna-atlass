@@ -5,7 +5,12 @@ __pycache__/
 .ruff_cache/
 .venv/
 node_modules/
+node_modules.root-owned/
 .next/
+.next.root-owned/
 .next-codex/
+.next-codex-*/
 out/
+/web/public/cesium/
 .DS_Store
+.idea

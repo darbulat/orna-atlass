@@ -2,7 +2,7 @@ import { AtlasExplorer } from "../../components/atlas/AtlasExplorer";
 import { fetchAtlasPoints, fetchCurrentDawn } from "../../lib/api/sessions";
 
 export default async function Page({ searchParams }: { searchParams?: { view?: string } }) {
-  const view = searchParams?.view === "list" ? "list" : "map";
+  const view = searchParams?.view === "list" ? "list" : searchParams?.view === "map" ? "map" : "globe";
   const [atlas, dawn] = await Promise.all([fetchAtlasPoints(view), fetchCurrentDawn()]);
 
   return (

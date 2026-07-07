@@ -1,7 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArcGisMapServerImageryProvider,
+  Cartesian3,
+  Color,
+  EllipsoidTerrainProvider,
+  Entity,
+  HorizontalOrigin,
+  ImageryLayer,
+  LabelStyle,
+  ScreenSpaceEventHandler,
+  ScreenSpaceEventType,
+  TileMapServiceImageryProvider,
+  VerticalOrigin,
+  Viewer,
+  buildModuleUrl,
+} from "cesium";
 import type {
   AtlasCluster,
   AtlasPoint,
@@ -12,11 +28,24 @@ import type {
 } from "../../lib/api/sessions";
 import { fetchAtlasPoints, fetchCurrentDawn, fetchFollowDawn, searchAtlas } from "../../lib/api/sessions";
 
+type AtlasView = "globe" | "map" | "list";
+
 type Props = {
-  initialView: "map" | "list";
+  initialView: AtlasView;
   points: Array<AtlasPoint | AtlasCluster>;
   dawn: DawnCurrentResponse;
 };
+
+type CesiumGlobeProps = {
+  points: Array<AtlasPoint | AtlasCluster>;
+  selectedSlug: string | null;
+  activeDawnSlugs: Set<string>;
+  dawnLongitude: number;
+  onSelectPoint: (point: AtlasPoint) => void;
+};
+
+const satelliteImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
+const habitatOptions = ["forest", "wetland", "steppe", "coast"];
 
 function isPoint(item: AtlasPoint | AtlasCluster): item is AtlasPoint {
   return item.type === "point";
@@ -29,10 +58,256 @@ function markerStyle(point: AtlasPoint | AtlasCluster) {
   };
 }
 
-const habitatOptions = ["forest", "wetland", "steppe", "coast"];
+function dawnLongitudeFromDate(value: string) {
+  const generatedAt = new Date(value);
+  const utcHours =
+    generatedAt.getUTCHours() + generatedAt.getUTCMinutes() / 60 + generatedAt.getUTCSeconds() / 3600;
+  const sunriseLongitude = 90 - utcHours * 15;
+  return ((((sunriseLongitude + 180) % 360) + 360) % 360) - 180;
+}
+
+function dawnPolylinePositions(longitude: number) {
+  const positions = [];
+  for (let latitude = -88; latitude <= 88; latitude += 2) {
+    positions.push(Cartesian3.fromDegrees(longitude, latitude, 7000));
+  }
+  return positions;
+}
+
+function configureCesiumBaseUrl() {
+  const urlBuilder = buildModuleUrl as typeof buildModuleUrl & { setBaseUrl?: (value: string) => void };
+  urlBuilder.setBaseUrl?.("/cesium/");
+}
+
+function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, dawnLongitude, onSelectPoint }: CesiumGlobeProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const viewerRef = useRef<Viewer | null>(null);
+  const pointByEntityIdRef = useRef(new Map<string, AtlasPoint>());
+  const onSelectRef = useRef(onSelectPoint);
+  const [isWebglUnavailable, setIsWebglUnavailable] = useState(false);
+
+  useEffect(() => {
+    onSelectRef.current = onSelectPoint;
+  }, [onSelectPoint]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const host = container;
+
+    let isDisposed = false;
+    let clickHandler: ScreenSpaceEventHandler | null = null;
+    let viewer: Viewer | null = null;
+    const pointByEntityId = pointByEntityIdRef.current;
+
+    async function createViewer() {
+      try {
+        configureCesiumBaseUrl();
+        viewer = new Viewer(host, {
+          animation: false,
+          baseLayer: false,
+          baseLayerPicker: false,
+          fullscreenButton: false,
+          geocoder: false,
+          homeButton: false,
+          infoBox: false,
+          navigationHelpButton: false,
+          sceneModePicker: false,
+          selectionIndicator: false,
+          shouldAnimate: true,
+          timeline: false,
+          terrainProvider: new EllipsoidTerrainProvider(),
+          useBrowserRecommendedResolution: true,
+          vrButton: false,
+        });
+
+        if (isDisposed) {
+          viewer.destroy();
+          return;
+        }
+
+        viewerRef.current = viewer;
+        setIsWebglUnavailable(false);
+
+        viewer.scene.globe.enableLighting = true;
+        viewer.scene.globe.showGroundAtmosphere = true;
+        if (viewer.scene.skyAtmosphere) {
+          viewer.scene.skyAtmosphere.show = true;
+        }
+        viewer.scene.screenSpaceCameraController.enableTilt = true;
+        viewer.scene.screenSpaceCameraController.minimumZoomDistance = 350000;
+        viewer.scene.screenSpaceCameraController.maximumZoomDistance = 52000000;
+        viewer.camera.setView({
+          destination: Cartesian3.fromDegrees(24, 34, 17000000),
+        });
+
+        const localProvider = await TileMapServiceImageryProvider.fromUrl(
+          buildModuleUrl("Assets/Textures/NaturalEarthII"),
+        );
+        if (!isDisposed && viewer && !viewer.isDestroyed()) {
+          viewer.imageryLayers.addImageryProvider(localProvider);
+        }
+
+        try {
+          const satelliteProvider = await ArcGisMapServerImageryProvider.fromUrl(satelliteImageryUrl, {
+            enablePickFeatures: false,
+          });
+          if (!isDisposed && viewer && !viewer.isDestroyed()) {
+            viewer.imageryLayers.add(new ImageryLayer(satelliteProvider));
+          }
+        } catch {
+          // Keep the local NaturalEarth globe interactive when satellite imagery is unavailable.
+        }
+      } catch {
+        if (!isDisposed) {
+          setIsWebglUnavailable(true);
+        }
+        if (viewer && !viewer.isDestroyed()) {
+          viewer.destroy();
+        }
+        viewerRef.current = null;
+        return;
+      }
+
+      if (!viewer || viewer.isDestroyed()) return;
+      clickHandler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+      clickHandler.setInputAction((event: ScreenSpaceEventHandler.PositionedEvent) => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const picked = viewer.scene.pick(event.position);
+        const entity = picked?.id as Entity | undefined;
+        const point = entity?.id ? pointByEntityIdRef.current.get(entity.id) : undefined;
+        if (point) {
+          onSelectRef.current(point);
+        }
+      }, ScreenSpaceEventType.LEFT_CLICK);
+    }
+
+    void createViewer();
+
+    return () => {
+      isDisposed = true;
+      clickHandler?.destroy();
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        viewerRef.current.destroy();
+      }
+      viewerRef.current = null;
+      pointByEntityId.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed()) return;
+
+    viewer.entities.removeAll();
+    pointByEntityIdRef.current.clear();
+
+    viewer.entities.add({
+      id: "dawn-meridian",
+      polyline: {
+        positions: dawnPolylinePositions(dawnLongitude),
+        width: 3,
+        material: Color.fromCssColorString("#f6c46b").withAlpha(0.92),
+        clampToGround: false,
+      },
+    });
+
+    points.forEach((item) => {
+      const entityId = `${item.type}-${item.id}`;
+      const selected = isPoint(item) && item.slug === selectedSlug;
+      const dawnActive = isPoint(item) && activeDawnSlugs.has(item.slug);
+      const markerColor = selected
+        ? Color.fromCssColorString("#fff4c2")
+        : dawnActive || item.type === "cluster"
+          ? Color.fromCssColorString("#f6c46b")
+          : Color.fromCssColorString("#9bd8bd");
+      const markerText = isPoint(item) ? String(item.session_count) : String(item.count);
+
+      if (isPoint(item)) {
+        pointByEntityIdRef.current.set(entityId, item);
+      }
+
+      viewer.entities.add({
+        id: entityId,
+        name: isPoint(item) ? item.name : `${item.count} locations`,
+        position: Cartesian3.fromDegrees(item.longitude, item.latitude, selected ? 110000 : 85000),
+        point: {
+          pixelSize: selected ? 18 : item.type === "cluster" ? 16 : 12,
+          color: markerColor,
+          outlineColor: Color.WHITE.withAlpha(0.86),
+          outlineWidth: 2,
+        },
+        label: {
+          text: markerText,
+          font: "600 12px Inter, sans-serif",
+          fillColor: selected || item.type === "cluster" ? Color.fromCssColorString("#07110f") : Color.WHITE,
+          outlineColor: Color.BLACK.withAlpha(0.55),
+          outlineWidth: 2,
+          style: LabelStyle.FILL_AND_OUTLINE,
+          horizontalOrigin: HorizontalOrigin.CENTER,
+          verticalOrigin: VerticalOrigin.CENTER,
+        },
+      });
+    });
+
+    viewer.scene.requestRender();
+  }, [points, selectedSlug, activeDawnSlugs, dawnLongitude]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || !selectedSlug) return;
+
+    const selected = points.find((item) => isPoint(item) && item.slug === selectedSlug);
+    if (!selected || !isPoint(selected)) return;
+
+    viewer.camera.flyTo({
+      destination: Cartesian3.fromDegrees(selected.longitude, selected.latitude, 2200000),
+      duration: 0.85,
+    });
+  }, [points, selectedSlug]);
+
+  return (
+    <div className="globe-stage cesium-stage" aria-label="Interactive Cesium globe">
+      <div ref={containerRef} className="cesium-host" />
+      {isWebglUnavailable ? <StaticGlobeFallback points={points} selectedSlug={selectedSlug} /> : null}
+      <div className="globe-hint">Drag to rotate / scroll to zoom / click a marker</div>
+    </div>
+  );
+}
+
+function StaticGlobeFallback({
+  points,
+  selectedSlug,
+}: {
+  points: Array<AtlasPoint | AtlasCluster>;
+  selectedSlug: string | null;
+}) {
+  return (
+    <div className="static-globe" aria-label="Static globe fallback">
+      <span className="static-continent north-america" />
+      <span className="static-continent south-america" />
+      <span className="static-continent africa" />
+      <span className="static-continent eurasia" />
+      <span className="static-continent australia" />
+      {points.slice(0, 18).map((point) => (
+        <span
+          key={`${point.type}-${point.id}`}
+          className={[
+            "static-globe-marker",
+            point.type === "cluster" ? "cluster" : "",
+            isPoint(point) && point.slug === selectedSlug ? "selected" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          style={markerStyle(point)}
+        />
+      ))}
+    </div>
+  );
+}
 
 export function AtlasExplorer({ initialView, points, dawn }: Props) {
-  const [view, setView] = useState(initialView);
+  const [view, setView] = useState<AtlasView>(initialView);
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [dawnView, setDawnView] = useState<"current" | "follow">("current");
   const [currentDawn, setCurrentDawn] = useState(dawn);
@@ -54,14 +329,8 @@ export function AtlasExplorer({ initialView, points, dawn }: Props) {
     () => new Set(currentDawn.active_locations.map((item) => item.location.slug)),
     [currentDawn.active_locations],
   );
-  const dawnLineLeft = useMemo(() => {
-    const generatedAt = new Date(currentDawn.generated_at);
-    const utcHours =
-      generatedAt.getUTCHours() + generatedAt.getUTCMinutes() / 60 + generatedAt.getUTCSeconds() / 3600;
-    const sunriseLongitude = 90 - utcHours * 15;
-    const normalizedLongitude = ((((sunriseLongitude + 180) % 360) + 360) % 360) - 180;
-    return `${((normalizedLongitude + 180) / 360) * 100}%`;
-  }, [currentDawn.generated_at]);
+  const dawnLongitude = useMemo(() => dawnLongitudeFromDate(currentDawn.generated_at), [currentDawn.generated_at]);
+  const dawnLineLeft = `${((dawnLongitude + 180) / 360) * 100}%`;
 
   useEffect(() => {
     if (selectedSlug && locations.some((point) => point.slug === selectedSlug)) {
@@ -148,11 +417,11 @@ export function AtlasExplorer({ initialView, points, dawn }: Props) {
       setAtlasPoints((currentPoints) => [atlasPoint, ...currentPoints]);
     }
     setSelectedSlug(result.slug);
-    setView("list");
+    setView("globe");
     setQuery("");
   }
 
-  function selectDawnLocation(point: AtlasPoint) {
+  function selectLocation(point: AtlasPoint) {
     if (!locations.some((location) => location.slug === point.slug)) {
       setAtlasPoints((currentPoints) =>
         currentPoints.some((item) => isPoint(item) && item.slug === point.slug)
@@ -161,13 +430,15 @@ export function AtlasExplorer({ initialView, points, dawn }: Props) {
       );
     }
     setSelectedSlug(point.slug);
-    setView("list");
   }
 
   return (
     <section className="atlas-workspace">
       <div className="atlas-toolbar" aria-label="Atlas controls">
         <div className="segmented" role="tablist" aria-label="Atlas view">
+          <button type="button" role="tab" aria-selected={view === "globe"} onClick={() => setView("globe")}>
+            Globe
+          </button>
           <button type="button" role="tab" aria-selected={view === "map"} onClick={() => setView("map")}>
             Map
           </button>
@@ -242,7 +513,23 @@ export function AtlasExplorer({ initialView, points, dawn }: Props) {
         ) : null}
       </div>
 
-      {view === "map" ? (
+      {view === "globe" ? (
+        <div className="atlas-grid">
+          <CesiumGlobe
+            points={atlasPoints}
+            selectedSlug={selectedSlug}
+            activeDawnSlugs={activeDawnSlugs}
+            dawnLongitude={dawnLongitude}
+            onSelectPoint={selectLocation}
+          />
+          <LocationDrawer
+            location={selected}
+            dawnLocations={dawnLocations}
+            isLoadingDawn={isLoadingDawn}
+            onSelectLocation={selectLocation}
+          />
+        </div>
+      ) : view === "map" ? (
         <div className="atlas-grid">
           <div className="atlas-map" aria-label="Location map">
             <div className="map-grid" />
@@ -271,7 +558,7 @@ export function AtlasExplorer({ initialView, points, dawn }: Props) {
             location={selected}
             dawnLocations={dawnLocations}
             isLoadingDawn={isLoadingDawn}
-            onSelectLocation={selectDawnLocation}
+            onSelectLocation={selectLocation}
           />
         </div>
       ) : (
@@ -290,7 +577,7 @@ export function AtlasExplorer({ initialView, points, dawn }: Props) {
             location={selected}
             dawnLocations={dawnLocations}
             isLoadingDawn={isLoadingDawn}
-            onSelectLocation={selectDawnLocation}
+            onSelectLocation={selectLocation}
           />
         </div>
       )}
