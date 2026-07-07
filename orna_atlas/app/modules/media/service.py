@@ -25,6 +25,7 @@ PIPELINE_JOB_TYPE = "audio_pipeline"
 SOURCE_AUDIO_KINDS = {"audio", "source_audio", "master_audio"}
 STREAMING_RENDITION_KIND = "streaming_rendition"
 WAVEFORM_BUCKETS = 64
+PRIVATE_METADATA_KEYS = {"object_key", "s3_key", "source_storage_key", "storage_key"}
 
 
 async def require_asset(session: AsyncSession, asset_id: UUID) -> MediaAsset:
@@ -42,15 +43,20 @@ async def create_asset_for_session(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Media asset storage key exists")
 
     asset = await repository.create_media_asset(session, recording, data)
-    if data.enqueue_processing:
+    job = None
+    if should_enqueue_audio_pipeline(data.kind, enqueue_processing=data.enqueue_processing):
         recording.processing_status = "queued"
-        await repository.create_processing_job(session, asset, job_type=PIPELINE_JOB_TYPE)
+        job = await repository.create_processing_job(session, asset, job_type=PIPELINE_JOB_TYPE)
     await session.commit()
-    await session.refresh(asset, attribute_names=["processing_jobs"])
 
-    if data.enqueue_processing:
-        await enqueue_asset_processing(asset.id)
+    if job is not None:
+        await _enqueue_or_mark_failed(session, asset, job)
+    await session.refresh(asset, attribute_names=["processing_jobs"])
     return asset
+
+
+def should_enqueue_audio_pipeline(kind: str, *, enqueue_processing: bool = True) -> bool:
+    return enqueue_processing and kind in SOURCE_AUDIO_KINDS
 
 
 async def processing_status_for_session(
@@ -67,7 +73,7 @@ async def processing_status_for_session(
     )
 
 
-async def enqueue_asset_processing(asset_id: UUID) -> str | None:
+async def enqueue_asset_processing(asset_id: UUID) -> str:
     from orna_atlas.app.workers.audio_pipeline import enqueue_audio_processing
 
     return enqueue_audio_processing(asset_id)
@@ -75,11 +81,16 @@ async def enqueue_asset_processing(asset_id: UUID) -> str | None:
 
 async def retry_asset_processing(session: AsyncSession, asset_id: UUID) -> ProcessingStatusRead:
     asset = await require_asset(session, asset_id)
+    if asset.kind not in SOURCE_AUDIO_KINDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Audio processing can only be queued for source audio assets",
+        )
     asset.processing_status = "queued"
     asset.session.processing_status = "queued"
-    await repository.create_processing_job(session, asset, job_type=PIPELINE_JOB_TYPE)
+    job = await repository.create_processing_job(session, asset, job_type=PIPELINE_JOB_TYPE)
     await session.commit()
-    await enqueue_asset_processing(asset.id)
+    await _enqueue_or_mark_failed(session, asset, job)
     return await processing_status_for_session(session, asset.session_id)
 
 
@@ -93,6 +104,8 @@ async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAss
     await session.commit()
 
     try:
+        if asset.kind not in SOURCE_AUDIO_KINDS:
+            raise ValueError("Audio pipeline can only process source audio assets")
         metadata = extract_audio_metadata(asset)
         waveform = generate_waveform(asset, metadata=metadata)
         _apply_pipeline_results(asset, metadata=metadata, waveform=waveform)
@@ -118,7 +131,6 @@ def extract_audio_metadata(asset: MediaAsset) -> dict:
             **wav_metadata,
             "checksum": asset.checksum or sha256_file(path),
             "source": "wave",
-            "storage_key": asset.storage_key,
         }
 
     declared_duration = asset.duration_seconds or _int_or_none(metadata.get("duration_seconds"))
@@ -130,7 +142,6 @@ def extract_audio_metadata(asset: MediaAsset) -> dict:
         "frame_rate_hz": metadata.get("frame_rate_hz"),
         "size_bytes": asset.size_bytes,
         "source": "declared",
-        "storage_key": asset.storage_key,
     }
 
 
@@ -172,6 +183,10 @@ def streaming_rendition_key(asset: MediaAsset) -> str:
     return f"sessions/{asset.session_id}/renditions/stream_320.mp3"
 
 
+def public_audio_metadata(metadata: dict) -> dict:
+    return {key: value for key, value in metadata.items() if key not in PRIVATE_METADATA_KEYS}
+
+
 def _extract_wav_metadata(path: Path) -> dict:
     with wave.open(str(path), "rb") as wav_file:
         frame_count = wav_file.getnframes()
@@ -192,22 +207,25 @@ def _extract_wav_metadata(path: Path) -> dict:
 def _waveform_peaks_from_wav(path: Path, buckets: int = WAVEFORM_BUCKETS) -> list[float]:
     with wave.open(str(path), "rb") as wav_file:
         sample_width = wav_file.getsampwidth()
-        raw = wav_file.readframes(wav_file.getnframes())
+        total_samples = wav_file.getnframes() * wav_file.getnchannels()
+        if total_samples <= 0:
+            return []
 
-    if not raw:
-        return []
-    samples = _pcm_samples(raw, sample_width)
-    if not samples:
-        return []
+        bucket_count = min(buckets, total_samples)
+        bucket_size = max(1, math.ceil(total_samples / bucket_count))
+        raw_peaks = [0] * bucket_count
+        sample_index = 0
+        while True:
+            raw = wav_file.readframes(8192)
+            if not raw:
+                break
+            for sample in _pcm_samples(raw, sample_width):
+                bucket_index = min(sample_index // bucket_size, bucket_count - 1)
+                raw_peaks[bucket_index] = max(raw_peaks[bucket_index], abs(sample))
+                sample_index += 1
 
-    bucket_size = max(1, math.ceil(len(samples) / buckets))
     max_amplitude = float(max(1, 2 ** (sample_width * 8 - 1) - 1))
-    peaks = []
-    for offset in range(0, len(samples), bucket_size):
-        bucket = samples[offset : offset + bucket_size]
-        peak = max(abs(sample) for sample in bucket) / max_amplitude
-        peaks.append(round(min(1.0, peak), 4))
-    return peaks
+    return [round(min(1.0, peak / max_amplitude), 4) for peak in raw_peaks]
 
 
 def _pcm_samples(raw: bytes, sample_width: int) -> list[int]:
@@ -240,9 +258,10 @@ def _deterministic_peaks(asset: MediaAsset, buckets: int = WAVEFORM_BUCKETS) -> 
 
 def _apply_pipeline_results(asset: MediaAsset, *, metadata: dict, waveform: dict) -> None:
     existing = asset.metadata_ if isinstance(asset.metadata_, dict) else {}
+    safe_metadata = public_audio_metadata(metadata)
     asset.metadata_ = {
         **existing,
-        "audio_metadata": metadata,
+        "audio_metadata": safe_metadata,
         "pipeline": {
             "processed_at": datetime.now(UTC).isoformat(),
             "version": "sprint6-local",
@@ -259,7 +278,7 @@ def _apply_pipeline_results(asset: MediaAsset, *, metadata: dict, waveform: dict
     session_metadata = asset.session.metadata_ if isinstance(asset.session.metadata_, dict) else {}
     asset.session.metadata_ = {
         **session_metadata,
-        "audio_metadata": metadata,
+        "audio_metadata": safe_metadata,
         "waveform": waveform,
     }
     asset.processing_status = "ready"
@@ -345,6 +364,25 @@ def _mark_job_failed(asset: MediaAsset, job: ProcessingJob, exc: Exception) -> N
     job.finished_at = datetime.now(UTC)
     asset.processing_status = "failed"
     asset.session.processing_status = "failed"
+
+
+async def _enqueue_or_mark_failed(
+    session: AsyncSession, asset: MediaAsset, job: ProcessingJob
+) -> None:
+    try:
+        await enqueue_asset_processing(asset.id)
+    except Exception as exc:
+        job.status = "failed"
+        job.error_code = "enqueue_failed"
+        job.error_message = str(exc)[:1000]
+        job.finished_at = datetime.now(UTC)
+        asset.processing_status = "failed"
+        asset.session.processing_status = "failed"
+        await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to enqueue audio processing job",
+        ) from exc
 
 
 def _latest_job(assets: list[MediaAsset]) -> ProcessingJob | None:

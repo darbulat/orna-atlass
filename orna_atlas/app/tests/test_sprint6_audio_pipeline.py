@@ -11,6 +11,8 @@ from orna_atlas.app.modules.media.models import MediaAsset
 from orna_atlas.app.modules.media.service import (
     extract_audio_metadata,
     generate_waveform,
+    public_audio_metadata,
+    should_enqueue_audio_pipeline,
     streaming_rendition_key,
 )
 
@@ -45,9 +47,29 @@ def test_wav_metadata_and_waveform_are_generated(tmp_path: Path) -> None:
     assert metadata["channels"] == 1
     assert metadata["frame_rate_hz"] == 8000
     assert metadata["source"] == "wave"
+    assert "storage_key" not in metadata
     assert waveform["status"] == "generated"
-    assert len(waveform["peaks"]) > 8
+    assert len(waveform["peaks"]) == 64
     assert max(waveform["peaks"]) > 0
+
+
+def test_public_audio_metadata_strips_private_storage_keys() -> None:
+    metadata = public_audio_metadata(
+        {
+            "duration_seconds": 10,
+            "storage_key": "private/source.wav",
+            "source_storage_key": "private/source.wav",
+        }
+    )
+
+    assert metadata == {"duration_seconds": 10}
+
+
+def test_audio_pipeline_only_enqueues_source_assets() -> None:
+    assert should_enqueue_audio_pipeline("source_audio")
+    assert should_enqueue_audio_pipeline("master_audio")
+    assert not should_enqueue_audio_pipeline("image")
+    assert not should_enqueue_audio_pipeline("source_audio", enqueue_processing=False)
 
 
 def test_streaming_rendition_key_is_deterministic() -> None:

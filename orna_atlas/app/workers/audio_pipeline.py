@@ -13,21 +13,18 @@ from orna_atlas.app.modules.media.service import process_media_asset
 AUDIO_QUEUE_NAME = "audio-processing"
 
 
-def enqueue_audio_processing(asset_id: UUID | str) -> str | None:
-    try:
-        from rq import Queue
+def enqueue_audio_processing(asset_id: UUID | str) -> str:
+    from rq import Queue
 
-        redis = Redis.from_url(get_settings().redis_url)
-        queue = Queue(AUDIO_QUEUE_NAME, connection=redis)
-        job = queue.enqueue(
-            "orna_atlas.app.workers.audio_pipeline.process_audio_asset",
-            str(asset_id),
-            job_timeout=600,
-            result_ttl=3600,
-        )
-        return job.id
-    except Exception:
-        return None
+    redis = Redis.from_url(get_settings().redis_url)
+    queue = Queue(AUDIO_QUEUE_NAME, connection=redis)
+    job = queue.enqueue(
+        "orna_atlas.app.workers.audio_pipeline.process_audio_asset",
+        str(asset_id),
+        job_timeout=600,
+        result_ttl=3600,
+    )
+    return job.id
 
 
 def process_audio_asset(asset_id: str) -> str:
