@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import wave
 from array import array
@@ -11,6 +12,11 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orna_atlas.app.integrations.bird_analysis import (
+    ANALYSIS_MODEL_VERSION,
+    ANALYSIS_PROVIDER,
+    analyze_audio_file,
+)
 from orna_atlas.app.integrations.redis import get_redis_client
 from orna_atlas.app.integrations.s3 import get_object_storage_client
 from orna_atlas.app.modules.media import repository
@@ -20,6 +26,7 @@ from orna_atlas.app.modules.media.schemas import (
     ProcessingStatusRead,
 )
 from orna_atlas.app.modules.media.storage import materialize_storage, storage_reference
+from orna_atlas.app.modules.sessions import repository as sessions_repository
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.sessions.models import RecordingSession
 
@@ -28,6 +35,7 @@ SOURCE_AUDIO_KINDS = {"audio", "source_audio", "master_audio"}
 STREAMING_RENDITION_KIND = "streaming_rendition"
 WAVEFORM_BUCKETS = 64
 PRIVATE_METADATA_KEYS = {"object_key", "s3_key", "source_storage_key", "storage_key"}
+logger = logging.getLogger(__name__)
 
 
 async def require_asset(session: AsyncSession, asset_id: UUID) -> MediaAsset:
@@ -113,6 +121,7 @@ async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAss
         _apply_pipeline_results(asset, metadata=metadata, waveform=waveform)
         rendition = await _ensure_streaming_rendition(session, asset, metadata=metadata)
         _upload_streaming_rendition(asset, rendition)
+        await _analyze_and_store_bird_parts(session, asset)
         asset.session.processing_status = _recording_processing_status(asset.session)
         _mark_job_succeeded(job)
         await session.commit()
@@ -202,6 +211,76 @@ def streaming_rendition_key(asset: MediaAsset) -> str:
 
 def public_audio_metadata(metadata: dict) -> dict:
     return {key: value for key, value in metadata.items() if key not in PRIVATE_METADATA_KEYS}
+
+
+async def _analyze_and_store_bird_parts(session: AsyncSession, asset: MediaAsset) -> None:
+    """Run BirdNET analysis and persist detected bird vocal parts for the session."""
+    location = asset.session.location
+    lat = getattr(location, "exact_latitude", None)
+    lon = getattr(location, "exact_longitude", None)
+    recorded_at = asset.session.recorded_at
+
+    try:
+        with materialize_storage(asset.storage_key) as path:
+            if path is None:
+                raise FileNotFoundError(f"Source audio not found: {asset.storage_key}")
+            detections = analyze_audio_file(
+                path,
+                lat=lat,
+                lon=lon,
+                recorded_at=recorded_at,
+            )
+        await sessions_repository.replace_bird_vocal_parts(
+            session,
+            asset.session_id,
+            detections,
+            analysis_provider=ANALYSIS_PROVIDER,
+            analysis_model_version=ANALYSIS_MODEL_VERSION,
+        )
+        _record_bird_analysis_status(
+            asset.session,
+            status="succeeded",
+            parts_count=len(detections),
+        )
+    except Exception as exc:
+        logger.exception("BirdNET analysis failed for session %s", asset.session_id)
+        await sessions_repository.replace_bird_vocal_parts(
+            session,
+            asset.session_id,
+            [],
+            analysis_provider=ANALYSIS_PROVIDER,
+            analysis_model_version=ANALYSIS_MODEL_VERSION,
+        )
+        _record_bird_analysis_status(
+            asset.session,
+            status="failed",
+            error_code=exc.__class__.__name__,
+            error_message=str(exc)[:500],
+        )
+
+
+def _record_bird_analysis_status(
+    recording: RecordingSession,
+    *,
+    status: str,
+    parts_count: int | None = None,
+    error_code: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    """Persist the latest BirdNET analysis outcome on the session metadata."""
+    metadata = recording.metadata_ if isinstance(recording.metadata_, dict) else {}
+    payload: dict[str, object] = {
+        "status": status,
+        "provider": ANALYSIS_PROVIDER,
+        "model_version": ANALYSIS_MODEL_VERSION,
+    }
+    if parts_count is not None:
+        payload["parts_count"] = parts_count
+    if error_code is not None:
+        payload["error_code"] = error_code
+    if error_message is not None:
+        payload["error_message"] = error_message
+    recording.metadata_ = {**metadata, "bird_analysis": payload}
 
 
 def _extract_wav_metadata(path: Path) -> dict:

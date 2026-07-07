@@ -92,7 +92,7 @@ services:
       retries: 10
 
   minio-init:
-    image: minio/mc:RELEASE.2024-12-18T13-15-44Z
+    image: minio/mc:latest
     depends_on:
       minio:
         condition: service_healthy
