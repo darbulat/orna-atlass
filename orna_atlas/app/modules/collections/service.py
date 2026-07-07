@@ -32,6 +32,7 @@ def summary_from_collection(collection: Collection) -> CollectionSummaryRead:
 
 
 def detail_from_collection(collection: Collection) -> CollectionDetailRead:
+    summary = summary_from_collection(collection)
     locations = [LocationRead.model_validate(link.location) for link in collection.location_links]
     sessions = [
         SessionRead.model_validate(link.session)
@@ -44,6 +45,8 @@ def detail_from_collection(collection: Collection) -> CollectionDetailRead:
         title=collection.title,
         description=collection.description,
         sort_order=collection.sort_order,
+        location_count=summary.location_count,
+        session_count=summary.session_count,
         metadata_=collection.metadata_,
         created_at=collection.created_at,
         updated_at=collection.updated_at,

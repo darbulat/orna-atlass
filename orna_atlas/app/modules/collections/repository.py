@@ -62,6 +62,10 @@ async def get_collection_by_slug_for_admin(session: AsyncSession, slug: str) -> 
     return result.scalar_one_or_none()
 
 
+def _dedupe_ids(ids: list[UUID]) -> list[UUID]:
+    return list(dict.fromkeys(ids))
+
+
 async def _sync_links(
     session: AsyncSession,
     collection: Collection,
@@ -72,14 +76,14 @@ async def _sync_links(
     if location_ids is not None:
         collection.location_links.clear()
         await session.flush()
-        for index, location_id in enumerate(location_ids):
+        for index, location_id in enumerate(_dedupe_ids(location_ids)):
             collection.location_links.append(
                 CollectionLocation(collection_id=collection.id, location_id=location_id, sort_order=index)
             )
     if session_ids is not None:
         collection.session_links.clear()
         await session.flush()
-        for index, session_id in enumerate(session_ids):
+        for index, session_id in enumerate(_dedupe_ids(session_ids)):
             collection.session_links.append(
                 CollectionSession(collection_id=collection.id, session_id=session_id, sort_order=index)
             )

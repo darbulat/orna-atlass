@@ -65,6 +65,32 @@ def test_location_read_marks_protected_coordinates() -> None:
     assert public_payload["coordinates_protected"] is False
 
 
+def test_location_read_hides_exact_coordinates_for_sensitive_exact_public() -> None:
+    now = datetime.now(UTC)
+    sensitive = Location(
+        id=uuid4(),
+        slug="sensitive-but-exact-flag",
+        name="Sensitive Exact Flag",
+        exact_latitude=57.1567,
+        exact_longitude=30.3186,
+        public_latitude=57.21,
+        public_longitude=30.42,
+        coordinate_visibility="exact_public",
+        sensitivity_level="protected",
+        timezone="Europe/Moscow",
+        metadata_={},
+        created_at=now,
+        updated_at=now,
+    )
+
+    payload = LocationRead.model_validate(sensitive).model_dump(mode="json")
+
+    assert payload["coordinates_protected"] is True
+    assert payload["latitude"] == 57.21
+    assert payload["longitude"] == 30.42
+    assert payload["latitude"] != 57.1567
+
+
 def test_protected_location_point_uses_public_coordinates_only() -> None:
     now = datetime.now(UTC)
     location = SimpleNamespace(
@@ -193,3 +219,55 @@ def test_collection_summary_counts_public_sessions_only() -> None:
 
     assert summary["session_count"] == 1
     assert summary["location_count"] == 1
+
+
+def test_collection_detail_includes_summary_counts() -> None:
+    now = datetime.now(UTC)
+    public_session = SimpleNamespace(
+        id=uuid4(),
+        location_id=uuid4(),
+        slug="public-session",
+        title="Public Session",
+        description=None,
+        recorded_at=now,
+        duration_seconds=1800,
+        recorder=None,
+        weather=None,
+        access_level="public",
+        processing_status="ready",
+        is_featured=False,
+        featured_sort_order=None,
+        metadata_={},
+        created_at=now,
+        updated_at=now,
+        media_assets=[],
+    )
+    collection = SimpleNamespace(
+        id=uuid4(),
+        slug="dawn-archive",
+        title="Dawn Archive",
+        description="Dawn journeys",
+        sort_order=0,
+        metadata_={},
+        created_at=now,
+        updated_at=now,
+        location_links=[],
+        session_links=[
+            SimpleNamespace(session=public_session),
+            SimpleNamespace(session=SimpleNamespace(access_level="members_only")),
+        ],
+    )
+
+    detail = collections_service.detail_from_collection(collection).model_dump(mode="json")
+
+    assert detail["location_count"] == 0
+    assert detail["session_count"] == 1
+    assert len(detail["sessions"]) == 1
+
+
+def test_sync_links_deduplicates_ids() -> None:
+    from orna_atlas.app.modules.collections.repository import _dedupe_ids
+
+    first = uuid4()
+    second = uuid4()
+    assert _dedupe_ids([first, second, first]) == [first, second]

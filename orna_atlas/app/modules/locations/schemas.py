@@ -93,8 +93,5 @@ class LocationRead(BaseModel):
     @computed_field
     @property
     def coordinates_protected(self) -> bool:
-        return self.coordinate_visibility != "exact_public" or self.sensitivity_level in {
-            "protected",
-            "high",
-            "medium",
-        }
+        sensitive_levels = {"protected", "high", "medium"}
+        return self.coordinate_visibility != "exact_public" or self.sensitivity_level in sensitive_levels

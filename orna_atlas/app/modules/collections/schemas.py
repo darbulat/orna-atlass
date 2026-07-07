@@ -33,6 +33,8 @@ class CollectionDetailRead(BaseModel):
     title: str
     description: str | None
     sort_order: int
+    location_count: int = 0
+    session_count: int = 0
     metadata: dict = Field(validation_alias="metadata_")
     created_at: datetime
     updated_at: datetime

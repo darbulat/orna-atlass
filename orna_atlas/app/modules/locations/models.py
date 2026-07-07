@@ -7,6 +7,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from orna_atlas.app.db.base import Base
 
+_SENSITIVE_LEVELS = frozenset({"protected", "high", "medium"})
+
 
 class Location(Base):
     __tablename__ = "locations"
@@ -34,10 +36,14 @@ class Location(Base):
     sessions = relationship("RecordingSession", back_populates="location", cascade="all, delete-orphan")
 
     @property
+    def coordinates_protected(self) -> bool:
+        return self.coordinate_visibility != "exact_public" or self.sensitivity_level in _SENSITIVE_LEVELS
+
+    @property
     def latitude(self) -> float | None:
         if self.coordinate_visibility == "hidden_public":
             return None
-        if self.coordinate_visibility == "exact_public":
+        if self.coordinate_visibility == "exact_public" and self.sensitivity_level not in _SENSITIVE_LEVELS:
             return self.exact_latitude
         return self.public_latitude
 
@@ -45,6 +51,6 @@ class Location(Base):
     def longitude(self) -> float | None:
         if self.coordinate_visibility == "hidden_public":
             return None
-        if self.coordinate_visibility == "exact_public":
+        if self.coordinate_visibility == "exact_public" and self.sensitivity_level not in _SENSITIVE_LEVELS:
             return self.exact_longitude
         return self.public_longitude
