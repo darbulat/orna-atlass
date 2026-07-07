@@ -19,7 +19,6 @@ from orna_atlas.app.modules.media.service import process_media_asset, sha256_fil
 from orna_atlas.app.modules.sessions.models import RecordingSession
 from orna_atlas.app.modules.sessions.schemas import SessionCreate
 from orna_atlas.app.modules.sessions import repository as sessions_repository
-from orna_atlas.app.modules.sessions import service as sessions_service
 
 LOCATION_SLUG = "berezinsky-biosphere-reserve"
 SESSION_SLUG = "berezinsky-sample"

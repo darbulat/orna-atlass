@@ -1,4 +1,6 @@
 from orna_atlas.app.integrations.bird_analysis import (
+    ANALYSIS_MODEL_VERSION,
+    BIRDNET_ANALYZER_VERSION,
     normalize_birdnet_detections,
     species_code_from_scientific_name,
 )
@@ -7,6 +9,10 @@ from orna_atlas.app.integrations.bird_analysis import (
 def test_species_code_from_scientific_name() -> None:
     assert species_code_from_scientific_name("Turdus merula") == "turdus_merula"
     assert species_code_from_scientific_name(None) == "unknown_species"
+
+
+def test_analysis_model_version_matches_pinned_analyzer() -> None:
+    assert ANALYSIS_MODEL_VERSION == f"birdnet-analyzer-v{BIRDNET_ANALYZER_VERSION}"
 
 
 def test_normalize_birdnet_detections_filters_low_confidence() -> None:

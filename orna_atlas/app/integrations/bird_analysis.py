@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 
 ANALYSIS_PROVIDER = "birdnet"
-ANALYSIS_MODEL_VERSION = "birdnet-analyzer-v2.4"
+BIRDNET_ANALYZER_VERSION = "2.4"
+ANALYSIS_MODEL_VERSION = f"birdnet-analyzer-v{BIRDNET_ANALYZER_VERSION}"
 DEFAULT_MIN_CONFIDENCE = 0.25
 
 
@@ -78,10 +79,10 @@ def analyze_audio_file(
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
 ) -> list[BirdDetection]:
     """Run BirdNET analysis on an audio file and return normalized detections."""
-    from birdnetlib import Recording
-    from birdnetlib.analyzer import Analyzer
+    from birdnetlib import LargeRecording
+    from birdnetlib.analyzer import LargeRecordingAnalyzer
 
-    analyzer = Analyzer()
+    analyzer = LargeRecordingAnalyzer(version=BIRDNET_ANALYZER_VERSION)
     recording_kwargs: dict = {
         "min_conf": min_confidence,
     }
@@ -91,6 +92,6 @@ def analyze_audio_file(
     if recorded_at is not None:
         recording_kwargs["date"] = recorded_at
 
-    recording = Recording(analyzer, str(audio_path), **recording_kwargs)
+    recording = LargeRecording(analyzer, str(audio_path), **recording_kwargs)
     recording.analyze()
     return normalize_birdnet_detections(recording.detections, min_confidence=min_confidence)
