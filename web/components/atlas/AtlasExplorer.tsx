@@ -2,7 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as THREE from "three";
+import {
+  ArcGisMapServerImageryProvider,
+  Cartesian3,
+  Color,
+  EllipsoidTerrainProvider,
+  Entity,
+  HorizontalOrigin,
+  ImageryLayer,
+  LabelStyle,
+  ScreenSpaceEventHandler,
+  ScreenSpaceEventType,
+  TileMapServiceImageryProvider,
+  VerticalOrigin,
+  Viewer,
+  buildModuleUrl,
+} from "cesium";
 import type {
   AtlasCluster,
   AtlasPoint,
@@ -21,13 +36,16 @@ type Props = {
   dawn: DawnCurrentResponse;
 };
 
-type GlobeProps = {
+type CesiumGlobeProps = {
   points: Array<AtlasPoint | AtlasCluster>;
   selectedSlug: string | null;
   activeDawnSlugs: Set<string>;
   dawnLongitude: number;
   onSelectPoint: (point: AtlasPoint) => void;
 };
+
+const satelliteImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
+const habitatOptions = ["forest", "wetland", "steppe", "coast"];
 
 function isPoint(item: AtlasPoint | AtlasCluster): item is AtlasPoint {
   return item.type === "point";
@@ -48,391 +66,209 @@ function dawnLongitudeFromDate(value: string) {
   return ((((sunriseLongitude + 180) % 360) + 360) % 360) - 180;
 }
 
-function latLonToVector3(latitude: number, longitude: number, radius: number) {
-  const phi = THREE.MathUtils.degToRad(90 - latitude);
-  const theta = THREE.MathUtils.degToRad(longitude + 180);
-  return new THREE.Vector3(
-    -radius * Math.sin(phi) * Math.cos(theta),
-    radius * Math.cos(phi),
-    radius * Math.sin(phi) * Math.sin(theta),
-  );
+function dawnPolylinePositions(longitude: number) {
+  const positions = [];
+  for (let latitude = -88; latitude <= 88; latitude += 2) {
+    positions.push(Cartesian3.fromDegrees(longitude, latitude, 7000));
+  }
+  return positions;
 }
 
-function makeEarthTexture() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 2048;
-  canvas.height = 1024;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  const ocean = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  ocean.addColorStop(0, "#176979");
-  ocean.addColorStop(0.45, "#0f4c5a");
-  ocean.addColorStop(1, "#0a2634");
-  ctx.fillStyle = ocean;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const drawPolygon = (points: Array<[number, number]>, color: string) => {
-    ctx.beginPath();
-    points.forEach(([lon, lat], index) => {
-      const x = ((lon + 180) / 360) * canvas.width;
-      const y = ((90 - lat) / 180) * canvas.height;
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.strokeStyle = "rgba(237,247,242,0.24)";
-    ctx.lineWidth = 3;
-    ctx.stroke();
-  };
-
-  const land = "#69a878";
-  const highland = "#c0bd73";
-  [
-    [
-      [-168, 70],
-      [-138, 72],
-      [-105, 58],
-      [-82, 48],
-      [-66, 28],
-      [-82, 12],
-      [-108, 20],
-      [-126, 34],
-      [-150, 48],
-    ],
-    [
-      [-82, 12],
-      [-66, 10],
-      [-50, -8],
-      [-56, -28],
-      [-66, -54],
-      [-78, -38],
-      [-84, -10],
-    ],
-    [
-      [-18, 35],
-      [26, 38],
-      [48, 20],
-      [44, -34],
-      [18, -36],
-      [-6, -12],
-      [-18, 10],
-    ],
-    [
-      [-10, 72],
-      [48, 70],
-      [102, 60],
-      [150, 50],
-      [166, 18],
-      [128, 4],
-      [100, 22],
-      [62, 8],
-      [38, 30],
-      [12, 44],
-      [-10, 38],
-    ],
-    [
-      [112, -12],
-      [154, -18],
-      [148, -42],
-      [116, -38],
-      [108, -24],
-    ],
-    [
-      [-52, 82],
-      [-24, 78],
-      [-32, 62],
-      [-56, 60],
-      [-72, 72],
-    ],
-  ].forEach((shape) => drawPolygon(shape as Array<[number, number]>, land));
-
-  [
-    [
-      [-130, 52],
-      [-102, 46],
-      [-92, 30],
-      [-116, 30],
-    ],
-    [
-      [70, 44],
-      [104, 36],
-      [95, 20],
-      [60, 26],
-    ],
-    [
-      [12, 4],
-      [34, -6],
-      [28, -24],
-      [4, -16],
-    ],
-  ].forEach((shape) => drawPolygon(shape as Array<[number, number]>, highland));
-
-  ctx.strokeStyle = "rgba(237,247,242,0.14)";
-  ctx.lineWidth = 1;
-  for (let lon = -180; lon <= 180; lon += 30) {
-    const x = ((lon + 180) / 360) * canvas.width;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
-  for (let lat = -60; lat <= 60; lat += 30) {
-    const y = ((90 - lat) / 180) * canvas.height;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
-    ctx.stroke();
-  }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
-  return texture;
+function configureCesiumBaseUrl() {
+  const urlBuilder = buildModuleUrl as typeof buildModuleUrl & { setBaseUrl?: (value: string) => void };
+  urlBuilder.setBaseUrl?.("/cesium/");
 }
 
-function addGraticule(group: THREE.Group, radius: number) {
-  const material = new THREE.LineBasicMaterial({ color: 0x9bd8bd, transparent: true, opacity: 0.2 });
-
-  for (let lat = -60; lat <= 60; lat += 30) {
-    const points = [];
-    for (let lon = -180; lon <= 180; lon += 3) {
-      points.push(latLonToVector3(lat, lon, radius));
-    }
-    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material));
-  }
-
-  for (let lon = -150; lon <= 180; lon += 30) {
-    const points = [];
-    for (let lat = -85; lat <= 85; lat += 3) {
-      points.push(latLonToVector3(lat, lon, radius));
-    }
-    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material));
-  }
-}
-
-function makeDawnLine(longitude: number, radius: number) {
-  const points = [];
-  for (let lat = -88; lat <= 88; lat += 2) {
-    points.push(latLonToVector3(lat, longitude, radius));
-  }
-  const material = new THREE.LineBasicMaterial({ color: 0xf6c46b, transparent: true, opacity: 0.85 });
-  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material);
-}
-
-function GlobeCanvas({ points, selectedSlug, activeDawnSlugs, dawnLongitude, onSelectPoint }: GlobeProps) {
-  const mountRef = useRef<HTMLDivElement | null>(null);
+function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, dawnLongitude, onSelectPoint }: CesiumGlobeProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const viewerRef = useRef<Viewer | null>(null);
+  const pointByEntityIdRef = useRef(new Map<string, AtlasPoint>());
   const onSelectRef = useRef(onSelectPoint);
-  const [webglUnavailable, setWebglUnavailable] = useState(false);
+  const [isWebglUnavailable, setIsWebglUnavailable] = useState(false);
 
   useEffect(() => {
     onSelectRef.current = onSelectPoint;
   }, [onSelectPoint]);
 
   useEffect(() => {
-    const mount = mountRef.current;
-    if (!mount) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const host = container;
 
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
-    camera.position.set(0, 0, 8.6);
+    let isDisposed = false;
+    let clickHandler: ScreenSpaceEventHandler | null = null;
+    let viewer: Viewer | null = null;
+    const pointByEntityId = pointByEntityIdRef.current;
 
-    let renderer: THREE.WebGLRenderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    } catch {
-      setWebglUnavailable(true);
-      return;
-    }
-    setWebglUnavailable(false);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    mount.appendChild(renderer.domElement);
+    async function createViewer() {
+      try {
+        configureCesiumBaseUrl();
+        viewer = new Viewer(host, {
+          animation: false,
+          baseLayer: false,
+          baseLayerPicker: false,
+          fullscreenButton: false,
+          geocoder: false,
+          homeButton: false,
+          infoBox: false,
+          navigationHelpButton: false,
+          sceneModePicker: false,
+          selectionIndicator: false,
+          shouldAnimate: true,
+          timeline: false,
+          terrainProvider: new EllipsoidTerrainProvider(),
+          useBrowserRecommendedResolution: true,
+          vrButton: false,
+        });
 
-    const globe = new THREE.Group();
-    globe.rotation.x = THREE.MathUtils.degToRad(-12);
-    globe.rotation.y = THREE.MathUtils.degToRad(-28);
-    scene.add(globe);
+        if (isDisposed) {
+          viewer.destroy();
+          return;
+        }
 
-    scene.add(new THREE.AmbientLight(0x8fb8ad, 1.15));
-    const sun = new THREE.DirectionalLight(0xfff0c2, 2.2);
-    sun.position.set(-3, 1.4, 4);
-    scene.add(sun);
+        viewerRef.current = viewer;
+        setIsWebglUnavailable(false);
 
-    const stars = new THREE.Points(
-      new THREE.BufferGeometry().setFromPoints(
-        Array.from({ length: 140 }, (_, index) => {
-          const angle = index * 2.399963;
-          const radius = 3.4 + ((index * 37) % 100) / 100;
-          return new THREE.Vector3(Math.cos(angle) * radius, ((index % 29) - 14) * 0.11, -1.6 - Math.sin(angle) * 0.45);
-        }),
-      ),
-      new THREE.PointsMaterial({ color: 0x9bd8bd, transparent: true, opacity: 0.32, size: 0.012 }),
-    );
-    scene.add(stars);
+        viewer.scene.globe.enableLighting = true;
+        viewer.scene.globe.showGroundAtmosphere = true;
+        if (viewer.scene.skyAtmosphere) {
+          viewer.scene.skyAtmosphere.show = true;
+        }
+        viewer.scene.screenSpaceCameraController.enableTilt = true;
+        viewer.scene.screenSpaceCameraController.minimumZoomDistance = 350000;
+        viewer.scene.screenSpaceCameraController.maximumZoomDistance = 52000000;
+        viewer.camera.setView({
+          destination: Cartesian3.fromDegrees(24, 34, 17000000),
+        });
 
-    const earthTexture = makeEarthTexture();
-    const earth = new THREE.Mesh(
-      new THREE.SphereGeometry(2.08, 96, 96),
-      new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        emissive: 0x143f38,
-        emissiveIntensity: 0.32,
-        map: earthTexture ?? undefined,
-        metalness: 0,
-        roughness: 0.64,
-      }),
-    );
-    globe.add(earth);
-
-    const shade = new THREE.Mesh(
-      new THREE.SphereGeometry(2.086, 96, 96),
-      new THREE.MeshBasicMaterial({ color: 0x020605, transparent: true, opacity: 0.1, side: THREE.BackSide }),
-    );
-    globe.add(shade);
-
-    const atmosphere = new THREE.Mesh(
-      new THREE.SphereGeometry(2.18, 96, 96),
-      new THREE.MeshBasicMaterial({ color: 0x9bd8bd, transparent: true, opacity: 0.14, side: THREE.BackSide }),
-    );
-    globe.add(atmosphere);
-
-    addGraticule(globe, 2.092);
-
-    const markerGroup = new THREE.Group();
-    globe.add(markerGroup);
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
-    let dawnLine: THREE.Line | null = null;
-    let dragStart: { x: number; y: number; rotationX: number; rotationY: number } | null = null;
-    let moved = false;
-    let animationId = 0;
-
-    const rebuildMarkers = () => {
-      markerGroup.clear();
-      points.forEach((item) => {
-        const pointSize = isPoint(item) ? Math.min(0.055 + item.session_count * 0.01, 0.105) : 0.075;
-        const color =
-          isPoint(item) && item.slug === selectedSlug
-            ? 0xfff4c2
-            : isPoint(item) && activeDawnSlugs.has(item.slug)
-              ? 0xf6c46b
-              : item.type === "cluster"
-                ? 0xf6c46b
-                : 0x9bd8bd;
-        const marker = new THREE.Mesh(
-          new THREE.SphereGeometry(pointSize, 18, 18),
-          new THREE.MeshStandardMaterial({
-            color,
-            emissive: color,
-            emissiveIntensity: isPoint(item) && item.slug === selectedSlug ? 0.8 : 0.38,
-            roughness: 0.35,
-          }),
+        const localProvider = await TileMapServiceImageryProvider.fromUrl(
+          buildModuleUrl("Assets/Textures/NaturalEarthII"),
         );
-        marker.position.copy(latLonToVector3(item.latitude, item.longitude, 2.18));
-        marker.userData = { point: isPoint(item) ? item : null };
-        markerGroup.add(marker);
-      });
-    };
+        if (!isDisposed && viewer && !viewer.isDestroyed()) {
+          viewer.imageryLayers.addImageryProvider(localProvider);
+        }
 
-    const rebuildDawn = () => {
-      if (dawnLine) {
-        globe.remove(dawnLine);
-        dawnLine.geometry.dispose();
+        const satelliteProvider = await ArcGisMapServerImageryProvider.fromUrl(satelliteImageryUrl, {
+          enablePickFeatures: false,
+        });
+        if (!isDisposed && viewer && !viewer.isDestroyed()) {
+          viewer.imageryLayers.add(new ImageryLayer(satelliteProvider));
+        }
+      } catch {
+        if (!isDisposed) {
+          setIsWebglUnavailable(true);
+        }
+        if (viewer && !viewer.isDestroyed()) {
+          viewer.destroy();
+        }
+        viewerRef.current = null;
+        return;
       }
-      dawnLine = makeDawnLine(dawnLongitude, 2.12);
-      globe.add(dawnLine);
-    };
 
-    const resize = () => {
-      const rect = mount.getBoundingClientRect();
-      const width = Math.max(rect.width, 1);
-      const height = Math.max(rect.height, 1);
-      renderer.setSize(width, height, false);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-    };
+      if (!viewer || viewer.isDestroyed()) return;
+      clickHandler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+      clickHandler.setInputAction((event: ScreenSpaceEventHandler.PositionedEvent) => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const picked = viewer.scene.pick(event.position);
+        const entity = picked?.id as Entity | undefined;
+        const point = entity?.id ? pointByEntityIdRef.current.get(entity.id) : undefined;
+        if (point) {
+          onSelectRef.current(point);
+        }
+      }, ScreenSpaceEventType.LEFT_CLICK);
+    }
 
-    const resizeObserver = new ResizeObserver(resize);
-    resizeObserver.observe(mount);
-    resize();
-    rebuildMarkers();
-    rebuildDawn();
-
-    const animate = () => {
-      if (!dragStart) {
-        globe.rotation.y += 0.0012;
-      }
-      renderer.render(scene, camera);
-      animationId = window.requestAnimationFrame(animate);
-    };
-    animate();
-
-    const setPointer = (event: PointerEvent) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    };
-
-    const handlePointerDown = (event: PointerEvent) => {
-      renderer.domElement.setPointerCapture(event.pointerId);
-      dragStart = {
-        x: event.clientX,
-        y: event.clientY,
-        rotationX: globe.rotation.x,
-        rotationY: globe.rotation.y,
-      };
-      moved = false;
-    };
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!dragStart) return;
-      const deltaX = event.clientX - dragStart.x;
-      const deltaY = event.clientY - dragStart.y;
-      if (Math.abs(deltaX) + Math.abs(deltaY) > 4) moved = true;
-      globe.rotation.y = dragStart.rotationY + deltaX * 0.006;
-      globe.rotation.x = THREE.MathUtils.clamp(
-        dragStart.rotationX + deltaY * 0.004,
-        THREE.MathUtils.degToRad(-62),
-        THREE.MathUtils.degToRad(62),
-      );
-    };
-
-    const handlePointerUp = (event: PointerEvent) => {
-      renderer.domElement.releasePointerCapture(event.pointerId);
-      if (!moved) {
-        setPointer(event);
-        raycaster.setFromCamera(pointer, camera);
-        const hit = raycaster.intersectObjects(markerGroup.children, false)[0];
-        const point = hit?.object.userData.point as AtlasPoint | null | undefined;
-        if (point) onSelectRef.current(point);
-      }
-      dragStart = null;
-    };
-
-    renderer.domElement.addEventListener("pointerdown", handlePointerDown);
-    renderer.domElement.addEventListener("pointermove", handlePointerMove);
-    renderer.domElement.addEventListener("pointerup", handlePointerUp);
+    void createViewer();
 
     return () => {
-      window.cancelAnimationFrame(animationId);
-      resizeObserver.disconnect();
-      renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
-      renderer.domElement.removeEventListener("pointermove", handlePointerMove);
-      renderer.domElement.removeEventListener("pointerup", handlePointerUp);
-      renderer.dispose();
-      earth.geometry.dispose();
-      earthTexture?.dispose();
-      mount.removeChild(renderer.domElement);
+      isDisposed = true;
+      clickHandler?.destroy();
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        viewerRef.current.destroy();
+      }
+      viewerRef.current = null;
+      pointByEntityId.clear();
     };
+  }, []);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed()) return;
+
+    viewer.entities.removeAll();
+    pointByEntityIdRef.current.clear();
+
+    viewer.entities.add({
+      id: "dawn-meridian",
+      polyline: {
+        positions: dawnPolylinePositions(dawnLongitude),
+        width: 3,
+        material: Color.fromCssColorString("#f6c46b").withAlpha(0.92),
+        clampToGround: false,
+      },
+    });
+
+    points.forEach((item) => {
+      const entityId = `${item.type}-${item.id}`;
+      const selected = isPoint(item) && item.slug === selectedSlug;
+      const dawnActive = isPoint(item) && activeDawnSlugs.has(item.slug);
+      const markerColor = selected
+        ? Color.fromCssColorString("#fff4c2")
+        : dawnActive || item.type === "cluster"
+          ? Color.fromCssColorString("#f6c46b")
+          : Color.fromCssColorString("#9bd8bd");
+      const markerText = isPoint(item) ? String(item.session_count) : String(item.count);
+
+      if (isPoint(item)) {
+        pointByEntityIdRef.current.set(entityId, item);
+      }
+
+      viewer.entities.add({
+        id: entityId,
+        name: isPoint(item) ? item.name : `${item.count} locations`,
+        position: Cartesian3.fromDegrees(item.longitude, item.latitude, selected ? 110000 : 85000),
+        point: {
+          pixelSize: selected ? 18 : item.type === "cluster" ? 16 : 12,
+          color: markerColor,
+          outlineColor: Color.WHITE.withAlpha(0.86),
+          outlineWidth: 2,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+        label: {
+          text: markerText,
+          font: "600 12px Inter, sans-serif",
+          fillColor: selected || item.type === "cluster" ? Color.fromCssColorString("#07110f") : Color.WHITE,
+          outlineColor: Color.BLACK.withAlpha(0.55),
+          outlineWidth: 2,
+          style: LabelStyle.FILL_AND_OUTLINE,
+          horizontalOrigin: HorizontalOrigin.CENTER,
+          verticalOrigin: VerticalOrigin.CENTER,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      });
+    });
+
+    viewer.scene.requestRender();
   }, [points, selectedSlug, activeDawnSlugs, dawnLongitude]);
 
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || !selectedSlug) return;
+
+    const selected = points.find((item) => isPoint(item) && item.slug === selectedSlug);
+    if (!selected || !isPoint(selected)) return;
+
+    viewer.camera.flyTo({
+      destination: Cartesian3.fromDegrees(selected.longitude, selected.latitude, 2200000),
+      duration: 0.85,
+    });
+  }, [points, selectedSlug]);
+
   return (
-    <div className="globe-stage" ref={mountRef} aria-label="Interactive 3D globe">
-      {webglUnavailable ? <StaticGlobeFallback points={points} selectedSlug={selectedSlug} /> : null}
-      <div className="globe-hint">Drag to rotate / click a marker</div>
+    <div className="globe-stage cesium-stage" aria-label="Interactive Cesium globe">
+      <div ref={containerRef} className="cesium-host" />
+      {isWebglUnavailable ? <StaticGlobeFallback points={points} selectedSlug={selectedSlug} /> : null}
+      <div className="globe-hint">Drag to rotate / scroll to zoom / click a marker</div>
     </div>
   );
 }
@@ -467,8 +303,6 @@ function StaticGlobeFallback({
     </div>
   );
 }
-
-const habitatOptions = ["forest", "wetland", "steppe", "coast"];
 
 export function AtlasExplorer({ initialView, points, dawn }: Props) {
   const [view, setView] = useState<AtlasView>(initialView);
@@ -679,7 +513,7 @@ export function AtlasExplorer({ initialView, points, dawn }: Props) {
 
       {view === "globe" ? (
         <div className="atlas-grid">
-          <GlobeCanvas
+          <CesiumGlobe
             points={atlasPoints}
             selectedSlug={selectedSlug}
             activeDawnSlugs={activeDawnSlugs}
