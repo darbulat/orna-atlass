@@ -148,11 +148,15 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, dawnLongitude, onS
           viewer.imageryLayers.addImageryProvider(localProvider);
         }
 
-        const satelliteProvider = await ArcGisMapServerImageryProvider.fromUrl(satelliteImageryUrl, {
-          enablePickFeatures: false,
-        });
-        if (!isDisposed && viewer && !viewer.isDestroyed()) {
-          viewer.imageryLayers.add(new ImageryLayer(satelliteProvider));
+        try {
+          const satelliteProvider = await ArcGisMapServerImageryProvider.fromUrl(satelliteImageryUrl, {
+            enablePickFeatures: false,
+          });
+          if (!isDisposed && viewer && !viewer.isDestroyed()) {
+            viewer.imageryLayers.add(new ImageryLayer(satelliteProvider));
+          }
+        } catch {
+          // Keep the local NaturalEarth globe interactive when satellite imagery is unavailable.
         }
       } catch {
         if (!isDisposed) {
@@ -232,7 +236,6 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, dawnLongitude, onS
           color: markerColor,
           outlineColor: Color.WHITE.withAlpha(0.86),
           outlineWidth: 2,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         label: {
           text: markerText,
@@ -243,7 +246,6 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, dawnLongitude, onS
           style: LabelStyle.FILL_AND_OUTLINE,
           horizontalOrigin: HorizontalOrigin.CENTER,
           verticalOrigin: VerticalOrigin.CENTER,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       });
     });
