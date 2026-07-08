@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useCallback, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import type { BirdVocalPart, SessionDetail } from "../../lib/api/sessions";
 import { usePlayer } from "./PlayerProvider";
 
@@ -44,6 +44,7 @@ export function SessionPlayer({ session }: { session: SessionDetail }) {
     session.waveform.peaks.length > 0
       ? session.waveform.peaks.slice(0, 52)
       : [0.12, 0.22, 0.18, 0.36, 0.2, 0.48, 0.26, 0.16, 0.3, 0.2, 0.42, 0.24];
+  const weatherItems = useMemo(() => buildWeatherItems(session), [session]);
 
   const secondsFromTimelineClientX = useCallback(
     (clientX: number) => {
@@ -157,22 +158,12 @@ export function SessionPlayer({ session }: { session: SessionDetail }) {
           <small>{session.location.habitat ?? session.weather ?? "field recording"}</small>
         </div>
         <dl className="session-weather-grid">
-          <div>
-            <dt>9°C</dt>
-            <dd>temperature</dd>
-          </div>
-          <div>
-            <dt>2 m/s</dt>
-            <dd>wind</dd>
-          </div>
-          <div>
-            <dt>78%</dt>
-            <dd>humidity</dd>
-          </div>
-          <div>
-            <dt>Waxing crescent</dt>
-            <dd>moon</dd>
-          </div>
+          {weatherItems.map((item) => (
+            <div key={item.label}>
+              <dt>{item.value}</dt>
+              <dd>{item.label}</dd>
+            </div>
+          ))}
         </dl>
         <button
           type="button"
@@ -313,7 +304,8 @@ function formatCoordinates(session: SessionDetail) {
   }
   const latitudeSuffix = latitude >= 0 ? "N" : "S";
   const longitudeSuffix = longitude >= 0 ? "E" : "W";
-  return `${Math.abs(latitude).toFixed(3)}° ${latitudeSuffix}  ${Math.abs(longitude).toFixed(3)}° ${longitudeSuffix}`;
+  const coordinates = `${Math.abs(latitude).toFixed(3)}° ${latitudeSuffix}  ${Math.abs(longitude).toFixed(3)}° ${longitudeSuffix}`;
+  return session.location.coordinates_protected ? `Approx. ${coordinates}` : coordinates;
 }
 
 function formatDurationClock(seconds: number | null) {
@@ -331,11 +323,15 @@ function formatOffset(seconds: number) {
 }
 
 function timeFormatter(timeZone: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone,
-  });
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone,
+    });
+  } catch {
+    return clockFormatter();
+  }
 }
 
 function clockFormatter() {
@@ -389,6 +385,17 @@ function groupBirdPartsBySpecies(parts: BirdVocalPart[]): BirdTimelineTrack[] {
       parts: [...track.parts].sort((left, right) => left.starts_at_seconds - right.starts_at_seconds),
     }))
     .sort((left, right) => left.startsAt - right.startsAt || left.label.localeCompare(right.label));
+}
+
+type WeatherItem = { label: string; value: string };
+
+function buildWeatherItems(session: SessionDetail): WeatherItem[] {
+  const fallback = [
+    { label: "conditions", value: session.weather?.trim() ? session.weather.trim() : "Unavailable" },
+    { label: "habitat", value: session.location.habitat?.trim() ? session.location.habitat.trim() : "—" },
+  ];
+
+  return fallback;
 }
 
 function timelineTotalSeconds(session: SessionDetail) {

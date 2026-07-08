@@ -225,12 +225,13 @@ function GlobalPlayer() {
   if (!currentSession) {
     return null;
   }
-  if (pathname?.startsWith("/sessions/") || pathname?.startsWith("/atlas")) {
-    return null;
-  }
+  const isSessionOrAtlasRoute = pathname?.startsWith("/sessions/") || pathname?.startsWith("/atlas");
 
   return (
-    <aside className="global-player" aria-label="Global audio player">
+    <aside
+      className={["global-player", isSessionOrAtlasRoute ? "global-player--overlay" : ""].filter(Boolean).join(" ")}
+      aria-label="Global audio player"
+    >
       <div>
         <span className="eyebrow">Global player</span>
         <strong>{currentSession.title}</strong>

@@ -310,6 +310,7 @@ function StaticGlobeFallback({
 export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: Props) {
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [currentDawn, setCurrentDawn] = useState(dawn);
+  const [view] = useState<AtlasView>(initialView);
   const [selectedMode, setSelectedMode] = useState(initialView === "list" ? "Night" : "Dawn");
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -391,10 +392,12 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     }
 
     let isCurrent = true;
+    setCurrentSidePanelSession(null);
     void fetchSessionDetail(selectedSessionSlug).then((session) => {
-      if (isCurrent && session) {
-        setCurrentSidePanelSession(session);
+      if (!isCurrent) {
+        return;
       }
+      setCurrentSidePanelSession(session ?? null);
     });
 
     return () => {
@@ -432,13 +435,37 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     <section className="atlas-workspace atlas-reference-ui" aria-label="Birdsong atlas">
       <div className="atlas-main-panel">
         <div className="atlas-globe-panel">
-          <CesiumGlobe
-            points={atlasPoints}
-            selectedSlug={selectedSlug}
-            activeDawnSlugs={activeDawnSlugs}
-            dawnLongitude={dawnLongitude}
-            onSelectPoint={selectLocation}
-          />
+          {view === "globe" ? (
+            <CesiumGlobe
+              points={atlasPoints}
+              selectedSlug={selectedSlug}
+              activeDawnSlugs={activeDawnSlugs}
+              dawnLongitude={dawnLongitude}
+              onSelectPoint={selectLocation}
+            />
+          ) : view === "map" ? (
+            <div className="globe-stage" aria-label="Static atlas map">
+              <StaticGlobeFallback points={atlasPoints} selectedSlug={selectedSlug} />
+              <div className="globe-hint">Map view (static) · select a marker</div>
+            </div>
+          ) : (
+            <div className="globe-stage" aria-label="Atlas list view">
+              <ol className="atlas-list-view">
+                {locations.map((location) => (
+                  <li key={location.id}>
+                    <button
+                      type="button"
+                      className={location.slug === selectedSlug ? "selected" : ""}
+                      onClick={() => selectLocation(location)}
+                    >
+                      <strong>{location.name}</strong>
+                      <span>{[location.region, location.country_code].filter(Boolean).join(" · ")}</span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
           <div className="atlas-brand">
             <span>Birdsong</span>
             <span>Earth</span>
@@ -448,7 +475,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
             <span>Now at dawn</span>
             <strong>{selected?.name ?? "No location selected"}</strong>
             <small>{selected?.region ?? selected?.country_code ?? "Published atlas site"}</small>
-            <time>{selectedDawn?.local_time ?? formatLocalTime(selected?.timezone)}</time>
+            <time>{selectedDawn?.local_time ?? formatLocalTime(selected?.timezone, currentDawn.generated_at)}</time>
             <small>local time</small>
             {selected?.latest_session ? (
               <Link className="listen-pill" href={`/sessions/${selected.latest_session.slug}`}>
@@ -573,7 +600,11 @@ function LiveBadge({ className = "" }: { className?: string }) {
   );
 }
 
-function formatLocalTime(timezone: string | undefined) {
+function formatLocalTime(timezone: string | undefined, baseTime: string) {
+  const generatedAt = new Date(baseTime);
+  if (Number.isNaN(generatedAt.getTime())) {
+    return "05:42";
+  }
   if (!timezone) return "05:42";
   try {
     return new Intl.DateTimeFormat("en", {
@@ -581,7 +612,7 @@ function formatLocalTime(timezone: string | undefined) {
       hour12: false,
       minute: "2-digit",
       timeZone: timezone,
-    }).format(new Date());
+    }).format(generatedAt);
   } catch {
     return "05:42";
   }
