@@ -1,18 +1,19 @@
 import { AtlasExplorer } from "../../components/atlas/AtlasExplorer";
-import { fetchAtlasPoints, fetchCurrentDawn } from "../../lib/api/sessions";
+import { fetchAtlasPoints, fetchCurrentDawn, fetchSessionDetail } from "../../lib/api/sessions";
+
+const defaultSidePanelSessionSlug = "berezinsky-sample";
 
 export default async function Page({ searchParams }: { searchParams?: { view?: string } }) {
   const view = searchParams?.view === "list" ? "list" : searchParams?.view === "map" ? "map" : "globe";
-  const [atlas, dawn] = await Promise.all([fetchAtlasPoints(view), fetchCurrentDawn()]);
+  const [atlas, dawn, sidePanelSession] = await Promise.all([
+    fetchAtlasPoints(view),
+    fetchCurrentDawn(),
+    fetchSessionDetail(defaultSidePanelSessionSlug),
+  ]);
 
   return (
-    <main className="shell atlas-shell">
-      <section className="atlas-heading">
-        <p className="eyebrow">ORNA Atlas</p>
-        <h1>Atlas</h1>
-        <p>Published field locations, habitats, local context, and long-form recordings.</p>
-      </section>
-      <AtlasExplorer initialView={view} points={atlas.points} dawn={dawn} />
+    <main id="main-content" className="shell atlas-shell">
+      <AtlasExplorer initialView={view} points={atlas.points} dawn={dawn} sidePanelSession={sidePanelSession} />
     </main>
   );
 }

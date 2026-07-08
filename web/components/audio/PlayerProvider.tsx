@@ -225,7 +225,7 @@ function GlobalPlayer() {
   if (!currentSession) {
     return null;
   }
-  if (pathname?.startsWith("/sessions/")) {
+  if (pathname?.startsWith("/sessions/") || pathname?.startsWith("/atlas")) {
     return null;
   }
 
