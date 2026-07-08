@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -20,15 +21,26 @@ type PlayerContextValue = {
   currentSession: SessionDetail | null;
   playbackState: PlaybackState;
   grant: PlaybackGrant | null;
+  currentTimeSeconds: number;
+  durationSeconds: number | null;
   error: string | null;
   play: (session: SessionDetail) => Promise<void>;
   pause: () => void;
+  seek: (seconds: number) => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 function streamUrl(url: string): string {
   return url.startsWith("/") ? apiUrl(url) : url;
+}
+
+function formatClockTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+  return new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
@@ -39,6 +51,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentSession, setCurrentSession] = useState<SessionDetail | null>(null);
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
   const [grant, setGrant] = useState<PlaybackGrant | null>(null);
+  const [currentTimeSeconds, setCurrentTimeSeconds] = useState(0);
+  const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const clearRefreshTimer = useCallback(() => {
@@ -46,6 +60,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
+  }, []);
+
+  const updatePlaybackProgress = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    setCurrentTimeSeconds(Number.isFinite(audio.currentTime) ? audio.currentTime : 0);
+    setDurationSeconds(
+      Number.isFinite(audio.duration) && audio.duration > 0
+        ? audio.duration
+        : currentSessionRef.current?.duration_seconds ?? null,
+    );
   }, []);
 
   const scheduleGrantRefresh = useCallback(
@@ -87,6 +114,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (currentSessionRef.current?.id === session.id && audioRef.current?.src) {
         setError(null);
         await audioRef.current.play();
+        updatePlaybackProgress();
         setPlaybackState("playing");
         return;
       }
@@ -95,6 +123,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       currentSessionRef.current = session;
       setCurrentSession(session);
       setPlaybackState("requesting_grant");
+      setCurrentTimeSeconds(0);
+      setDurationSeconds(session.duration_seconds);
       setError(null);
 
       try {
@@ -110,11 +140,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           audioRef.current = new Audio();
         }
         audioRef.current.src = streamUrl(nextGrant.stream_url);
-        audioRef.current.onended = () => setPlaybackState("ended");
+        audioRef.current.ontimeupdate = updatePlaybackProgress;
+        audioRef.current.onloadedmetadata = updatePlaybackProgress;
+        audioRef.current.ondurationchange = updatePlaybackProgress;
+        audioRef.current.onended = () => {
+          const sessionDuration = currentSessionRef.current?.duration_seconds;
+          const audioDuration = audioRef.current?.duration;
+          setCurrentTimeSeconds(
+            sessionDuration ?? (Number.isFinite(audioDuration) && audioDuration != null ? audioDuration : 0),
+          );
+          setPlaybackState("ended");
+        };
         audioRef.current.onerror = () => setPlaybackState("error");
         audioRef.current.onstalled = () => setPlaybackState("stalled");
         scheduleGrantRefresh(session, nextGrant);
         await audioRef.current.play();
+        updatePlaybackProgress();
         if (requestId === grantRequestRef.current && currentSessionRef.current?.id === session.id) {
           setPlaybackState("playing");
         }
@@ -125,19 +166,40 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [scheduleGrantRefresh],
+    [scheduleGrantRefresh, updatePlaybackProgress],
   );
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
+    updatePlaybackProgress();
     setPlaybackState("paused");
+  }, [updatePlaybackProgress]);
+
+  const seek = useCallback((seconds: number) => {
+    const audio = audioRef.current;
+    const fallbackDuration = currentSessionRef.current?.duration_seconds ?? null;
+    const resolvedDuration =
+      audio && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : fallbackDuration;
+    const nextTime = Math.min(Math.max(seconds, 0), resolvedDuration ?? Math.max(seconds, 0));
+
+    if (audio) {
+      try {
+        audio.currentTime = nextTime;
+      } catch {
+        // Some streams reject seeking before metadata is ready; keep UI state in sync anyway.
+      }
+    }
+
+    setCurrentTimeSeconds(nextTime);
+    setDurationSeconds(resolvedDuration);
+    setPlaybackState((state) => (state === "ended" ? "paused" : state));
   }, []);
 
   useEffect(() => clearRefreshTimer, [clearRefreshTimer]);
 
   const value = useMemo(
-    () => ({ currentSession, playbackState, grant, error, play, pause }),
-    [currentSession, playbackState, grant, error, play, pause],
+    () => ({ currentSession, playbackState, grant, currentTimeSeconds, durationSeconds, error, play, pause, seek }),
+    [currentSession, playbackState, grant, currentTimeSeconds, durationSeconds, error, play, pause, seek],
   );
 
   return (
@@ -158,18 +220,24 @@ export function usePlayer() {
 
 function GlobalPlayer() {
   const { currentSession, playbackState, grant, error, pause } = usePlayer();
+  const pathname = usePathname();
+
   if (!currentSession) {
     return null;
   }
+  const isSessionOrAtlasRoute = pathname?.startsWith("/sessions/") || pathname?.startsWith("/atlas");
 
   return (
-    <aside className="global-player" aria-label="Global audio player">
+    <aside
+      className={["global-player", isSessionOrAtlasRoute ? "global-player--overlay" : ""].filter(Boolean).join(" ")}
+      aria-label="Global audio player"
+    >
       <div>
         <span className="eyebrow">Global player</span>
         <strong>{currentSession.title}</strong>
         <small>{playbackState}</small>
       </div>
-      {grant ? <small>Grant expires {new Date(grant.expires_at).toLocaleTimeString()}</small> : null}
+      {grant ? <small>Grant expires {formatClockTime(grant.expires_at)}</small> : null}
       {error ? <small className="error-text">{error}</small> : null}
       <button type="button" onClick={pause}>Pause</button>
     </aside>
