@@ -4,7 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from orna_atlas.app.db.session import AsyncSessionLocal, engine
 from orna_atlas.app.integrations.redis import get_redis_client
@@ -117,6 +117,223 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
             }
         ],
     },
+    {
+        "slug": "nepal-himalayas-dawn",
+        "name": "Nepal, Himalayas",
+        "description": "High Himalayan dawn site with thin alpine air and distant valley birdsong.",
+        "country_code": "NP",
+        "region": "Himalayas",
+        "habitat": "mountain",
+        "exact_latitude": 28.3949,
+        "exact_longitude": 84.1240,
+        "coordinate_visibility": "exact_public",
+        "sensitivity_level": "none",
+        "timezone": "Asia/Kathmandu",
+        "metadata_": {
+            "seed": True,
+            "field_context": "high Himalayan dawn",
+            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "display_context": "Now at dawn",
+            "elevation_meters": 2897,
+        },
+        "sessions": [
+            {
+                "slug": "nepal-himalayas-first-light",
+                "title": "First Light in the Himalayas",
+                "description": "Sparse high-altitude calls over a still mountain valley at first light.",
+                "recorded_at": datetime(2026, 5, 19, 23, 57, tzinfo=UTC),
+                "duration_seconds": 2520,
+                "recorder": "ORNA field kit",
+                "weather": "Cold high-altitude dawn, calm wind",
+            }
+        ],
+    },
+    {
+        "slug": "black-forest-germany-dawn",
+        "name": "Black Forest, Germany",
+        "description": "Layered conifer forest chorus from the Black Forest at live dawn.",
+        "country_code": "DE",
+        "region": "Black Forest",
+        "habitat": "forest",
+        "exact_latitude": 48.532,
+        "exact_longitude": 8.135,
+        "coordinate_visibility": "exact_public",
+        "sensitivity_level": "none",
+        "timezone": "Europe/Berlin",
+        "metadata_": {
+            "seed": True,
+            "field_context": "Black Forest dawn chorus",
+            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "elevation_meters": 778,
+            "weather": {
+                "temperature_celsius": 9,
+                "wind_meters_per_second": 2,
+                "humidity_percent": 78,
+                "moon_phase": "Waxing crescent",
+            },
+        },
+        "sessions": [
+            {
+                "slug": "black-forest-dawn-chorus",
+                "title": "Black Forest Dawn Chorus",
+                "description": "Blackbird, thrush, chaffinch, warbler, tit, pipit, and wren activity.",
+                "recorded_at": datetime(2026, 6, 12, 3, 42, 31, tzinfo=UTC),
+                "duration_seconds": 3180,
+                "recorder": "ORNA field kit",
+                "weather": "9 C, light wind, 78% humidity, waxing crescent moon",
+            }
+        ],
+    },
+    {
+        "slug": "patagonia-chile-dawn",
+        "name": "Patagonia, Chile",
+        "description": "Cold Patagonian valley and lake ambience under a clear dawn sky.",
+        "country_code": "CL",
+        "region": "Patagonia",
+        "habitat": "mountain",
+        "exact_latitude": -51.2538,
+        "exact_longitude": -72.3450,
+        "coordinate_visibility": "exact_public",
+        "sensitivity_level": "none",
+        "timezone": "America/Punta_Arenas",
+        "metadata_": {
+            "seed": True,
+            "field_context": "Patagonian lake dawn",
+            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "carousel_period": "Dawn",
+        },
+        "sessions": [
+            {
+                "slug": "patagonia-chile-lake-dawn",
+                "title": "Patagonian Lake at Dawn",
+                "description": "Windless lake edge with distant mountain birds and low morning air.",
+                "recorded_at": datetime(2026, 3, 24, 9, 42, tzinfo=UTC),
+                "duration_seconds": 2740,
+                "recorder": "ORNA field kit",
+                "weather": "Cold dawn, calm lake surface",
+            }
+        ],
+    },
+    {
+        "slug": "bavarian-forest-germany-dawn",
+        "name": "Bavarian Forest, Germany",
+        "description": "Soft spruce and beech forest ambience from a Bavarian morning ridge.",
+        "country_code": "DE",
+        "region": "Bavaria",
+        "habitat": "forest",
+        "exact_latitude": 49.1120,
+        "exact_longitude": 13.1340,
+        "coordinate_visibility": "exact_public",
+        "sensitivity_level": "none",
+        "timezone": "Europe/Berlin",
+        "metadata_": {
+            "seed": True,
+            "field_context": "Bavarian forest dawn",
+            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "carousel_period": "Dawn",
+        },
+        "sessions": [
+            {
+                "slug": "bavarian-forest-spruce-dawn",
+                "title": "Spruce Forest Before Sunrise",
+                "description": "Layered dawn birdsong moving through spruce and beech canopy.",
+                "recorded_at": datetime(2026, 6, 8, 3, 34, tzinfo=UTC),
+                "duration_seconds": 2860,
+                "recorder": "ORNA field kit",
+                "weather": "Cool forest dawn with light mist",
+            }
+        ],
+    },
+    {
+        "slug": "kenya-highlands-dawn",
+        "name": "Kenya Highlands",
+        "description": "Open highland grass and forest-edge dawn ambience above the valley floor.",
+        "country_code": "KE",
+        "region": "Central Highlands",
+        "habitat": "highland",
+        "exact_latitude": -0.4160,
+        "exact_longitude": 36.9510,
+        "coordinate_visibility": "exact_public",
+        "sensitivity_level": "none",
+        "timezone": "Africa/Nairobi",
+        "metadata_": {
+            "seed": True,
+            "field_context": "Kenyan highland dawn",
+            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "carousel_period": "Dawn",
+        },
+        "sessions": [
+            {
+                "slug": "kenya-highlands-morning-plain",
+                "title": "Highland Morning Plain",
+                "description": "Grassland calls, soft insects, and distant forest-edge birds at sunrise.",
+                "recorded_at": datetime(2026, 2, 11, 3, 12, tzinfo=UTC),
+                "duration_seconds": 2640,
+                "recorder": "ORNA field kit",
+                "weather": "Mild highland morning, clear sky",
+            }
+        ],
+    },
+    {
+        "slug": "hokkaido-japan-dawn",
+        "name": "Hokkaido, Japan",
+        "description": "Northern Japanese dawn soundscape from forested volcanic uplands.",
+        "country_code": "JP",
+        "region": "Hokkaido",
+        "habitat": "forest",
+        "exact_latitude": 43.2203,
+        "exact_longitude": 142.8635,
+        "coordinate_visibility": "exact_public",
+        "sensitivity_level": "none",
+        "timezone": "Asia/Tokyo",
+        "metadata_": {
+            "seed": True,
+            "field_context": "Hokkaido upland dawn",
+            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "carousel_period": "Dawn",
+        },
+        "sessions": [
+            {
+                "slug": "hokkaido-upland-dawn",
+                "title": "Hokkaido Upland Dawn",
+                "description": "Cool northern forest calls across open volcanic highlands.",
+                "recorded_at": datetime(2026, 5, 27, 19, 28, tzinfo=UTC),
+                "duration_seconds": 2960,
+                "recorder": "ORNA field kit",
+                "weather": "Cool dawn, light mountain haze",
+            }
+        ],
+    },
+    {
+        "slug": "great-bear-rainforest-canada-dawn",
+        "name": "Great Bear Rainforest, Canada",
+        "description": "Temperate rainforest dawn with dense conifers, wet air, and sheltered calls.",
+        "country_code": "CA",
+        "region": "British Columbia",
+        "habitat": "rainforest",
+        "exact_latitude": 52.5000,
+        "exact_longitude": -127.5000,
+        "coordinate_visibility": "exact_public",
+        "sensitivity_level": "none",
+        "timezone": "America/Vancouver",
+        "metadata_": {
+            "seed": True,
+            "field_context": "Great Bear Rainforest dawn",
+            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "carousel_period": "Dawn",
+        },
+        "sessions": [
+            {
+                "slug": "great-bear-rainforest-wet-dawn",
+                "title": "Wet Dawn in Great Bear Rainforest",
+                "description": "Rain-softened forest bed with close canopy calls and distant water.",
+                "recorded_at": datetime(2026, 4, 16, 12, 58, tzinfo=UTC),
+                "duration_seconds": 3020,
+                "recorder": "ORNA field kit",
+                "weather": "Wet, overcast coastal rainforest dawn",
+            }
+        ],
+    },
 ]
 
 
@@ -126,8 +343,23 @@ SEED_COLLECTIONS: list[dict[str, Any]] = [
         "title": "Dawn Archive",
         "description": "Editorial journeys through first-light recordings across the atlas.",
         "sort_order": 0,
-        "location_slugs": ["valdaysky-dawn-forest", "polistovsky-protected-marsh"],
-        "session_slugs": ["valdaysky-dawn-chorus"],
+        "location_slugs": [
+            "valdaysky-dawn-forest",
+            "polistovsky-protected-marsh",
+            "nepal-himalayas-dawn",
+            "black-forest-germany-dawn",
+            "patagonia-chile-dawn",
+            "bavarian-forest-germany-dawn",
+            "kenya-highlands-dawn",
+            "hokkaido-japan-dawn",
+            "great-bear-rainforest-canada-dawn",
+        ],
+        "session_slugs": [
+            "valdaysky-dawn-chorus",
+            "nepal-himalayas-first-light",
+            "black-forest-dawn-chorus",
+            "patagonia-chile-lake-dawn",
+        ],
     },
     {
         "slug": "wetlands",
@@ -142,12 +374,51 @@ SEED_COLLECTIONS: list[dict[str, Any]] = [
         "title": "No Human Noise",
         "description": "Sessions selected for minimal anthropogenic disturbance.",
         "sort_order": 2,
-        "location_slugs": ["valdaysky-dawn-forest", "kazakh-steppe-evening"],
-        "session_slugs": ["kazakh-steppe-after-rain"],
+        "location_slugs": [
+            "valdaysky-dawn-forest",
+            "kazakh-steppe-evening",
+            "patagonia-chile-dawn",
+            "great-bear-rainforest-canada-dawn",
+        ],
+        "session_slugs": [
+            "kazakh-steppe-after-rain",
+            "patagonia-chile-lake-dawn",
+            "great-bear-rainforest-wet-dawn",
+        ],
+    },
+    {
+        "slug": "photo-dawn-places",
+        "title": "Photo Dawn Places",
+        "description": "Locations visible in the July 2026 dawn interface reference image.",
+        "sort_order": 3,
+        "location_slugs": [
+            "nepal-himalayas-dawn",
+            "black-forest-germany-dawn",
+            "patagonia-chile-dawn",
+            "bavarian-forest-germany-dawn",
+            "kenya-highlands-dawn",
+            "hokkaido-japan-dawn",
+            "great-bear-rainforest-canada-dawn",
+        ],
+        "session_slugs": [
+            "nepal-himalayas-first-light",
+            "black-forest-dawn-chorus",
+            "patagonia-chile-lake-dawn",
+            "bavarian-forest-spruce-dawn",
+            "kenya-highlands-morning-plain",
+            "hokkaido-upland-dawn",
+            "great-bear-rainforest-wet-dawn",
+        ],
     },
 ]
 
-FEATURED_SESSION_SLUGS = ["valdaysky-dawn-chorus", "lahemaa-reedbed-morning", "polistovsky-bog-before-sunrise"]
+FEATURED_SESSION_SLUGS = [
+    "valdaysky-dawn-chorus",
+    "lahemaa-reedbed-morning",
+    "polistovsky-bog-before-sunrise",
+    "black-forest-dawn-chorus",
+    "nepal-himalayas-first-light",
+]
 
 BIRD_PARTS_BY_SESSION: dict[str, list[dict[str, Any]]] = {
     "valdaysky-dawn-chorus": [
@@ -182,6 +453,85 @@ BIRD_PARTS_BY_SESSION: dict[str, list[dict[str, Any]]] = {
             "starts_at_seconds": 96.0,
             "ends_at_seconds": 108.4,
             "confidence": 0.91,
+            "call_type": "song",
+            "analysis_provider": "external-bird-audio-service",
+            "analysis_model_version": "2026-06",
+        },
+    ],
+    "black-forest-dawn-chorus": [
+        {
+            "species_code": "turdus_merula",
+            "species_common_name": "Eurasian blackbird",
+            "species_scientific_name": "Turdus merula",
+            "starts_at_seconds": 118.0,
+            "ends_at_seconds": 620.0,
+            "confidence": 0.92,
+            "call_type": "song",
+            "analysis_provider": "external-bird-audio-service",
+            "analysis_model_version": "2026-06",
+        },
+        {
+            "species_code": "turdus_philomelos",
+            "species_common_name": "Song thrush",
+            "species_scientific_name": "Turdus philomelos",
+            "starts_at_seconds": 402.0,
+            "ends_at_seconds": 690.0,
+            "confidence": 0.89,
+            "call_type": "song",
+            "analysis_provider": "external-bird-audio-service",
+            "analysis_model_version": "2026-06",
+        },
+        {
+            "species_code": "fringilla_coelebs",
+            "species_common_name": "Common chaffinch",
+            "species_scientific_name": "Fringilla coelebs",
+            "starts_at_seconds": 510.0,
+            "ends_at_seconds": 995.0,
+            "confidence": 0.87,
+            "call_type": "song",
+            "analysis_provider": "external-bird-audio-service",
+            "analysis_model_version": "2026-06",
+        },
+        {
+            "species_code": "phylloscopus_trochilus",
+            "species_common_name": "Willow warbler",
+            "species_scientific_name": "Phylloscopus trochilus",
+            "starts_at_seconds": 1240.0,
+            "ends_at_seconds": 1515.0,
+            "confidence": 0.86,
+            "call_type": "song",
+            "analysis_provider": "external-bird-audio-service",
+            "analysis_model_version": "2026-06",
+        },
+        {
+            "species_code": "parus_major",
+            "species_common_name": "Great tit",
+            "species_scientific_name": "Parus major",
+            "starts_at_seconds": 925.0,
+            "ends_at_seconds": 1498.0,
+            "confidence": 0.88,
+            "call_type": "call",
+            "analysis_provider": "external-bird-audio-service",
+            "analysis_model_version": "2026-06",
+        },
+        {
+            "species_code": "anthus_trivialis",
+            "species_common_name": "Tree pipit",
+            "species_scientific_name": "Anthus trivialis",
+            "starts_at_seconds": 515.0,
+            "ends_at_seconds": 1180.0,
+            "confidence": 0.84,
+            "call_type": "song",
+            "analysis_provider": "external-bird-audio-service",
+            "analysis_model_version": "2026-06",
+        },
+        {
+            "species_code": "troglodytes_troglodytes",
+            "species_common_name": "Wren",
+            "species_scientific_name": "Troglodytes troglodytes",
+            "starts_at_seconds": 210.0,
+            "ends_at_seconds": 810.0,
+            "confidence": 0.85,
             "call_type": "song",
             "analysis_provider": "external-bird-audio-service",
             "analysis_model_version": "2026-06",
@@ -304,19 +654,23 @@ async def _seed_collections(session) -> None:
             collection.title = payload["title"]
             collection.description = payload["description"]
             collection.sort_order = payload["sort_order"]
-            collection.location_links.clear()
-            collection.session_links.clear()
-            await session.flush()
+        await session.execute(
+            delete(CollectionLocation).where(CollectionLocation.collection_id == collection.id)
+        )
+        await session.execute(
+            delete(CollectionSession).where(CollectionSession.collection_id == collection.id)
+        )
+        await session.flush()
         for index, location_slug in enumerate(payload["location_slugs"]):
             location = slug_to_location.get(location_slug)
             if location is not None:
-                collection.location_links.append(
+                session.add(
                     CollectionLocation(collection_id=collection.id, location_id=location.id, sort_order=index)
                 )
         for index, session_slug in enumerate(payload["session_slugs"]):
             recording = slug_to_session.get(session_slug)
             if recording is not None:
-                collection.session_links.append(
+                session.add(
                     CollectionSession(collection_id=collection.id, session_id=recording.id, sort_order=index)
                 )
 

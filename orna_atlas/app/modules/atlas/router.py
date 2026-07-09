@@ -76,7 +76,7 @@ async def get_atlas_points(
 
 @router.get("/atlas/dawn/current", response_model=DawnCurrentResponse)
 async def get_current_dawn(
-    limit: int = Query(default=12, ge=1, le=100),
+    limit: int = Query(default=12, ge=1, le=1000),
     session: AsyncSession = Depends(get_db_session),
 ):
     now = datetime.now(UTC)

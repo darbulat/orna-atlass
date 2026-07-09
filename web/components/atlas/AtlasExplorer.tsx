@@ -29,6 +29,7 @@ import { fetchCurrentDawn, fetchSessionDetail, searchAtlas } from "../../lib/api
 import { SessionPlayer } from "../audio/SessionPlayer";
 
 type AtlasView = "globe" | "map" | "list";
+type ListeningMode = "Dawn" | "Day" | "Dusk" | "Night";
 
 type Props = {
   initialView: AtlasView;
@@ -41,12 +42,19 @@ type CesiumGlobeProps = {
   points: Array<AtlasPoint | AtlasCluster>;
   selectedSlug: string | null;
   activeDawnSlugs: Set<string>;
-  dawnLongitude: number;
   onSelectPoint: (point: AtlasPoint) => void;
 };
 
 const satelliteImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
-const listeningModes = ["Dawn", "Day", "Dusk", "Night"];
+const desktopLocationCardCount = 5;
+const mobileLocationCardCount = 2;
+const listeningModes: ListeningMode[] = ["Dawn", "Day", "Dusk", "Night"];
+const listeningModeKicker: Record<ListeningMode, string> = {
+  Dawn: "Now at dawn",
+  Day: "Now in daylight",
+  Dusk: "Now at dusk",
+  Night: "Now at night",
+};
 
 function isPoint(item: AtlasPoint | AtlasCluster): item is AtlasPoint {
   return item.type === "point";
@@ -59,20 +67,78 @@ function markerStyle(point: AtlasPoint | AtlasCluster) {
   };
 }
 
-function dawnLongitudeFromDate(value: string) {
-  const generatedAt = new Date(value);
-  const utcHours =
-    generatedAt.getUTCHours() + generatedAt.getUTCMinutes() / 60 + generatedAt.getUTCSeconds() / 3600;
-  const sunriseLongitude = 90 - utcHours * 15;
-  return ((((sunriseLongitude + 180) % 360) + 360) % 360) - 180;
+function localMinutes(timezone: string, baseTime: string): number | null {
+  const generatedAt = new Date(baseTime);
+  if (Number.isNaN(generatedAt.getTime())) {
+    return null;
+  }
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      hourCycle: "h23",
+      minute: "2-digit",
+      timeZone: timezone,
+    }).formatToParts(generatedAt);
+    const hour = Number(parts.find((part) => part.type === "hour")?.value);
+    const minute = Number(parts.find((part) => part.type === "minute")?.value);
+    if (Number.isNaN(hour) || Number.isNaN(minute)) {
+      return null;
+    }
+    return hour * 60 + minute;
+  } catch {
+    return null;
+  }
 }
 
-function dawnPolylinePositions(longitude: number) {
-  const positions = [];
-  for (let latitude = -88; latitude <= 88; latitude += 2) {
-    positions.push(Cartesian3.fromDegrees(longitude, latitude, 7000));
+function listeningModeForLocation(
+  location: AtlasPoint,
+  baseTime: string,
+  activeDawnSlugs: Set<string> = new Set(),
+): ListeningMode {
+  if (activeDawnSlugs.has(location.slug)) {
+    return "Dawn";
   }
-  return positions;
+  const minutes = localMinutes(location.timezone, baseTime);
+  if (minutes == null) {
+    return "Day";
+  }
+  if (minutes >= 270 && minutes < 450) {
+    return "Dawn";
+  }
+  if (minutes >= 450 && minutes < 1020) {
+    return "Day";
+  }
+  if (minutes >= 1020 && minutes < 1200) {
+    return "Dusk";
+  }
+  return "Night";
+}
+
+function filterLocationsByMode(
+  locations: AtlasPoint[],
+  mode: ListeningMode,
+  baseTime: string,
+  activeDawnSlugs: Set<string>,
+) {
+  return locations.filter((location) => {
+    return listeningModeForLocation(location, baseTime, activeDawnSlugs) === mode;
+  });
+}
+
+function useLocationCardCount() {
+  const [cardCount, setCardCount] = useState(desktopLocationCardCount);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 720px)");
+    const sync = () => {
+      setCardCount(query.matches ? mobileLocationCardCount : desktopLocationCardCount);
+    };
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  return cardCount;
 }
 
 function configureCesiumBaseUrl() {
@@ -80,7 +146,7 @@ function configureCesiumBaseUrl() {
   urlBuilder.setBaseUrl?.("/cesium/");
 }
 
-function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, dawnLongitude, onSelectPoint }: CesiumGlobeProps) {
+function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: CesiumGlobeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const pointByEntityIdRef = useRef(new Map<string, AtlasPoint>());
@@ -203,16 +269,6 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, dawnLongitude, onS
     viewer.entities.removeAll();
     pointByEntityIdRef.current.clear();
 
-    viewer.entities.add({
-      id: "dawn-meridian",
-      polyline: {
-        positions: dawnPolylinePositions(dawnLongitude),
-        width: 3,
-        material: Color.fromCssColorString("#f2d7a0").withAlpha(0.95),
-        clampToGround: false,
-      },
-    });
-
     points.forEach((item) => {
       const entityId = `${item.type}-${item.id}`;
       const selected = isPoint(item) && item.slug === selectedSlug;
@@ -252,7 +308,7 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, dawnLongitude, onS
     });
 
     viewer.scene.requestRender();
-  }, [points, selectedSlug, activeDawnSlugs, dawnLongitude]);
+  }, [points, selectedSlug, activeDawnSlugs]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -308,14 +364,24 @@ function StaticGlobeFallback({
 }
 
 export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: Props) {
+  const locationCardCount = useLocationCardCount();
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [currentDawn, setCurrentDawn] = useState(dawn);
   const [view] = useState<AtlasView>(initialView);
-  const [selectedMode, setSelectedMode] = useState(initialView === "list" ? "Night" : "Dawn");
+  const [selectedMode, setSelectedMode] = useState<ListeningMode>(initialView === "list" ? "Night" : "Dawn");
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const locations = useMemo(() => atlasPoints.filter(isPoint), [atlasPoints]);
+  const [carouselStart, setCarouselStart] = useState(0);
+  const allLocations = useMemo(() => atlasPoints.filter(isPoint), [atlasPoints]);
+  const activeDawnSlugs = useMemo(
+    () => new Set(currentDawn.active_locations.map((item) => item.location.slug)),
+    [currentDawn.active_locations],
+  );
+  const locations = useMemo(
+    () => filterLocationsByMode(allLocations, selectedMode, currentDawn.generated_at, activeDawnSlugs),
+    [activeDawnSlugs, allLocations, currentDawn.generated_at, selectedMode],
+  );
   const initialSelectedSlug =
     sidePanelSession && locations.some((location) => location.slug === sidePanelSession.location.slug)
       ? sidePanelSession.location.slug
@@ -323,16 +389,17 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
   const [selectedSlug, setSelectedSlug] = useState(initialSelectedSlug);
   const [currentSidePanelSession, setCurrentSidePanelSession] = useState(sidePanelSession);
   const selected = locations.find((point) => point.slug === selectedSlug) ?? locations[0] ?? null;
-  const activeDawnSlugs = useMemo(
-    () => new Set(currentDawn.active_locations.map((item) => item.location.slug)),
-    [currentDawn.active_locations],
-  );
-  const dawnLongitude = useMemo(() => dawnLongitudeFromDate(currentDawn.generated_at), [currentDawn.generated_at]);
-  const selectedDawn =
-    currentDawn.active_locations.find((item) => item.location.slug === selected?.slug) ??
-    currentDawn.next_locations.find((item) => item.location.slug === selected?.slug) ??
-    null;
-  const displayedLocations = locations.length > 0 ? locations.slice(0, 5) : [];
+  const displayedLocations = useMemo(() => {
+    const count = Math.min(locationCardCount, locations.length);
+    if (count === 0) {
+      return [];
+    }
+    if (locations.length <= locationCardCount) {
+      return locations;
+    }
+    return Array.from({ length: count }, (_, index) => locations[(carouselStart + index) % locations.length]);
+  }, [carouselStart, locationCardCount, locations]);
+  const canPageLocations = locations.length > locationCardCount;
   const selectedSessionSlug = selected?.latest_session?.slug ?? null;
 
   useEffect(() => {
@@ -341,6 +408,14 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     }
     setSelectedSlug(locations[0]?.slug ?? null);
   }, [locations, selectedSlug]);
+
+  useEffect(() => {
+    if (locations.length === 0) {
+      setCarouselStart(0);
+      return;
+    }
+    setCarouselStart((current) => (current >= locations.length ? 0 : current));
+  }, [locations.length]);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -370,7 +445,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     let isCurrent = true;
     const refreshMs = Math.max(currentDawn.window.refresh_seconds, 1) * 1000;
     const intervalId = window.setInterval(async () => {
-      const nextDawn = await fetchCurrentDawn();
+      const nextDawn = await fetchCurrentDawn(Math.max(250, allLocations.length));
       if (isCurrent) {
         setCurrentDawn(nextDawn);
       }
@@ -380,7 +455,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
       isCurrent = false;
       window.clearInterval(intervalId);
     };
-  }, [currentDawn.window.refresh_seconds]);
+  }, [allLocations.length, currentDawn.window.refresh_seconds]);
 
   useEffect(() => {
     if (!selectedSessionSlug) {
@@ -405,8 +480,18 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     };
   }, [currentSidePanelSession?.slug, selectedSessionSlug]);
 
-  function selectLocation(point: AtlasPoint) {
-    if (!locations.some((location) => location.slug === point.slug)) {
+  function revealLocationInCarousel(slug: string) {
+    if (locations.length <= locationCardCount) {
+      return;
+    }
+    const index = locations.findIndex((location) => location.slug === slug);
+    if (index !== -1) {
+      setCarouselStart(index);
+    }
+  }
+
+  function selectLocation(point: AtlasPoint, options: { revealInCarousel?: boolean } = {}) {
+    if (!allLocations.some((location) => location.slug === point.slug)) {
       setAtlasPoints((currentPoints) =>
         currentPoints.some((item) => isPoint(item) && item.slug === point.slug)
           ? currentPoints
@@ -414,21 +499,53 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
       );
     }
     setSelectedSlug(point.slug);
+    if (options.revealInCarousel) {
+      revealLocationInCarousel(point.slug);
+    }
   }
 
   function selectSearchResult(result: SearchResult) {
     if (result.type === "session" && result.session_slug) {
       return;
     }
-    if (!locations.some((location) => location.slug === result.slug)) {
+    const existingLocation = allLocations.find((location) => location.slug === result.slug);
+    const resultLocation = existingLocation ?? result.atlas_point;
+    if (!resultLocation) {
+      return;
+    }
+    const resultMode = listeningModeForLocation(resultLocation, currentDawn.generated_at, activeDawnSlugs);
+    setSelectedMode(resultMode);
+    if (!existingLocation) {
       const atlasPoint = result.atlas_point;
       if (!atlasPoint) {
         return;
       }
       setAtlasPoints((currentPoints) => [atlasPoint, ...currentPoints]);
+      setCarouselStart(0);
+    } else {
+      const modeLocations = filterLocationsByMode(
+        allLocations,
+        resultMode,
+        currentDawn.generated_at,
+        activeDawnSlugs,
+      );
+      const resultIndex = modeLocations.findIndex((location) => location.slug === result.slug);
+      setCarouselStart(resultIndex === -1 ? 0 : resultIndex);
     }
     setSelectedSlug(result.slug);
     setQuery("");
+  }
+
+  function pageLocations(delta: number) {
+    if (!canPageLocations) {
+      return;
+    }
+    setCarouselStart((current) => (current + delta + locations.length) % locations.length);
+  }
+
+  function selectMode(mode: ListeningMode) {
+    setSelectedMode(mode);
+    setCarouselStart(0);
   }
 
   return (
@@ -437,15 +554,14 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
         <div className="atlas-globe-panel">
           {view === "globe" ? (
             <CesiumGlobe
-              points={atlasPoints}
+              points={locations}
               selectedSlug={selectedSlug}
               activeDawnSlugs={activeDawnSlugs}
-              dawnLongitude={dawnLongitude}
-              onSelectPoint={selectLocation}
+              onSelectPoint={(point) => selectLocation(point, { revealInCarousel: true })}
             />
           ) : view === "map" ? (
             <div className="globe-stage" aria-label="Static atlas map">
-              <StaticGlobeFallback points={atlasPoints} selectedSlug={selectedSlug} />
+              <StaticGlobeFallback points={locations} selectedSlug={selectedSlug} />
               <div className="globe-hint">Map view (static) · select a marker</div>
             </div>
           ) : (
@@ -472,10 +588,10 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
           </div>
           <LiveBadge className="atlas-live-left" />
           <div className="dawn-copy">
-            <span>Now at dawn</span>
+            <span>{listeningModeKicker[selectedMode]}</span>
             <strong>{selected?.name ?? "No location selected"}</strong>
             <small>{selected?.region ?? selected?.country_code ?? "Published atlas site"}</small>
-            <time>{selectedDawn?.local_time ?? formatLocalTime(selected?.timezone, currentDawn.generated_at)}</time>
+            <time>{formatLocalTime(selected?.timezone, currentDawn.generated_at)}</time>
             <small>local time</small>
             {selected?.latest_session ? (
               <Link className="listen-pill" href={`/sessions/${selected.latest_session.slug}`}>
@@ -509,35 +625,51 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
                 type="button"
                 role="tab"
                 aria-selected={selectedMode === mode}
-                onClick={() => setSelectedMode(mode)}
+                onClick={() => selectMode(mode)}
               >
                 {mode}
               </button>
             ))}
           </div>
           <div className="location-carousel" aria-label="Featured locations">
-            <button type="button" className="carousel-arrow" aria-label="Previous locations">
+            <button
+              type="button"
+              className="carousel-arrow"
+              aria-label="Previous locations"
+              disabled={!canPageLocations}
+              onClick={() => pageLocations(-1)}
+            >
               ‹
             </button>
-            {displayedLocations.map((location, index) => (
-              <button
-                type="button"
-                key={location.id}
-                className={[
-                  "location-card",
-                  `location-card-${index % 5}`,
-                  location.slug === selectedSlug ? "selected" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onClick={() => selectLocation(location)}
-              >
-                <span>{location.name}</span>
-                <small>{location.country_code ?? location.region ?? "Atlas site"}</small>
-                <i aria-hidden="true" />
-              </button>
-            ))}
-            <button type="button" className="carousel-arrow" aria-label="Next locations">
+            {displayedLocations.length > 0 ? (
+              displayedLocations.map((location, index) => (
+                <button
+                  type="button"
+                  key={location.id}
+                  className={[
+                    "location-card",
+                    `location-card-${index % 5}`,
+                    location.slug === selectedSlug ? "selected" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => selectLocation(location)}
+                >
+                  <span>{location.name}</span>
+                  <small>{location.country_code ?? location.region ?? "Atlas site"}</small>
+                  <i aria-hidden="true" />
+                </button>
+              ))
+            ) : (
+              <p className="location-carousel-empty">No locations in this time window.</p>
+            )}
+            <button
+              type="button"
+              className="carousel-arrow"
+              aria-label="Next locations"
+              disabled={!canPageLocations}
+              onClick={() => pageLocations(1)}
+            >
               ›
             </button>
           </div>
