@@ -1575,9 +1575,6 @@ a:focus-visible {
   .location-carousel {
     grid-template-columns: 28px repeat(2, minmax(0, 1fr)) 28px;
   }
-  .location-card:nth-of-type(n+4) {
-    display: none;
-  }
   .scenic-panel {
     min-height: 430px;
   }

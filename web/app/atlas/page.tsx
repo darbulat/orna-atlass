@@ -5,9 +5,10 @@ const defaultSidePanelSessionSlug = "berezinsky-sample";
 
 export default async function Page({ searchParams }: { searchParams?: { view?: string } }) {
   const view = searchParams?.view === "list" ? "list" : searchParams?.view === "map" ? "map" : "globe";
-  const [atlas, dawn, sidePanelSession] = await Promise.all([
-    fetchAtlasPoints(view),
-    fetchCurrentDawn(),
+  const atlas = await fetchAtlasPoints(view);
+  const dawnLimit = Math.max(250, atlas.points.length);
+  const [dawn, sidePanelSession] = await Promise.all([
+    fetchCurrentDawn(dawnLimit),
     fetchSessionDetail(defaultSidePanelSessionSlug),
   ]);
 

@@ -46,6 +46,8 @@ type CesiumGlobeProps = {
 };
 
 const satelliteImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
+const desktopLocationCardCount = 5;
+const mobileLocationCardCount = 2;
 const listeningModes: ListeningMode[] = ["Dawn", "Day", "Dusk", "Night"];
 const listeningModeKicker: Record<ListeningMode, string> = {
   Dawn: "Now at dawn",
@@ -88,7 +90,14 @@ function localMinutes(timezone: string, baseTime: string): number | null {
   }
 }
 
-function listeningModeForLocation(location: AtlasPoint, baseTime: string): ListeningMode {
+function listeningModeForLocation(
+  location: AtlasPoint,
+  baseTime: string,
+  activeDawnSlugs: Set<string> = new Set(),
+): ListeningMode {
+  if (activeDawnSlugs.has(location.slug)) {
+    return "Dawn";
+  }
   const minutes = localMinutes(location.timezone, baseTime);
   if (minutes == null) {
     return "Day";
@@ -112,11 +121,24 @@ function filterLocationsByMode(
   activeDawnSlugs: Set<string>,
 ) {
   return locations.filter((location) => {
-    if (mode === "Dawn" && activeDawnSlugs.has(location.slug)) {
-      return true;
-    }
-    return listeningModeForLocation(location, baseTime) === mode;
+    return listeningModeForLocation(location, baseTime, activeDawnSlugs) === mode;
   });
+}
+
+function useLocationCardCount() {
+  const [cardCount, setCardCount] = useState(desktopLocationCardCount);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 720px)");
+    const sync = () => {
+      setCardCount(query.matches ? mobileLocationCardCount : desktopLocationCardCount);
+    };
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  return cardCount;
 }
 
 function configureCesiumBaseUrl() {
@@ -342,7 +364,7 @@ function StaticGlobeFallback({
 }
 
 export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: Props) {
-  const locationCardCount = 5;
+  const locationCardCount = useLocationCardCount();
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [currentDawn, setCurrentDawn] = useState(dawn);
   const [view] = useState<AtlasView>(initialView);
@@ -376,7 +398,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
       return locations;
     }
     return Array.from({ length: count }, (_, index) => locations[(carouselStart + index) % locations.length]);
-  }, [carouselStart, locations]);
+  }, [carouselStart, locationCardCount, locations]);
   const canPageLocations = locations.length > locationCardCount;
   const selectedSessionSlug = selected?.latest_session?.slug ?? null;
 
@@ -423,7 +445,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     let isCurrent = true;
     const refreshMs = Math.max(currentDawn.window.refresh_seconds, 1) * 1000;
     const intervalId = window.setInterval(async () => {
-      const nextDawn = await fetchCurrentDawn();
+      const nextDawn = await fetchCurrentDawn(Math.max(250, allLocations.length));
       if (isCurrent) {
         setCurrentDawn(nextDawn);
       }
@@ -433,7 +455,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
       isCurrent = false;
       window.clearInterval(intervalId);
     };
-  }, [currentDawn.window.refresh_seconds]);
+  }, [allLocations.length, currentDawn.window.refresh_seconds]);
 
   useEffect(() => {
     if (!selectedSessionSlug) {
@@ -491,7 +513,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     if (!resultLocation) {
       return;
     }
-    const resultMode = listeningModeForLocation(resultLocation, currentDawn.generated_at);
+    const resultMode = listeningModeForLocation(resultLocation, currentDawn.generated_at, activeDawnSlugs);
     setSelectedMode(resultMode);
     if (!existingLocation) {
       const atlasPoint = result.atlas_point;

@@ -311,9 +311,12 @@ export async function searchAtlas(query: string, limit = 8): Promise<SearchResul
   }
 }
 
-export async function fetchCurrentDawn(): Promise<DawnCurrentResponse> {
+export async function fetchCurrentDawn(limit = 250): Promise<DawnCurrentResponse> {
+  const normalizedLimit = Math.max(1, Math.min(Math.ceil(limit), 1000));
+  const params = new URLSearchParams({ limit: String(normalizedLimit) });
+
   try {
-    const response = await fetch(apiUrl("/api/v1/atlas/dawn/current"), {
+    const response = await fetch(apiUrl(`/api/v1/atlas/dawn/current?${params.toString()}`), {
       next: { revalidate: 60 },
       headers: { Accept: "application/json" },
     });
