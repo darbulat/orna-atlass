@@ -152,6 +152,7 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
   const pointByEntityIdRef = useRef(new Map<string, AtlasPoint>());
   const onSelectRef = useRef(onSelectPoint);
   const [isWebglUnavailable, setIsWebglUnavailable] = useState(false);
+  const [isViewerReady, setIsViewerReady] = useState(false);
 
   useEffect(() => {
     onSelectRef.current = onSelectPoint;
@@ -165,6 +166,7 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
     let isDisposed = false;
     let clickHandler: ScreenSpaceEventHandler | null = null;
     let viewer: Viewer | null = null;
+    setIsViewerReady(false);
     const pointByEntityId = pointByEntityIdRef.current;
 
     async function createViewer() {
@@ -247,6 +249,9 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
           onSelectRef.current(point);
         }
       }, ScreenSpaceEventType.LEFT_CLICK);
+      if (!isDisposed) {
+        setIsViewerReady(true);
+      }
     }
 
     void createViewer();
@@ -254,6 +259,7 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
     return () => {
       isDisposed = true;
       clickHandler?.destroy();
+      setIsViewerReady(false);
       if (viewerRef.current && !viewerRef.current.isDestroyed()) {
         viewerRef.current.destroy();
       }
@@ -264,7 +270,7 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer || viewer.isDestroyed()) return;
+    if (!isViewerReady || !viewer || viewer.isDestroyed()) return;
 
     viewer.entities.removeAll();
     pointByEntityIdRef.current.clear();
@@ -308,11 +314,11 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
     });
 
     viewer.scene.requestRender();
-  }, [points, selectedSlug, activeDawnSlugs]);
+  }, [activeDawnSlugs, isViewerReady, points, selectedSlug]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer || viewer.isDestroyed() || !selectedSlug) return;
+    if (!isViewerReady || !viewer || viewer.isDestroyed() || !selectedSlug) return;
 
     const selected = points.find((item) => isPoint(item) && item.slug === selectedSlug);
     if (!selected || !isPoint(selected)) return;
@@ -321,7 +327,7 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
       destination: Cartesian3.fromDegrees(selected.longitude, selected.latitude, 2100000),
       duration: 0.85,
     });
-  }, [points, selectedSlug]);
+  }, [isViewerReady, points, selectedSlug]);
 
   return (
     <div className="globe-stage cesium-stage" aria-label="Interactive Cesium globe">
