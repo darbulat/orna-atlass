@@ -16,7 +16,12 @@ type BirdTimelineTrack = {
   parts: BirdVocalPart[];
 };
 
-export function SessionPlayer({ session }: { session: SessionDetail }) {
+type SessionPlayerProps = {
+  session: SessionDetail;
+  onClose?: () => void;
+};
+
+export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
   const { currentSession, playbackState, grant, currentTimeSeconds, durationSeconds, play, pause, seek, error } =
     usePlayer();
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -148,9 +153,15 @@ export function SessionPlayer({ session }: { session: SessionDetail }) {
   return (
     <section className="session-listening-console" aria-label="Session player">
       <div className="session-scenic-listener">
-        <Link href="/atlas" className="session-panel-back" aria-label="Back to atlas">
-          ‹
-        </Link>
+        {onClose ? (
+          <button type="button" className="session-panel-back" aria-label="Hide player" onClick={onClose}>
+            ‹
+          </button>
+        ) : (
+          <Link href="/atlas" className="session-panel-back" aria-label="Back to atlas">
+            ‹
+          </Link>
+        )}
         <LiveBadge />
         <div className="session-scenic-copy">
           <h2>{session.location.name}</h2>
