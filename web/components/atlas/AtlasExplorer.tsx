@@ -387,7 +387,10 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
       ? sidePanelSession.location.slug
       : locations[0]?.slug ?? null;
   const [selectedSlug, setSelectedSlug] = useState(initialSelectedSlug);
+  const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
+  const [sidePanelSessionSlug, setSidePanelSessionSlug] = useState<string | null>(sidePanelSession?.slug ?? null);
   const [currentSidePanelSession, setCurrentSidePanelSession] = useState(sidePanelSession);
+  const currentSidePanelSessionRef = useRef<SessionDetail | null>(sidePanelSession);
   const selected = locations.find((point) => point.slug === selectedSlug) ?? locations[0] ?? null;
   const displayedLocations = useMemo(() => {
     const count = Math.min(locationCardCount, locations.length);
@@ -458,17 +461,28 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
   }, [allLocations.length, currentDawn.window.refresh_seconds]);
 
   useEffect(() => {
-    if (!selectedSessionSlug) {
+    currentSidePanelSessionRef.current = currentSidePanelSession;
+  }, [currentSidePanelSession]);
+
+  useEffect(() => {
+    if (!isSidePanelOpen) {
+      return;
+    }
+    if (!sidePanelSessionSlug) {
       setCurrentSidePanelSession(null);
       return;
     }
-    if (currentSidePanelSession?.slug === selectedSessionSlug) {
+    if (currentSidePanelSessionRef.current?.slug === sidePanelSessionSlug) {
+      return;
+    }
+    if (sidePanelSession?.slug === sidePanelSessionSlug) {
+      setCurrentSidePanelSession(sidePanelSession);
       return;
     }
 
     let isCurrent = true;
     setCurrentSidePanelSession(null);
-    void fetchSessionDetail(selectedSessionSlug).then((session) => {
+    void fetchSessionDetail(sidePanelSessionSlug).then((session) => {
       if (!isCurrent) {
         return;
       }
@@ -478,7 +492,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     return () => {
       isCurrent = false;
     };
-  }, [currentSidePanelSession?.slug, selectedSessionSlug]);
+  }, [isSidePanelOpen, sidePanelSession, sidePanelSessionSlug]);
 
   function revealLocationInCarousel(slug: string) {
     if (locations.length <= locationCardCount) {
@@ -548,8 +562,21 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     setCarouselStart(0);
   }
 
+  function openSelectedSession() {
+    if (!selectedSessionSlug) {
+      return;
+    }
+    setSidePanelSessionSlug(selectedSessionSlug);
+    setIsSidePanelOpen(true);
+  }
+
   return (
-    <section className="atlas-workspace atlas-reference-ui" aria-label="Birdsong atlas">
+    <section
+      className={["atlas-workspace atlas-reference-ui", isSidePanelOpen ? "atlas-reference-ui--player-open" : ""]
+        .filter(Boolean)
+        .join(" ")}
+      aria-label="Birdsong atlas"
+    >
       <div className="atlas-main-panel">
         <div className="atlas-globe-panel">
           {view === "globe" ? (
@@ -594,12 +621,18 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
             <time>{formatLocalTime(selected?.timezone, currentDawn.generated_at)}</time>
             <small>local time</small>
             {selected?.latest_session ? (
-              <Link className="listen-pill" href={`/sessions/${selected.latest_session.slug}`}>
+              <button
+                className="listen-pill"
+                type="button"
+                aria-controls="atlas-session-player"
+                aria-expanded={isSidePanelOpen}
+                onClick={openSelectedSession}
+              >
                 Listen
                 <span aria-hidden="true">›</span>
-              </Link>
+              </button>
             ) : (
-              <button className="listen-pill" type="button">
+              <button className="listen-pill" type="button" disabled>
                 Listen
                 <span aria-hidden="true">›</span>
               </button>
@@ -709,16 +742,18 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
         </div>
       </div>
 
-      <aside className="atlas-side-panel">
-        {currentSidePanelSession ? (
-          <SessionPlayer session={currentSidePanelSession} />
-        ) : (
-          <section className="atlas-side-empty">
-            <h2>No session selected</h2>
-            <p>Select a public atlas point with a published recording to load the player.</p>
-          </section>
-        )}
-      </aside>
+      {isSidePanelOpen ? (
+        <aside className="atlas-side-panel" id="atlas-session-player">
+          {currentSidePanelSession ? (
+            <SessionPlayer session={currentSidePanelSession} onClose={() => setIsSidePanelOpen(false)} />
+          ) : (
+            <section className="atlas-side-empty" aria-live="polite">
+              <h2>No session selected</h2>
+              <p>Select a public atlas point with a published recording to load the player.</p>
+            </section>
+          )}
+        </aside>
+      ) : null}
     </section>
   );
 }

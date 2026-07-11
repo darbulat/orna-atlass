@@ -104,12 +104,14 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
   border: 1px solid rgba(255,255,255,0.14);
   border-radius: 999px;
   color: #f4efe2;
+  cursor: pointer;
   display: inline-flex;
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 1rem;
   height: 34px;
   justify-content: center;
   left: 24px;
+  padding: 0;
   text-decoration: none;
   top: 24px;
   width: 34px;
@@ -856,9 +858,12 @@ a:focus-visible {
   display: grid;
   font-family: Georgia, "Times New Roman", serif;
   gap: 8px;
-  grid-template-columns: minmax(0, 1.55fr) minmax(390px, 0.95fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 100svh;
   overflow: hidden;
+}
+.atlas-reference-ui--player-open {
+  grid-template-columns: minmax(0, 1.55fr) minmax(390px, 0.95fr);
 }
 .atlas-main-panel {
   display: grid;
@@ -964,6 +969,7 @@ a:focus-visible {
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 999px;
   color: #f4efe2;
+  cursor: pointer;
   display: inline-flex;
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 0.9rem;
@@ -975,6 +981,10 @@ a:focus-visible {
 }
 .listen-pill:hover {
   background: rgba(255,255,255,0.15);
+}
+.listen-pill:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 .about-link {
   background: transparent;
