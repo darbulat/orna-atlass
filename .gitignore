@@ -10,6 +10,8 @@ node_modules.root-owned/
 .next.root-owned/
 .next-codex/
 .next-codex-*/
+web/playwright-report/
+web/test-results/
 out/
 /web/public/cesium/
 .DS_Store
@@ -18,4 +20,3 @@ build
 orna_atlas.egg-info
 Березинский семпл.WAV
 web/tsconfig.tsbuildinfo
-

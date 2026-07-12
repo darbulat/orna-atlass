@@ -43,6 +43,22 @@ alembic upgrade head
 alembic revision -m "empty migration"
 ```
 
+Real dependency smoke tests are opt-in and must target disposable local services:
+
+```bash
+RUN_INTEGRATION_TESTS=1 python -m pytest -m integration tests/integration
+```
+
+Frontend checks and browser smoke tests:
+
+```bash
+cd web
+npm ci
+npm run typecheck
+npm run lint
+npm run test:e2e
+```
+
 ## Audio pipeline
 
 Admin uploads create a `MediaAsset`, persist an `audio_pipeline` processing job, enqueue it on
@@ -64,3 +80,9 @@ python -m orna_atlas.app.workers.audio_pipeline worker
 
 - [Project architecture](docs/ARCHITECTURE.md)
 - [Implementation plan (RU)](docs/IMPLEMENTATION_PLAN_rus.md)
+- [Current implementation](docs/CURRENT_STATE.md)
+- [Domain rules](docs/DOMAIN_RULES.md)
+- [Architecture decisions](docs/adr/README.md)
+- [Performance baseline](docs/PERFORMANCE_BASELINE.md)
+- [Contribution guide](CONTRIBUTING.md)
+- [Developer and LLM guide](AGENTS.md)

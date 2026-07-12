@@ -33,16 +33,42 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://orna:orna@localhost:5432/orna_atlas
       REDIS_URL: redis://localhost:6379/0
+      S3_ENDPOINT_URL: http://localhost:9000
+      S3_PUBLIC_ENDPOINT_URL: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_PRIVATE_BUCKET: orna-audio-private
+      S3_PUBLIC_BUCKET: orna-media-public
+      S3_ACCESS_KEY_ID: orna
+      S3_SECRET_ACCESS_KEY: ornaorna
     steps:
       - uses: actions/checkout@v4
+      - name: Start S3-compatible storage
+        run: >-
+          docker run --detach --name orna-ci-minio --publish 9000:9000
+          --env MINIO_ROOT_USER=orna --env MINIO_ROOT_PASSWORD=ornaorna
+          minio/minio:RELEASE.2024-12-18T13-15-44Z server /data
+      - name: Wait for S3-compatible storage
+        run: >-
+          timeout 60 sh -c
+          'until curl --fail --silent http://localhost:9000/minio/health/live; do sleep 1; done'
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install '.[dev]'
       - run: ruff check .
-      - run: pytest
       - run: alembic upgrade head
       - run: alembic check
+      - run: pytest
+      - name: Prepare integration buckets
+        run: >-
+          python -c "import boto3;
+          client=boto3.client('s3', endpoint_url='http://localhost:9000',
+          aws_access_key_id='orna', aws_secret_access_key='ornaorna', region_name='us-east-1');
+          [client.create_bucket(Bucket=name) for name in ('orna-audio-private','orna-media-public')]"
+      - name: Test real dependencies
+        env:
+          RUN_INTEGRATION_TESTS: "1"
+        run: pytest -m integration tests/integration
 
   frontend:
     runs-on: ubuntu-latest
@@ -54,6 +80,14 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - working-directory: web
-        run: npm install
+        run: npm ci
       - working-directory: web
         run: npm run build
+      - working-directory: web
+        run: npm run typecheck
+      - working-directory: web
+        run: npm run lint
+      - working-directory: web
+        run: npx playwright install --with-deps chromium
+      - working-directory: web
+        run: npm run test:e2e

@@ -221,9 +221,16 @@
 
 ### Sprint 4: LLM-readiness
 
-- DB/Redis/S3 integration и Playwright.
-- AGENTS/CONTRIBUTING/CURRENT_STATE/DOMAIN_RULES/ADR.
-- Structured logs/performance baseline.
+Статус на 2026-07-12: **выполнен baseline**.
+
+- [x] DB/Redis/S3 integration: opt-in suite `tests/integration/test_dependencies.py`, запуск против disposable compose services и CI.
+- [x] Playwright: `web/playwright.config.ts` и smoke flow `web/e2e/public-navigation.spec.ts`, запуск локально и в CI.
+- [x] Guides: `AGENTS.md`, `CONTRIBUTING.md`, `docs/CURRENT_STATE.md`, `docs/DOMAIN_RULES.md`.
+- [x] ADR: public coordinate projection, fail-closed playback, versioned assets и service-owned transactions в `docs/adr/`.
+- [x] Structured logs: JSON request completion event, correlation ID, status и duration в `core/logging.py`.
+- [x] Performance baseline: воспроизводимый протокол и таблица результатов в `docs/PERFORMANCE_BASELINE.md`.
+
+Ограничения baseline: Playwright пока покрывает public navigation, но не player races/accessibility; локальные performance-числа записаны, однако замер всё ещё нужно повторить на целевом dataset/environment. Эти пункты являются последующим расширением покрытия, а не скрытой декларацией готовности production.
 
 ## 11. Вопросы владельцу
 
@@ -273,9 +280,9 @@
 - [ ] Один active processing job.
 - [ ] S3 failure не оставляет ready state.
 - [ ] Last successful BirdNET сохраняется.
-- [ ] Integration/component/E2E tests добавлены.
-- [ ] AGENTS/CURRENT_STATE/DOMAIN_RULES созданы.
-- [ ] README воспроизводим.
+- [x] Integration/E2E baseline tests добавлены; component/player tests остаются follow-up.
+- [x] AGENTS/CURRENT_STATE/DOMAIN_RULES/CONTRIBUTING/ADR созданы.
+- [x] README содержит воспроизводимые команды и ссылки на authoritative guides.
 - [ ] Нет новых smells/regressions.
 
 ## Краткий prompt для слабой модели

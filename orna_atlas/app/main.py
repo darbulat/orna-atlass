@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.core.errors import register_error_handlers
-from orna_atlas.app.core.logging import configure_logging
+from orna_atlas.app.core.logging import RequestLoggingMiddleware, configure_logging
 from orna_atlas.app.db.session import engine
 from orna_atlas.app.integrations.redis import get_redis_client
 from orna_atlas.app.modules.admin.router import router as admin_router
@@ -33,6 +33,7 @@ def create_app() -> FastAPI:
     configure_logging()
     settings = get_settings()
     app = FastAPI(title=settings.app_name)
+    app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

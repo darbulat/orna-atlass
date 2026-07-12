@@ -34,6 +34,9 @@ src = ["orna_atlas"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["orna_atlas/app/tests"]
+markers = [
+  "integration: requires disposable PostgreSQL, Redis and S3-compatible services",
+]
 
 [tool.setuptools.packages.find]
 include = ["orna_atlas*"]
