@@ -26,6 +26,7 @@ import type {
   SessionDetail,
 } from "../../lib/api/sessions";
 import { fetchCurrentDawn, fetchSessionDetail, searchAtlas } from "../../lib/api/sessions";
+import { useGlobalPlayerSuppression } from "../audio/PlayerProvider";
 import { SessionPlayer } from "../audio/SessionPlayer";
 
 type AtlasView = "globe" | "map" | "list";
@@ -213,9 +214,22 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
         const localProvider = await TileMapServiceImageryProvider.fromUrl(
           buildModuleUrl("Assets/Textures/NaturalEarthII"),
         );
-        if (!isDisposed && viewer && !viewer.isDestroyed()) {
-          viewer.imageryLayers.addImageryProvider(localProvider);
+        if (isDisposed || !viewer || viewer.isDestroyed()) {
+          return;
         }
+
+        viewer.imageryLayers.addImageryProvider(localProvider);
+        clickHandler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+        clickHandler.setInputAction((event: ScreenSpaceEventHandler.PositionedEvent) => {
+          if (!viewer || viewer.isDestroyed()) return;
+          const picked = viewer.scene.pick(event.position);
+          const entity = picked?.id as Entity | undefined;
+          const point = entity?.id ? pointByEntityIdRef.current.get(entity.id) : undefined;
+          if (point) {
+            onSelectRef.current(point);
+          }
+        }, ScreenSpaceEventType.LEFT_CLICK);
+        setIsViewerReady(true);
 
         try {
           const satelliteProvider = await ArcGisMapServerImageryProvider.fromUrl(satelliteImageryUrl, {
@@ -236,21 +250,6 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
         }
         viewerRef.current = null;
         return;
-      }
-
-      if (!viewer || viewer.isDestroyed()) return;
-      clickHandler = new ScreenSpaceEventHandler(viewer.scene.canvas);
-      clickHandler.setInputAction((event: ScreenSpaceEventHandler.PositionedEvent) => {
-        if (!viewer || viewer.isDestroyed()) return;
-        const picked = viewer.scene.pick(event.position);
-        const entity = picked?.id as Entity | undefined;
-        const point = entity?.id ? pointByEntityIdRef.current.get(entity.id) : undefined;
-        if (point) {
-          onSelectRef.current(point);
-        }
-      }, ScreenSpaceEventType.LEFT_CLICK);
-      if (!isDisposed) {
-        setIsViewerReady(true);
       }
     }
 
@@ -398,6 +397,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
   const [currentSidePanelSession, setCurrentSidePanelSession] = useState(sidePanelSession);
   const currentSidePanelSessionRef = useRef<SessionDetail | null>(sidePanelSession);
   const selected = locations.find((point) => point.slug === selectedSlug) ?? locations[0] ?? null;
+  const isLocalPlayerVisible = isSidePanelOpen && currentSidePanelSession !== null;
   const displayedLocations = useMemo(() => {
     const count = Math.min(locationCardCount, locations.length);
     if (count === 0) {
@@ -410,6 +410,8 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
   }, [carouselStart, locationCardCount, locations]);
   const canPageLocations = locations.length > locationCardCount;
   const selectedSessionSlug = selected?.latest_session?.slug ?? null;
+
+  useGlobalPlayerSuppression(isLocalPlayerVisible);
 
   useEffect(() => {
     if (selectedSlug && locations.some((point) => point.slug === selectedSlug)) {

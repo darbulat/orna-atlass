@@ -30,6 +30,7 @@ type PlayerContextValue = {
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
+const GlobalPlayerSuppressionContext = createContext<((isSuppressed: boolean) => void) | null>(null);
 
 function streamUrl(url: string): string {
   return url.startsWith("/") ? apiUrl(url) : url;
@@ -54,6 +55,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentTimeSeconds, setCurrentTimeSeconds] = useState(0);
   const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isGlobalPlayerSuppressed, setIsGlobalPlayerSuppressed] = useState(false);
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current !== null) {
@@ -203,10 +205,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <PlayerContext.Provider value={value}>
-      {children}
-      <GlobalPlayer />
-    </PlayerContext.Provider>
+    <GlobalPlayerSuppressionContext.Provider value={setIsGlobalPlayerSuppressed}>
+      <PlayerContext.Provider value={value}>
+        {children}
+        <GlobalPlayer isSuppressed={isGlobalPlayerSuppressed} />
+      </PlayerContext.Provider>
+    </GlobalPlayerSuppressionContext.Provider>
   );
 }
 
@@ -218,13 +222,25 @@ export function usePlayer() {
   return value;
 }
 
-function GlobalPlayer() {
+export function useGlobalPlayerSuppression(isSuppressed: boolean) {
+  const setIsSuppressed = useContext(GlobalPlayerSuppressionContext);
+  if (!setIsSuppressed) {
+    throw new Error("useGlobalPlayerSuppression must be used inside PlayerProvider");
+  }
+
+  useEffect(() => {
+    setIsSuppressed(isSuppressed);
+    return () => setIsSuppressed(false);
+  }, [isSuppressed, setIsSuppressed]);
+}
+
+function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
   const { currentSession, playbackState, grant, error, pause } = usePlayer();
   const pathname = usePathname();
 
-  const isSessionOrAtlasRoute = pathname?.startsWith("/sessions/") || pathname?.startsWith("/atlas");
+  const isSessionRoute = pathname?.startsWith("/sessions/");
 
-  if (!currentSession || isSessionOrAtlasRoute) {
+  if (!currentSession || isSessionRoute || isSuppressed) {
     return null;
   }
 
