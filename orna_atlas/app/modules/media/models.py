@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,6 +10,18 @@ from orna_atlas.app.db.base import Base
 
 class MediaAsset(Base):
     __tablename__ = "media_assets"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('audio','source_audio','master_audio','streaming_rendition','audio_stream')",
+            name="ck_media_assets_kind",
+        ),
+        CheckConstraint(
+            "processing_status IN ('pending','uploaded','queued','processing','ready','failed')",
+            name="ck_media_assets_processing_status",
+        ),
+        CheckConstraint("duration_seconds IS NULL OR duration_seconds >= 0", name="ck_media_assets_duration"),
+        CheckConstraint("size_bytes IS NULL OR size_bytes >= 0", name="ck_media_assets_size"),
+    )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     session_id: Mapped[UUID] = mapped_column(
@@ -31,6 +43,14 @@ class MediaAsset(Base):
 
 class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
+    __table_args__ = (
+        CheckConstraint("job_type IN ('audio_pipeline')", name="ck_processing_jobs_type"),
+        CheckConstraint(
+            "status IN ('queued','running','succeeded','failed')",
+            name="ck_processing_jobs_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_processing_jobs_attempt_count"),
+    )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     asset_id: Mapped[UUID] = mapped_column(

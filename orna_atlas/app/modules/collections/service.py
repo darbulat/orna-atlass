@@ -113,6 +113,7 @@ async def create_collection(session: AsyncSession, data: CollectionCreate) -> Co
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     collection = await repository.create_collection(session, data)
+    await session.commit()
     return admin_read_from_collection(collection)
 
 
@@ -135,4 +136,11 @@ async def update_collection(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     collection = await repository.update_collection(session, collection, data)
+    await session.commit()
     return admin_read_from_collection(collection)
+
+
+async def delete_collection(session: AsyncSession, collection_id: UUID) -> None:
+    collection = await require_collection(session, collection_id)
+    await repository.delete_collection(session, collection)
+    await session.commit()

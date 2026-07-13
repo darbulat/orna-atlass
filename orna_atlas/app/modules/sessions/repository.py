@@ -141,22 +141,20 @@ async def get_session_by_slug_for_admin(session: AsyncSession, slug: str) -> Rec
 async def create_session(session: AsyncSession, data: SessionCreate) -> RecordingSession:
     recording = RecordingSession(**_payload(data))
     session.add(recording)
-    await session.commit()
-    await session.refresh(recording, attribute_names=["media_assets"])
+    await session.flush()
     return recording
 
 
 async def update_session(session: AsyncSession, recording: RecordingSession, data: SessionUpdate) -> RecordingSession:
     for key, value in _payload(data, exclude_unset=True).items():
         setattr(recording, key, value)
-    await session.commit()
-    await session.refresh(recording, attribute_names=["media_assets"])
+    await session.flush()
     return recording
 
 
 async def delete_session(session: AsyncSession, recording: RecordingSession) -> None:
     await session.delete(recording)
-    await session.commit()
+    await session.flush()
 
 
 async def replace_bird_vocal_parts(

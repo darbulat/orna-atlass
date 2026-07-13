@@ -22,6 +22,7 @@ from orna_atlas.app.modules.atlas.schemas import (
 )
 from orna_atlas.app.integrations.sunrise import dawn_window, get_timezone
 from orna_atlas.app.modules.locations.models import Location
+from orna_atlas.app.modules.locations.public import normalized_visibility
 
 TimeMode = Literal["local", "utc", "dawn"]
 DawnState = Literal["active", "upcoming", "past", "polar"]
@@ -112,7 +113,9 @@ def point_from_location(location: Location) -> AtlasPoint | None:
         latitude=location.latitude,
         longitude=location.longitude,
         timezone=location.timezone,
-        coordinate_visibility=getattr(location, "coordinate_visibility", "exact_public"),
+        coordinate_visibility=normalized_visibility(
+            getattr(location, "coordinate_visibility", "exact_public")
+        ),
         sensitivity_level=location.sensitivity_level,
         session_count=len(public_sessions),
         latest_session=None

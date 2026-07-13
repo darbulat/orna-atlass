@@ -97,8 +97,6 @@ async def create_collection(session: AsyncSession, data: CollectionCreate) -> Co
     session.add(collection)
     await session.flush()
     await _sync_links(session, collection, location_ids=data.location_ids, session_ids=data.session_ids)
-    await session.commit()
-    await session.refresh(collection)
     return await get_collection(session, collection.id) or collection
 
 
@@ -111,13 +109,13 @@ async def update_collection(session: AsyncSession, collection: Collection, data:
         location_ids=data.location_ids,
         session_ids=data.session_ids,
     )
-    await session.commit()
+    await session.flush()
     return await get_collection(session, collection.id) or collection
 
 
 async def delete_collection(session: AsyncSession, collection: Collection) -> None:
     await session.delete(collection)
-    await session.commit()
+    await session.flush()
 
 
 async def validate_location_ids(session: AsyncSession, location_ids: list[UUID]) -> None:

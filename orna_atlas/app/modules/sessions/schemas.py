@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from orna_atlas.app.core.domain_types import ProcessingStatus, SessionAccess
 from orna_atlas.app.modules.locations.schemas import LocationRead
 from orna_atlas.app.modules.media.schemas import MediaAssetRead
 
@@ -96,8 +97,8 @@ class SessionBase(BaseModel):
     duration_seconds: int | None = Field(default=None, ge=0)
     recorder: str | None = None
     weather: str | None = None
-    access_level: str = "public"
-    processing_status: str = "pending"
+    access_level: SessionAccess = SessionAccess.PUBLIC
+    processing_status: ProcessingStatus = ProcessingStatus.PENDING
     is_featured: bool = False
     featured_sort_order: int | None = None
     metadata: dict = Field(default_factory=dict)
@@ -116,8 +117,8 @@ class SessionUpdate(BaseModel):
     duration_seconds: int | None = Field(default=None, ge=0)
     recorder: str | None = None
     weather: str | None = None
-    access_level: str | None = None
-    processing_status: str | None = None
+    access_level: SessionAccess | None = None
+    processing_status: ProcessingStatus | None = None
     is_featured: bool | None = None
     featured_sort_order: int | None = None
     metadata: dict | None = None

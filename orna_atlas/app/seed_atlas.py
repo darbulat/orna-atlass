@@ -76,7 +76,7 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "exact_longitude": 30.3186,
         "public_latitude": 57.21,
         "public_longitude": 30.42,
-        "coordinate_visibility": "public_only",
+        "coordinate_visibility": "approximate_public",
         "sensitivity_level": "protected",
         "timezone": "Europe/Moscow",
         "metadata_": {"seed": True, "field_context": "protected raised bog"},

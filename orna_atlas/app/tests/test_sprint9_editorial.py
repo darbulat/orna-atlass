@@ -124,7 +124,7 @@ def test_protected_location_point_uses_public_coordinates_only() -> None:
     payload = point.model_dump(mode="json")
     assert payload["latitude"] == 57.21
     assert payload["longitude"] == 30.42
-    assert payload["coordinate_visibility"] == "public_only"
+    assert payload["coordinate_visibility"] == "approximate_public"
     assert payload["sensitivity_level"] == "protected"
     assert "exact_latitude" not in payload
 

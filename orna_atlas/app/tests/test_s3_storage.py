@@ -111,9 +111,9 @@ def test_upload_streaming_rendition_copies_s3_source(monkeypatch) -> None:
         )
     )
     client._client = MagicMock()
-    import orna_atlas.app.modules.media.service as media_service
+    import orna_atlas.app.modules.media.audio as media_audio
 
-    monkeypatch.setattr(media_service, "get_object_storage_client", lambda: client)
+    monkeypatch.setattr(media_audio, "get_object_storage_client", lambda: client)
     session_id = uuid4()
     source = MediaAsset(
         id=uuid4(),

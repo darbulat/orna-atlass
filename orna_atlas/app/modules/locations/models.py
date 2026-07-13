@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Float, String, Text
+from sqlalchemy import CheckConstraint, DateTime, Float, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,6 +12,30 @@ _SENSITIVE_LEVELS = frozenset({"protected", "high", "medium"})
 
 class Location(Base):
     __tablename__ = "locations"
+    __table_args__ = (
+        CheckConstraint("exact_latitude BETWEEN -90 AND 90", name="ck_locations_exact_latitude"),
+        CheckConstraint("exact_longitude BETWEEN -180 AND 180", name="ck_locations_exact_longitude"),
+        CheckConstraint(
+            "(public_latitude IS NULL) = (public_longitude IS NULL)",
+            name="ck_locations_public_coordinate_pair",
+        ),
+        CheckConstraint(
+            "public_latitude IS NULL OR public_latitude BETWEEN -90 AND 90",
+            name="ck_locations_public_latitude",
+        ),
+        CheckConstraint(
+            "public_longitude IS NULL OR public_longitude BETWEEN -180 AND 180",
+            name="ck_locations_public_longitude",
+        ),
+        CheckConstraint(
+            "coordinate_visibility IN ('exact_public','approximate_public','hidden_public')",
+            name="ck_locations_coordinate_visibility",
+        ),
+        CheckConstraint(
+            "sensitivity_level IN ('none','low','medium','high','protected')",
+            name="ck_locations_sensitivity_level",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)

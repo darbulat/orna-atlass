@@ -1,7 +1,10 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from orna_atlas.app.core.domain_types import CoordinateVisibility, SensitivityLevel
 
 
 def _reject_required_nulls(data: dict, fields: set[str]) -> dict:
@@ -23,10 +26,35 @@ class LocationBase(BaseModel):
     exact_longitude: float = Field(ge=-180, le=180)
     public_latitude: float | None = Field(default=None, ge=-90, le=90)
     public_longitude: float | None = Field(default=None, ge=-180, le=180)
-    coordinate_visibility: str = Field(default="exact_public", max_length=40)
-    sensitivity_level: str = Field(default="none", max_length=40)
+    coordinate_visibility: CoordinateVisibility = CoordinateVisibility.EXACT_PUBLIC
+    sensitivity_level: SensitivityLevel = SensitivityLevel.NONE
     timezone: str = "UTC"
     metadata: dict = Field(default_factory=dict)
+
+    @field_validator("coordinate_visibility", mode="before")
+    @classmethod
+    def map_legacy_visibility(cls, value: object) -> object:
+        return CoordinateVisibility.APPROXIMATE_PUBLIC if value == "public_only" else value
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA name") from exc
+        return value
+
+    @model_validator(mode="after")
+    def validate_public_coordinate_pair(self) -> "LocationBase":
+        if (self.public_latitude is None) != (self.public_longitude is None):
+            raise ValueError("public latitude and longitude must be supplied together")
+        if (
+            self.coordinate_visibility is CoordinateVisibility.APPROXIMATE_PUBLIC
+            and self.public_latitude is None
+        ):
+            raise ValueError("approximate public visibility requires public coordinates")
+        return self
 
 
 class LocationCreate(LocationBase):
@@ -44,10 +72,25 @@ class LocationUpdate(BaseModel):
     exact_longitude: float | None = Field(default=None, ge=-180, le=180)
     public_latitude: float | None = Field(default=None, ge=-90, le=90)
     public_longitude: float | None = Field(default=None, ge=-180, le=180)
-    coordinate_visibility: str | None = Field(default=None, max_length=40)
-    sensitivity_level: str | None = Field(default=None, max_length=40)
+    coordinate_visibility: CoordinateVisibility | None = None
+    sensitivity_level: SensitivityLevel | None = None
     timezone: str | None = None
     metadata: dict | None = None
+
+    @field_validator("coordinate_visibility", mode="before")
+    @classmethod
+    def map_legacy_visibility(cls, value: object) -> object:
+        return CoordinateVisibility.APPROXIMATE_PUBLIC if value == "public_only" else value
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except ZoneInfoNotFoundError as exc:
+                raise ValueError("timezone must be a valid IANA name") from exc
+        return value
 
     @model_validator(mode="before")
     @classmethod
@@ -81,12 +124,17 @@ class LocationRead(BaseModel):
     longitude: float | None = Field(ge=-180, le=180)
     public_latitude: float | None = Field(default=None, ge=-90, le=90)
     public_longitude: float | None = Field(default=None, ge=-180, le=180)
-    coordinate_visibility: str
-    sensitivity_level: str
+    coordinate_visibility: CoordinateVisibility
+    sensitivity_level: SensitivityLevel
     timezone: str
     metadata: dict = Field(validation_alias="metadata_")
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("coordinate_visibility", mode="before")
+    @classmethod
+    def map_legacy_visibility(cls, value: object) -> object:
+        return CoordinateVisibility.APPROXIMATE_PUBLIC if value == "public_only" else value
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

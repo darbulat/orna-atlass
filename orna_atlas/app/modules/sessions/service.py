@@ -202,6 +202,8 @@ async def create_session(session: AsyncSession, data: SessionCreate) -> Recordin
     if await repository.get_session_by_slug_for_admin(session, data.slug):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session slug exists")
     recording = await repository.create_session(session, data)
+    await session.commit()
+    await session.refresh(recording, attribute_names=["media_assets"])
     await invalidate_atlas_cache()
     return recording
 
@@ -217,6 +219,8 @@ async def update_session(session: AsyncSession, session_id: UUID, data: SessionU
     ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session slug exists")
     recording = await repository.update_session(session, recording, data)
+    await session.commit()
+    await session.refresh(recording, attribute_names=["media_assets"])
     await invalidate_atlas_cache()
     return recording
 
@@ -224,4 +228,5 @@ async def update_session(session: AsyncSession, session_id: UUID, data: SessionU
 async def delete_session(session: AsyncSession, session_id: UUID) -> None:
     recording = await require_session_for_admin(session, session_id)
     await repository.delete_session(session, recording)
+    await session.commit()
     await invalidate_atlas_cache()

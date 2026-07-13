@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from orna_atlas.app.core.domain_types import JobStatus, JobType, MediaKind, ProcessingStatus
+
 
 def _reject_required_nulls(data: dict, fields: set[str]) -> dict:
     null_fields = sorted(field for field in fields if field in data and data[field] is None)
@@ -13,7 +15,7 @@ def _reject_required_nulls(data: dict, fields: set[str]) -> dict:
 
 
 class MediaAssetCreate(BaseModel):
-    kind: str = Field(default="source_audio", max_length=40)
+    kind: MediaKind = MediaKind.SOURCE_AUDIO
     storage_key: str = Field(min_length=1, max_length=512)
     mime_type: str = Field(default="audio/wav", max_length=120)
     duration_seconds: int | None = Field(default=None, ge=0)
@@ -24,10 +26,10 @@ class MediaAssetCreate(BaseModel):
 
 
 class MediaAssetUpdate(BaseModel):
-    kind: str | None = Field(default=None, max_length=40)
+    kind: MediaKind | None = None
     storage_key: str | None = Field(default=None, min_length=1, max_length=512)
     mime_type: str | None = Field(default=None, max_length=120)
-    processing_status: str | None = Field(default=None, max_length=40)
+    processing_status: ProcessingStatus | None = None
     duration_seconds: int | None = Field(default=None, ge=0)
     size_bytes: int | None = Field(default=None, ge=0)
     checksum: str | None = Field(default=None, max_length=128)
@@ -44,8 +46,8 @@ class MediaAssetUpdate(BaseModel):
 class ProcessingJobRead(BaseModel):
     id: UUID
     asset_id: UUID
-    job_type: str
-    status: str
+    job_type: JobType
+    status: JobStatus
     attempt_count: int
     error_code: str | None
     error_message: str | None
@@ -60,9 +62,9 @@ class ProcessingJobRead(BaseModel):
 class MediaAssetRead(BaseModel):
     id: UUID
     session_id: UUID
-    kind: str
+    kind: MediaKind
     mime_type: str
-    processing_status: str = "uploaded"
+    processing_status: ProcessingStatus = ProcessingStatus.UPLOADED
     duration_seconds: int | None
     size_bytes: int | None
     checksum: str | None
@@ -79,6 +81,6 @@ class AdminMediaAssetRead(MediaAssetRead):
 
 class ProcessingStatusRead(BaseModel):
     session_id: UUID
-    processing_status: str
+    processing_status: ProcessingStatus
     media_assets: list[AdminMediaAssetRead]
     latest_job: ProcessingJobRead | None = None

@@ -15,7 +15,8 @@ from orna_atlas.app.integrations.s3 import get_object_storage_client
 from orna_atlas.app.modules.locations.models import Location
 from orna_atlas.app.modules.media.models import MediaAsset
 from orna_atlas.app.modules.media.schemas import MediaAssetCreate
-from orna_atlas.app.modules.media.service import process_media_asset, sha256_file
+from orna_atlas.app.modules.media.audio import sha256_file
+from orna_atlas.app.modules.media.service import process_media_asset
 from orna_atlas.app.modules.sessions.models import RecordingSession
 from orna_atlas.app.modules.sessions.schemas import SessionCreate
 from orna_atlas.app.modules.sessions import repository as sessions_repository

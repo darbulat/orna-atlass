@@ -1,39 +1,11 @@
 import { apiUrl } from "./sessions";
+import type { components } from "./generated";
 
-export type CollectionSummary = {
-  id: string;
-  slug: string;
-  title: string;
-  description: string | null;
-  sort_order: number;
-  location_count: number;
-  session_count: number;
-};
-
-export type CollectionDetail = CollectionSummary & {
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  locations: Array<{
-    id: string;
-    slug: string;
-    name: string;
-    description: string | null;
-    habitat: string | null;
-    latitude: number | null;
-    longitude: number | null;
-    coordinates_protected: boolean;
-    coordinate_visibility: string;
-    sensitivity_level: string;
-  }>;
-  sessions: Array<{
-    id: string;
-    slug: string;
-    title: string;
-    description: string | null;
-    duration_seconds: number | null;
-    is_featured: boolean;
-  }>;
+export type CollectionSummary = components["schemas"]["CollectionSummaryRead"];
+type GeneratedCollectionDetail = components["schemas"]["CollectionDetailRead"];
+export type CollectionDetail = Omit<GeneratedCollectionDetail, "locations" | "sessions"> & {
+  locations: NonNullable<GeneratedCollectionDetail["locations"]>;
+  sessions: NonNullable<GeneratedCollectionDetail["sessions"]>;
 };
 
 export async function fetchCollections(limit = 24): Promise<CollectionSummary[]> {
