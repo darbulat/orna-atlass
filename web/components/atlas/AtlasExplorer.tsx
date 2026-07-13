@@ -28,9 +28,15 @@ import type {
 import { fetchCurrentDawn, fetchSessionDetail, searchAtlas } from "../../lib/api/sessions";
 import { useGlobalPlayerSuppression } from "../audio/PlayerProvider";
 import { SessionPlayer } from "../audio/SessionPlayer";
+import {
+  filterLocationsByMode,
+  listeningModeForLocation,
+  listeningModeKicker,
+  listeningModes,
+  type ListeningMode,
+} from "./listeningModes";
 
 type AtlasView = "globe" | "map" | "list";
-type ListeningMode = "Dawn" | "Day" | "Dusk" | "Night";
 
 type Props = {
   initialView: AtlasView;
@@ -49,13 +55,6 @@ type CesiumGlobeProps = {
 const satelliteImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
 const desktopLocationCardCount = 5;
 const mobileLocationCardCount = 2;
-const listeningModes: ListeningMode[] = ["Dawn", "Day", "Dusk", "Night"];
-const listeningModeKicker: Record<ListeningMode, string> = {
-  Dawn: "Now at dawn",
-  Day: "Now in daylight",
-  Dusk: "Now at dusk",
-  Night: "Now at night",
-};
 
 function isPoint(item: AtlasPoint | AtlasCluster): item is AtlasPoint {
   return item.type === "point";
@@ -66,64 +65,6 @@ function markerStyle(point: AtlasPoint | AtlasCluster) {
     left: `${((point.longitude + 180) / 360) * 100}%`,
     top: `${((90 - point.latitude) / 180) * 100}%`,
   };
-}
-
-function localMinutes(timezone: string, baseTime: string): number | null {
-  const generatedAt = new Date(baseTime);
-  if (Number.isNaN(generatedAt.getTime())) {
-    return null;
-  }
-  try {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      hour: "2-digit",
-      hourCycle: "h23",
-      minute: "2-digit",
-      timeZone: timezone,
-    }).formatToParts(generatedAt);
-    const hour = Number(parts.find((part) => part.type === "hour")?.value);
-    const minute = Number(parts.find((part) => part.type === "minute")?.value);
-    if (Number.isNaN(hour) || Number.isNaN(minute)) {
-      return null;
-    }
-    return hour * 60 + minute;
-  } catch {
-    return null;
-  }
-}
-
-function listeningModeForLocation(
-  location: AtlasPoint,
-  baseTime: string,
-  activeDawnSlugs: Set<string> = new Set(),
-): ListeningMode {
-  if (activeDawnSlugs.has(location.slug)) {
-    return "Dawn";
-  }
-  const minutes = localMinutes(location.timezone, baseTime);
-  if (minutes == null) {
-    return "Day";
-  }
-  if (minutes >= 270 && minutes < 450) {
-    return "Dawn";
-  }
-  if (minutes >= 450 && minutes < 1020) {
-    return "Day";
-  }
-  if (minutes >= 1020 && minutes < 1200) {
-    return "Dusk";
-  }
-  return "Night";
-}
-
-function filterLocationsByMode(
-  locations: AtlasPoint[],
-  mode: ListeningMode,
-  baseTime: string,
-  activeDawnSlugs: Set<string>,
-) {
-  return locations.filter((location) => {
-    return listeningModeForLocation(location, baseTime, activeDawnSlugs) === mode;
-  });
 }
 
 function useLocationCardCount() {

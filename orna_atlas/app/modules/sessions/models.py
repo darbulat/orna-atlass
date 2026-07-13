@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,6 +10,17 @@ from orna_atlas.app.db.base import Base
 
 class RecordingSession(Base):
     __tablename__ = "recording_sessions"
+    __table_args__ = (
+        CheckConstraint("duration_seconds IS NULL OR duration_seconds >= 0", name="ck_sessions_duration"),
+        CheckConstraint(
+            "access_level IN ('public','members_only','draft','private')",
+            name="ck_sessions_access_level",
+        ),
+        CheckConstraint(
+            "processing_status IN ('pending','uploaded','queued','processing','ready','failed')",
+            name="ck_sessions_processing_status",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     location_id: Mapped[UUID] = mapped_column(
@@ -41,6 +52,11 @@ class RecordingSession(Base):
 
 class BirdVocalPart(Base):
     __tablename__ = "bird_vocal_parts"
+    __table_args__ = (
+        CheckConstraint("starts_at_seconds >= 0", name="ck_bird_parts_start"),
+        CheckConstraint("ends_at_seconds >= starts_at_seconds", name="ck_bird_parts_interval"),
+        CheckConstraint("confidence IS NULL OR confidence BETWEEN 0 AND 1", name="ck_bird_parts_confidence"),
+    )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     session_id: Mapped[UUID] = mapped_column(

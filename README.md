@@ -54,6 +54,7 @@ Frontend checks and browser smoke tests:
 ```bash
 cd web
 npm ci
+npm run api:check
 npm run typecheck
 npm run lint
 npm run test:e2e

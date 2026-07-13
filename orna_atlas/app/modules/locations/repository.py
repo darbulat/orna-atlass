@@ -52,19 +52,17 @@ async def get_location_by_slug_for_admin(session: AsyncSession, slug: str) -> Lo
 async def create_location(session: AsyncSession, data: LocationCreate) -> Location:
     location = Location(**_payload(data))
     session.add(location)
-    await session.commit()
-    await session.refresh(location)
+    await session.flush()
     return location
 
 
 async def update_location(session: AsyncSession, location: Location, data: LocationUpdate) -> Location:
     for key, value in _payload(data, exclude_unset=True).items():
         setattr(location, key, value)
-    await session.commit()
-    await session.refresh(location)
+    await session.flush()
     return location
 
 
 async def delete_location(session: AsyncSession, location: Location) -> None:
     await session.delete(location)
-    await session.commit()
+    await session.flush()

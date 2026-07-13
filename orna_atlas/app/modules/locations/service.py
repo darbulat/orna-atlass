@@ -40,6 +40,8 @@ async def create_location(session: AsyncSession, data: LocationCreate) -> Locati
     if await repository.get_location_by_slug_for_admin(session, data.slug):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Location slug exists")
     location = await repository.create_location(session, data)
+    await session.commit()
+    await session.refresh(location)
     await invalidate_atlas_cache()
     return location
 
@@ -53,6 +55,8 @@ async def update_location(session: AsyncSession, location_id: UUID, data: Locati
     ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Location slug exists")
     location = await repository.update_location(session, location, data)
+    await session.commit()
+    await session.refresh(location)
     await invalidate_atlas_cache()
     return location
 
@@ -60,4 +64,5 @@ async def update_location(session: AsyncSession, location_id: UUID, data: Locati
 async def delete_location(session: AsyncSession, location_id: UUID) -> None:
     location = await require_location_for_admin(session, location_id)
     await repository.delete_location(session, location)
+    await session.commit()
     await invalidate_atlas_cache()

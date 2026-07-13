@@ -77,7 +77,7 @@ function formatSlug(slug: string) {
   return slug.replaceAll("-", " ");
 }
 
-function formatDuration(seconds: number | null) {
+function formatDuration(seconds: number | null | undefined) {
   if (!seconds) {
     return "Duration unknown";
   }
