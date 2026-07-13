@@ -1,15 +1,19 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.core.security import CurrentUser, get_current_admin
 from orna_atlas.app.db.session import get_db_session
+from orna_atlas.app.modules.admin import repository as admin_repository
+from orna_atlas.app.modules.admin.schemas import AuditEventRead
 from orna_atlas.app.modules.collections import service as collections_service
 from orna_atlas.app.modules.collections.schemas import CollectionAdminRead, CollectionCreate, CollectionUpdate
 from orna_atlas.app.modules.locations import repository as locations_repository
 from orna_atlas.app.modules.locations import service as locations_service
 from orna_atlas.app.modules.locations.schemas import LocationCreate, LocationRead, LocationUpdate
+from orna_atlas.app.modules.memberships import service as memberships_service
+from orna_atlas.app.modules.memberships.schemas import MembershipRead, MembershipUpdate
 from orna_atlas.app.modules.media import service as media_service
 from orna_atlas.app.modules.media.schemas import (
     AdminMediaAssetRead,
@@ -19,6 +23,8 @@ from orna_atlas.app.modules.media.schemas import (
 from orna_atlas.app.modules.sessions import repository as sessions_repository
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionRead, SessionUpdate
+from orna_atlas.app.modules.users import service as users_service
+from orna_atlas.app.modules.users.schemas import UserRead, UserRoleUpdate
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 admin_dependency = Depends(get_current_admin)
@@ -26,7 +32,8 @@ admin_dependency = Depends(get_current_admin)
 
 @router.get("/me")
 async def read_admin(current_user: CurrentUser = admin_dependency) -> dict[str, object]:
-    return {"id": current_user.id, "is_admin": current_user.is_admin, "mode": "local"}
+    mode = "local" if current_user.id == "local-admin" else "token"
+    return {"id": current_user.id, "is_admin": current_user.is_admin, "mode": mode}
 
 
 @router.post("/locations", response_model=LocationRead, status_code=status.HTTP_201_CREATED)
@@ -138,3 +145,45 @@ async def update_collection(
     _: CurrentUser = admin_dependency,
 ):
     return await collections_service.update_collection(session, collection_id, data)
+
+
+@router.patch("/users/{user_id}/role", response_model=UserRead)
+async def update_user_role(
+    user_id: UUID,
+    data: UserRoleUpdate,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = admin_dependency,
+) -> UserRead:
+    actor_id = UUID(current_user.id) if current_user.id != "local-admin" else None
+    return UserRead.model_validate(
+        await users_service.update_role(session, user_id, data, actor_user_id=actor_id)
+    )
+
+
+@router.put("/memberships/{user_id}", response_model=MembershipRead)
+async def update_membership(
+    user_id: UUID,
+    data: MembershipUpdate,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = admin_dependency,
+) -> MembershipRead:
+    actor_id = UUID(current_user.id) if current_user.id != "local-admin" else None
+    return MembershipRead.model_validate(
+        await memberships_service.update_membership(
+            session, user_id, data, actor_user_id=actor_id
+        )
+    )
+
+
+@router.get("/audit-events", response_model=list[AuditEventRead])
+async def list_audit_events(
+    event_type: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+) -> list[AuditEventRead]:
+    events = await admin_repository.list_audit_events(
+        session, event_type=event_type, limit=limit, offset=offset
+    )
+    return [AuditEventRead.model_validate(event) for event in events]

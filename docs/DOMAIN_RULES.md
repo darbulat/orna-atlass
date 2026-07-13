@@ -25,6 +25,16 @@ Publication, access and processing are independent facts:
 
 Mock silence is development fixture behavior, not a successful production fallback. A storage timeout or missing object must not be reported as playable.
 
+Membership entitlement is active only when `status=active` and `expires_at` is absent or in the future. Public sessions may issue anonymous grants; `members_only` sessions require an active entitlement. Editor and admin roles may inspect protected playback for editorial operations. Every successful grant creates an audit event; denied requests never create a success event.
+
+## Authentication and roles
+
+- Access tokens are short-lived and may arrive through a Bearer header or httpOnly cookie.
+- Refresh tokens are stored only as hashes, rotated on use, and revoked on logout.
+- Editors do not inherit admin publication or user-management permissions.
+- The local admin header is a development-only escape hatch and is invalid production configuration.
+
+
 ## Processing jobs
 
 - At most one active processing job exists for an asset revision and job type.

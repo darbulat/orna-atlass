@@ -358,10 +358,12 @@ export async function fetchFollowDawn(): Promise<DawnFollowResponse> {
 export async function requestPlaybackGrant(sessionId: string): Promise<PlaybackGrant> {
   const response = await fetch(apiUrl(`/api/v1/sessions/${sessionId}/playback-grants`), {
     method: "POST",
+    credentials: "include",
     headers: { Accept: "application/json" },
   });
   if (!response.ok) {
-    throw new Error("Unable to create playback grant");
+    const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(payload?.detail ?? "Unable to create playback grant");
   }
   return (await response.json()) as PlaybackGrant;
 }

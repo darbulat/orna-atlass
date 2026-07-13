@@ -1608,3 +1608,77 @@ a:focus-visible {
     width: 116px;
   }
 }
+
+.membership-page {
+  max-width: 760px;
+}
+
+.membership-card {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding: clamp(1.25rem, 4vw, 2.5rem);
+}
+
+.membership-card form {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.membership-card input {
+  width: 100%;
+  border: 1px solid rgba(244, 239, 226, 0.28);
+  border-radius: 0.45rem;
+  background: rgba(11, 18, 16, 0.72);
+  color: inherit;
+  padding: 0.8rem 0.9rem;
+}
+
+.membership-card button {
+  width: fit-content;
+  border: 1px solid rgba(244, 239, 226, 0.38);
+  border-radius: 999px;
+  background: rgba(244, 239, 226, 0.08);
+  color: inherit;
+  cursor: pointer;
+  padding: 0.65rem 1rem;
+}
+
+.membership-card button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.membership-tabs {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.membership-tabs button[aria-pressed="true"] {
+  background: rgba(244, 239, 226, 0.2);
+}
+
+.membership-card dl {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+}
+
+.membership-card dl div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.4fr) 1fr;
+  gap: 1rem;
+}
+
+.membership-card dt {
+  color: rgba(244, 239, 226, 0.62);
+}
+
+.membership-card dd {
+  margin: 0;
+}
+
+.form-message {
+  margin-top: 1rem;
+  color: #f1b8a8;
+}

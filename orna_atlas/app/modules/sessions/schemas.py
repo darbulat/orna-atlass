@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -85,14 +85,6 @@ class PlaybackGrantRead(BaseModel):
     stream_url: str
     expires_at: datetime
     refresh_after_seconds: int = 600
-
-    @classmethod
-    def mock_for_session(cls, session_id: UUID) -> "PlaybackGrantRead":
-        return cls(
-            session_id=session_id,
-            stream_url=f"/api/v1/sessions/{session_id}/mock-stream",
-            expires_at=datetime.now(UTC) + timedelta(minutes=15),
-        )
 
 
 class SessionBase(BaseModel):

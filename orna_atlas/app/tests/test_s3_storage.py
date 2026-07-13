@@ -6,6 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+import pytest
+from fastapi import HTTPException
+
 from orna_atlas.app.integrations.s3 import ObjectStorageClient, ObjectStorageConfig, parse_storage_reference
 from orna_atlas.app.modules.media.models import MediaAsset
 from orna_atlas.app.modules.media.service import (
@@ -178,7 +181,7 @@ def test_create_playback_grant_uses_presigned_url_when_rendition_ready(monkeypat
     client.object_exists.assert_called_once_with(rendition.storage_key)
 
 
-def test_create_playback_grant_falls_back_to_mock_when_object_missing(monkeypatch) -> None:
+def test_create_playback_grant_fails_closed_when_object_missing(monkeypatch) -> None:
     session_id = uuid4()
     rendition = SimpleNamespace(
         kind="streaming_rendition",
@@ -199,18 +202,20 @@ def test_create_playback_grant_falls_back_to_mock_when_object_missing(monkeypatc
 
     monkeypatch.setattr(sessions_service, "get_object_storage_client", lambda: client)
 
-    grant = create_playback_grant(recording)
+    with pytest.raises(HTTPException) as error:
+        create_playback_grant(recording)
 
-    assert grant.stream_url.endswith("/mock-stream")
+    assert error.value.status_code == 409
 
 
-def test_create_playback_grant_falls_back_to_mock_without_s3() -> None:
+def test_create_playback_grant_fails_closed_without_ready_rendition() -> None:
     session_id = uuid4()
     recording = SimpleNamespace(id=session_id, media_assets=[])
 
-    grant = create_playback_grant(recording)
+    with pytest.raises(HTTPException) as error:
+        create_playback_grant(recording)
 
-    assert grant.stream_url.endswith("/mock-stream")
+    assert error.value.status_code == 409
 
 
 def test_object_storage_config_requires_credentials() -> None:
