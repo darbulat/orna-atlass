@@ -160,6 +160,10 @@ class ObjectStorageClient:
             **extra_args,
         )
 
+    def delete_object(self, storage_key: str, *, bucket: str | None = None) -> None:
+        bucket_name, key = self._resolve_object_location(storage_key, bucket=bucket)
+        self._get_client().delete_object(Bucket=bucket_name, Key=key)
+
     def generate_presigned_get_url(
         self,
         storage_key: str,

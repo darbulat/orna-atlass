@@ -18,8 +18,13 @@ class SensitivityLevel(StrEnum):
 class SessionAccess(StrEnum):
     PUBLIC = "public"
     MEMBERS_ONLY = "members_only"
-    DRAFT = "draft"
     PRIVATE = "private"
+
+
+class PublicationStatus(StrEnum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
 
 
 class ProcessingStatus(StrEnum):

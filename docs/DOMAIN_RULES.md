@@ -16,6 +16,8 @@ Admin DTOs may contain exact values after authorization. Public DTOs must be con
 
 Publication, access and processing are independent facts:
 
+Publication uses `draft`, `published` and `archived`; access uses `public`, `members_only` and `private`; processing reports pipeline readiness independently. Public queries require `publication_status=published` before applying caller access policy.
+
 | Published/public | Access permits caller | Ready playable rendition exists | Public detail | Playback grant |
 |---:|---:|---:|---:|---:|
 | No | any | any | No | No |
@@ -47,6 +49,8 @@ only; protected records are reported as not found.
 - A rendition becomes `ready` only after its object was uploaded and existence was verified.
 - Retry is idempotent and cannot activate output for an obsolete master revision.
 - A failed attempt does not destroy the last successful analysis/rendition.
+- Source and rendition object keys are immutable per revision/attempt. Only an archived, inactive asset may be purged.
+- Admin-provided storage keys must remain inside the managed relative `sessions/` namespace; absolute paths and arbitrary S3 buckets are rejected.
 - Services own transaction boundaries; repositories flush/query but do not commit independently.
 
 ## Time and dawn

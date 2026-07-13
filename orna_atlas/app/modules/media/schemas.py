@@ -68,6 +68,10 @@ class MediaAssetRead(BaseModel):
     duration_seconds: int | None
     size_bytes: int | None
     checksum: str | None
+    revision: int = Field(default=1, ge=1)
+    is_active: bool = True
+    archived_at: datetime | None = None
+    source_asset_id: UUID | None = None
     metadata: dict = Field(validation_alias="metadata_")
     created_at: datetime
 

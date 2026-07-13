@@ -107,6 +107,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/media-assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Archive Media Asset */
+        delete: operations["archive_media_asset_api_v1_admin_media_assets__asset_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/media-assets/{asset_id}/object": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Purge Archived Media Asset */
+        delete: operations["purge_archived_media_asset_api_v1_admin_media_assets__asset_id__object_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/media-assets/{asset_id}/process": {
         parameters: {
             query?: never;
@@ -607,6 +641,8 @@ export interface components {
     schemas: {
         /** AdminMediaAssetRead */
         AdminMediaAssetRead: {
+            /** Archived At */
+            archived_at?: string | null;
             /** Checksum */
             checksum: string | null;
             /**
@@ -621,6 +657,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
             kind: components["schemas"]["MediaKind"];
             /** Metadata */
             metadata: {
@@ -633,12 +674,19 @@ export interface components {
             /** @default uploaded */
             processing_status: components["schemas"]["ProcessingStatus"];
             /**
+             * Revision
+             * @default 1
+             */
+            revision: number;
+            /**
              * Session Id
              * Format: uuid
              */
             session_id: string;
             /** Size Bytes */
             size_bytes: number | null;
+            /** Source Asset Id */
+            source_asset_id?: string | null;
             /** Storage Key */
             storage_key: string;
         };
@@ -1005,6 +1053,8 @@ export interface components {
         DawnLocation: {
             /** Civil Dawn At */
             civil_dawn_at?: string | null;
+            /** Civil Dusk At */
+            civil_dusk_at?: string | null;
             /** Local Date */
             local_date: string;
             /** Local Time */
@@ -1013,12 +1063,19 @@ export interface components {
             /** Minutes Until Sunrise */
             minutes_until_sunrise?: number | null;
             /**
+             * Solar Phase
+             * @enum {string}
+             */
+            solar_phase: "night" | "civil_dawn" | "daylight" | "civil_dusk" | "polar_day" | "polar_night";
+            /**
              * State
              * @enum {string}
              */
             state: "active" | "upcoming" | "past" | "polar";
             /** Sunrise At */
             sunrise_at?: string | null;
+            /** Sunset At */
+            sunset_at?: string | null;
             /** Window Ends At */
             window_ends_at?: string | null;
             /** Window Starts At */
@@ -1255,6 +1312,8 @@ export interface components {
         };
         /** MediaAssetRead */
         MediaAssetRead: {
+            /** Archived At */
+            archived_at?: string | null;
             /** Checksum */
             checksum: string | null;
             /**
@@ -1269,6 +1328,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
             kind: components["schemas"]["MediaKind"];
             /** Metadata */
             metadata: {
@@ -1279,12 +1343,19 @@ export interface components {
             /** @default uploaded */
             processing_status: components["schemas"]["ProcessingStatus"];
             /**
+             * Revision
+             * @default 1
+             */
+            revision: number;
+            /**
              * Session Id
              * Format: uuid
              */
             session_id: string;
             /** Size Bytes */
             size_bytes: number | null;
+            /** Source Asset Id */
+            source_asset_id?: string | null;
         };
         /**
          * MediaKind
@@ -1406,6 +1477,11 @@ export interface components {
              */
             session_id: string;
         };
+        /**
+         * PublicationStatus
+         * @enum {string}
+         */
+        PublicationStatus: "draft" | "published" | "archived";
         /** RecordingIntegrityRead */
         RecordingIntegrityRead: {
             /**
@@ -1470,7 +1546,7 @@ export interface components {
          * SessionAccess
          * @enum {string}
          */
-        SessionAccess: "public" | "members_only" | "draft" | "private";
+        SessionAccess: "public" | "members_only" | "private";
         /** SessionAnnotationRead */
         SessionAnnotationRead: {
             /**
@@ -1517,6 +1593,8 @@ export interface components {
             };
             /** @default pending */
             processing_status: components["schemas"]["ProcessingStatus"];
+            /** @default draft */
+            publication_status: components["schemas"]["PublicationStatus"];
             /**
              * Recorded At
              * Format: date-time
@@ -1573,6 +1651,8 @@ export interface components {
             };
             /** @default pending */
             processing_status: components["schemas"]["ProcessingStatus"];
+            /** @default draft */
+            publication_status: components["schemas"]["PublicationStatus"];
             /**
              * Recorded At
              * Format: date-time
@@ -1632,6 +1712,8 @@ export interface components {
             };
             /** @default pending */
             processing_status: components["schemas"]["ProcessingStatus"];
+            /** @default draft */
+            publication_status: components["schemas"]["PublicationStatus"];
             /**
              * Recorded At
              * Format: date-time
@@ -1669,6 +1751,7 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             processing_status?: components["schemas"]["ProcessingStatus"] | null;
+            publication_status?: components["schemas"]["PublicationStatus"] | null;
             /** Recorded At */
             recorded_at?: string | null;
             /** Recorder */
@@ -2022,6 +2105,74 @@ export interface operations {
                         [key: string]: unknown;
                     };
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_media_asset_api_v1_admin_media_assets__asset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-orna-admin"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                asset_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_archived_media_asset_api_v1_admin_media_assets__asset_id__object_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-orna-admin"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                asset_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

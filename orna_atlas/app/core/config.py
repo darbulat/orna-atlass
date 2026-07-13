@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     s3_access_key_id: str | None = Field(default=None, validation_alias="S3_ACCESS_KEY_ID")
     s3_secret_access_key: str | None = Field(default=None, validation_alias="S3_SECRET_ACCESS_KEY")
     s3_presign_expires_seconds: int = Field(default=900, validation_alias="S3_PRESIGN_EXPIRES_SECONDS")
+    audio_job_timeout_seconds: int = Field(default=600, ge=60, validation_alias="AUDIO_JOB_TIMEOUT_SECONDS")
+    audio_job_result_ttl_seconds: int = Field(
+        default=3600, ge=60, validation_alias="AUDIO_JOB_RESULT_TTL_SECONDS"
+    )
     environment: str = Field(default="development", validation_alias="APP_ENVIRONMENT")
     auth_secret_key: str = Field(default="development-only-change-me", validation_alias="AUTH_SECRET_KEY")
     access_token_ttl_seconds: int = Field(

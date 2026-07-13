@@ -5,6 +5,7 @@ import math
 import wave
 from array import array
 from pathlib import Path
+from uuid import UUID
 
 from orna_atlas.app.integrations.s3 import get_object_storage_client
 from orna_atlas.app.modules.media.models import MediaAsset
@@ -47,7 +48,7 @@ def generate_waveform(asset: MediaAsset, *, metadata: dict | None = None) -> dic
 def upload_streaming_rendition(source_asset: MediaAsset, rendition: MediaAsset) -> None:
     storage_client = get_object_storage_client()
     if not storage_client.is_configured():
-        return
+        raise RuntimeError("Object storage is not configured")
     source_ref = storage_reference(source_asset.storage_key, client=storage_client)
     if source_ref.kind == "s3" and source_ref.key is not None:
         storage_client.copy_object(
@@ -71,8 +72,9 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def streaming_rendition_key(asset: MediaAsset) -> str:
-    return f"sessions/{asset.session_id}/renditions/stream_rendition.wav"
+def streaming_rendition_key(asset: MediaAsset, rendition_id: UUID | None = None) -> str:
+    version_id = rendition_id or asset.id
+    return f"sessions/{asset.session_id}/renditions/{asset.id}/{version_id}.wav"
 
 
 def public_audio_metadata(metadata: dict) -> dict:

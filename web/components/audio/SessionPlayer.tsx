@@ -167,7 +167,7 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
             ‹
           </Link>
         )}
-        <LiveBadge />
+        <span className="session-live-badge">Recording</span>
         <div className="session-scenic-copy">
           <h2>{session.location.name}</h2>
           <p>{formatCoordinates(session)}</p>
@@ -254,7 +254,7 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
       </div>
 
       <div className="session-orbital-player">
-        <button type="button" aria-label="Previous recording">
+        <button type="button" aria-label="Previous recording" disabled title="Playlist navigation is not available yet">
           ‹
         </button>
         <div className="session-soundline" aria-hidden="true">
@@ -287,27 +287,18 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
             <span key={`${peak}-${index}`} style={{ height: `${Math.max(4, peak * 28)}px` }} />
           ))}
         </div>
-        <button type="button" aria-label="Save recording">
+        <button type="button" aria-label="Save recording" disabled title="Saving recordings is not available yet">
           ♡
         </button>
         <div className="session-player-caption">
           <strong>{session.location.name}</strong>
           <span>
-            {formatLocalTime(session.recorded_at, session.location.timezone)} · {isPlaying ? "Live" : displayedState}
+            {formatLocalTime(session.recorded_at, session.location.timezone)} · {isPlaying ? "Playing" : displayedState}
           </span>
           {grant && isCurrent ? <small>Grant expires {formatClockTime(grant.expires_at)}</small> : null}
           {error && isCurrent ? <small className="error-text">{error}</small> : null}
         </div>
       </div>
     </section>
-  );
-}
-
-function LiveBadge() {
-  return (
-    <span className="session-live-badge">
-      Live
-      <i aria-hidden="true" />
-    </span>
   );
 }

@@ -338,6 +338,8 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
   const [currentSidePanelSession, setCurrentSidePanelSession] = useState(sidePanelSession);
   const currentSidePanelSessionRef = useRef<SessionDetail | null>(sidePanelSession);
   const selected = locations.find((point) => point.slug === selectedSlug) ?? locations[0] ?? null;
+  const selectedDawn = [...currentDawn.active_locations, ...currentDawn.next_locations]
+    .find((item) => item.location.slug === selected?.slug);
   const isLocalPlayerVisible = isSidePanelOpen && currentSidePanelSession !== null;
   const displayedLocations = useMemo(() => {
     const count = Math.min(locationCardCount, locations.length);
@@ -562,7 +564,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
             <span>Birdsong</span>
             <span>Earth</span>
           </div>
-          <LiveBadge className="atlas-live-left" />
+          {selectedDawn?.state === "active" ? <DawnNowBadge className="atlas-live-left" /> : null}
           <div className="dawn-copy">
             <span>{listeningModeKicker[selectedMode]}</span>
             <strong>{selected?.name ?? "No location selected"}</strong>
@@ -707,10 +709,10 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
   );
 }
 
-function LiveBadge({ className = "" }: { className?: string }) {
+function DawnNowBadge({ className = "" }: { className?: string }) {
   return (
     <span className={["live-badge", className].filter(Boolean).join(" ")}>
-      Live
+      Dawn now
       <i aria-hidden="true" />
     </span>
   );
@@ -719,9 +721,9 @@ function LiveBadge({ className = "" }: { className?: string }) {
 function formatLocalTime(timezone: string | undefined, baseTime: string) {
   const generatedAt = new Date(baseTime);
   if (Number.isNaN(generatedAt.getTime())) {
-    return "05:42";
+    return "--:--";
   }
-  if (!timezone) return "05:42";
+  if (!timezone) return "--:--";
   try {
     return new Intl.DateTimeFormat("en", {
       hour: "2-digit",
@@ -730,6 +732,6 @@ function formatLocalTime(timezone: string | undefined, baseTime: string) {
       timeZone: timezone,
     }).format(generatedAt);
   } catch {
-    return "05:42";
+    return "--:--";
   }
 }

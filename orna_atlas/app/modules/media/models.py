@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +21,24 @@ class MediaAsset(Base):
         ),
         CheckConstraint("duration_seconds IS NULL OR duration_seconds >= 0", name="ck_media_assets_duration"),
         CheckConstraint("size_bytes IS NULL OR size_bytes >= 0", name="ck_media_assets_size"),
+        CheckConstraint("revision > 0", name="ck_media_assets_revision"),
+        Index(
+            "uq_media_assets_active_source",
+            "session_id",
+            unique=True,
+            postgresql_where=text(
+                "is_active AND archived_at IS NULL "
+                "AND kind IN ('audio','source_audio','master_audio')"
+            ),
+        ),
+        Index(
+            "uq_media_assets_active_rendition",
+            "session_id",
+            unique=True,
+            postgresql_where=text(
+                "is_active AND archived_at IS NULL AND kind = 'streaming_rendition'"
+            ),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -34,6 +52,12 @@ class MediaAsset(Base):
     duration_seconds: Mapped[int | None] = mapped_column(Integer)
     size_bytes: Mapped[int | None] = mapped_column(Integer)
     checksum: Mapped[str | None] = mapped_column(String(128))
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    source_asset_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("media_assets.id", ondelete="SET NULL"), index=True
+    )
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
@@ -50,6 +74,13 @@ class ProcessingJob(Base):
             name="ck_processing_jobs_status",
         ),
         CheckConstraint("attempt_count >= 0", name="ck_processing_jobs_attempt_count"),
+        Index(
+            "uq_processing_jobs_active_asset_type",
+            "asset_id",
+            "job_type",
+            unique=True,
+            postgresql_where=text("status IN ('queued','running')"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)

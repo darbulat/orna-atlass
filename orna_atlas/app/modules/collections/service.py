@@ -22,6 +22,7 @@ def summary_from_collection(collection: Collection) -> CollectionSummaryRead:
         link.session
         for link in collection.session_links
         if link.session.access_level == "public"
+        and getattr(link.session, "publication_status", "published") == "published"
         and is_publicly_discoverable(link.session.location)
     ]
     public_locations = [
@@ -51,6 +52,7 @@ def detail_from_collection(collection: Collection) -> CollectionDetailRead:
         SessionRead.model_validate(link.session)
         for link in collection.session_links
         if link.session.access_level == "public"
+        and getattr(link.session, "publication_status", "published") == "published"
         and is_publicly_discoverable(link.session.location)
     ]
     return CollectionDetailRead(

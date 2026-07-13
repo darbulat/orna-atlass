@@ -52,7 +52,11 @@ def _published_location_query(bbox: BoundingBox | None, habitats: list[str] | No
         select(Location)
         .join(RecordingSession)
         .options(selectinload(Location.sessions))
-        .where(RecordingSession.access_level == "public", *_coordinate_filters(bbox))
+        .where(
+            RecordingSession.access_level == "public",
+            RecordingSession.publication_status == "published",
+            *_coordinate_filters(bbox),
+        )
         .order_by(Location.name)
         .distinct()
     )
@@ -85,6 +89,7 @@ async def search_locations_and_sessions(
         .options(selectinload(Location.sessions))
         .where(
             RecordingSession.access_level == "public",
+            RecordingSession.publication_status == "published",
             publicly_discoverable_clause(),
             or_(Location.name.ilike(term), Location.region.ilike(term), Location.habitat.ilike(term)),
         )
@@ -99,6 +104,7 @@ async def search_locations_and_sessions(
         .options(selectinload(RecordingSession.location))
         .where(
             RecordingSession.access_level == "public",
+            RecordingSession.publication_status == "published",
             publicly_discoverable_clause(),
             or_(RecordingSession.title.ilike(term), RecordingSession.description.ilike(term)),
         )

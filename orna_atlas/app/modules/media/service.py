@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from uuid import UUID
+from pathlib import PurePosixPath
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,7 @@ from orna_atlas.app.integrations.bird_analysis import (
     analyze_audio_file,
 )
 from orna_atlas.app.integrations.redis import get_redis_client
+from orna_atlas.app.integrations.s3 import get_object_storage_client
 from orna_atlas.app.modules.media import repository
 from orna_atlas.app.modules.media.audio import (
     extract_audio_metadata,
@@ -38,6 +40,25 @@ STREAMING_RENDITION_KIND = "streaming_rendition"
 logger = logging.getLogger(__name__)
 
 
+class ObsoleteAssetRevisionError(RuntimeError):
+    pass
+
+
+def validate_managed_storage_key(storage_key: str) -> None:
+    path = PurePosixPath(storage_key)
+    if (
+        storage_key.startswith(("/", "file://", "s3://"))
+        or path.is_absolute()
+        or ".." in path.parts
+        or not path.parts
+        or path.parts[0] != "sessions"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Storage key must be a managed relative sessions/ key",
+        )
+
+
 async def require_asset(session: AsyncSession, asset_id: UUID) -> MediaAsset:
     asset = await repository.get_asset(session, asset_id)
     if asset is None:
@@ -49,10 +70,22 @@ async def create_asset_for_session(
     session: AsyncSession, session_id: UUID, data: MediaAssetCreate
 ) -> MediaAsset:
     recording = await sessions_service.require_session_for_admin(session, session_id)
+    validate_managed_storage_key(data.storage_key)
     if await repository.get_asset_by_storage_key(session, data.storage_key):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Media asset storage key exists")
 
-    asset = await repository.create_media_asset(session, recording, data)
+    revision = 1
+    if data.kind in SOURCE_AUDIO_KINDS:
+        previous_sources = await repository.active_source_assets_for_update(session, session_id)
+        revision = max((item.revision for item in previous_sources), default=0) + 1
+        await repository.archive_assets(session, previous_sources)
+    asset = await repository.create_media_asset(
+        session,
+        recording,
+        data,
+        revision=revision,
+        is_active=data.kind in SOURCE_AUDIO_KINDS,
+    )
     job = None
     if should_enqueue_audio_pipeline(data.kind, enqueue_processing=data.enqueue_processing):
         recording.processing_status = "queued"
@@ -83,10 +116,10 @@ async def processing_status_for_session(
     )
 
 
-async def enqueue_asset_processing(asset_id: UUID) -> str:
+async def enqueue_asset_processing(asset_id: UUID, revision: int) -> str:
     from orna_atlas.app.workers.audio_pipeline import enqueue_audio_processing
 
-    return enqueue_audio_processing(asset_id)
+    return enqueue_audio_processing(asset_id, revision)
 
 
 async def retry_asset_processing(session: AsyncSession, asset_id: UUID) -> ProcessingStatusRead:
@@ -96,6 +129,16 @@ async def retry_asset_processing(session: AsyncSession, asset_id: UUID) -> Proce
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Audio processing can only be queued for source audio assets",
         )
+    active_job = await repository.active_processing_job(
+        session, asset.id, job_type=PIPELINE_JOB_TYPE
+    )
+    if active_job is not None:
+        return await processing_status_for_session(session, asset.session_id)
+    if not asset.is_active or asset.archived_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Archived media revisions cannot be processed",
+        )
     asset.processing_status = "queued"
     asset.session.processing_status = "queued"
     job = await repository.create_processing_job(session, asset, job_type=PIPELINE_JOB_TYPE)
@@ -104,15 +147,48 @@ async def retry_asset_processing(session: AsyncSession, asset_id: UUID) -> Proce
     return await processing_status_for_session(session, asset.session_id)
 
 
-async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAsset:
+async def archive_asset(session: AsyncSession, asset_id: UUID) -> None:
     asset = await require_asset(session, asset_id)
+    if asset.archived_at is None:
+        await repository.archive_assets(session, [asset])
+        asset.session.processing_status = _recording_processing_status(asset.session)
+        await session.commit()
+        await _clear_processing_caches(asset.session)
+
+
+async def purge_archived_asset(session: AsyncSession, asset_id: UUID) -> None:
+    asset = await require_asset(session, asset_id)
+    if asset.archived_at is None or asset.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only archived media revisions can be purged",
+        )
+    validate_managed_storage_key(asset.storage_key)
+    storage_client = get_object_storage_client()
+    if storage_client.is_configured() and storage_client.object_exists(asset.storage_key):
+        storage_client.delete_object(asset.storage_key)
+    recording = asset.session
+    await repository.delete_asset(session, asset)
+    await session.commit()
+    await _clear_processing_caches(recording)
+
+
+async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAsset:
+    asset = await repository.get_asset_for_processing(session, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media asset not found")
     job = await repository.latest_processing_job(session, asset.id, job_type=PIPELINE_JOB_TYPE)
     if job is None:
         job = await repository.create_processing_job(session, asset, job_type=PIPELINE_JOB_TYPE)
 
+    if job.status == "running":
+        return asset
+    if not asset.is_active or asset.archived_at is not None:
+        raise ObsoleteAssetRevisionError("Media asset revision is no longer active")
     _mark_job_running(asset, job)
     await session.commit()
 
+    rendition: MediaAsset | None = None
     try:
         if asset.kind not in SOURCE_AUDIO_KINDS:
             raise ValueError("Audio pipeline can only process source audio assets")
@@ -121,6 +197,15 @@ async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAss
         _apply_pipeline_results(asset, metadata=metadata, waveform=waveform)
         rendition = await _ensure_streaming_rendition(session, asset, metadata=metadata)
         _upload_streaming_rendition(asset, rendition)
+        storage_client = get_object_storage_client()
+        if not storage_client.object_exists(rendition.storage_key):
+            raise FileNotFoundError("Uploaded streaming rendition could not be verified")
+        current_sources = await repository.active_source_assets_for_update(
+            session, asset.session_id
+        )
+        if not current_sources or current_sources[0].id != asset.id:
+            raise ObsoleteAssetRevisionError("A newer source revision replaced this pipeline run")
+        await repository.activate_rendition(session, rendition)
         await _analyze_and_store_bird_parts(session, asset)
         asset.session.processing_status = _recording_processing_status(asset.session)
         _mark_job_succeeded(job)
@@ -129,6 +214,9 @@ async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAss
         await session.refresh(asset, attribute_names=["processing_jobs"])
         return asset
     except Exception as exc:
+        if rendition is not None and rendition.processing_status != "ready":
+            rendition.processing_status = "failed"
+            rendition.is_active = False
         _mark_job_failed(asset, job, exc)
         await session.commit()
         raise
@@ -165,13 +253,6 @@ async def _analyze_and_store_bird_parts(session: AsyncSession, asset: MediaAsset
         )
     except Exception as exc:
         logger.exception("BirdNET analysis failed for session %s", asset.session_id)
-        await sessions_repository.replace_bird_vocal_parts(
-            session,
-            asset.session_id,
-            [],
-            analysis_provider=ANALYSIS_PROVIDER,
-            analysis_model_version=ANALYSIS_MODEL_VERSION,
-        )
         _record_bird_analysis_status(
             asset.session,
             status="failed",
@@ -194,6 +275,7 @@ def _record_bird_analysis_status(
         "status": status,
         "provider": ANALYSIS_PROVIDER,
         "model_version": ANALYSIS_MODEL_VERSION,
+        "finished_at": datetime.now(UTC).isoformat(),
     }
     if parts_count is not None:
         payload["parts_count"] = parts_count
@@ -201,7 +283,12 @@ def _record_bird_analysis_status(
         payload["error_code"] = error_code
     if error_message is not None:
         payload["error_message"] = error_message
-    recording.metadata_ = {**metadata, "bird_analysis": payload}
+    existing_analysis = metadata.get("bird_analysis")
+    analysis = existing_analysis if isinstance(existing_analysis, dict) else {}
+    updated_analysis = {**analysis, "latest_attempt": payload}
+    if status == "succeeded":
+        updated_analysis["last_successful"] = payload
+    recording.metadata_ = {**metadata, "bird_analysis": updated_analysis}
 
 
 def _apply_pipeline_results(asset: MediaAsset, *, metadata: dict, waveform: dict) -> None:
@@ -235,53 +322,53 @@ def _apply_pipeline_results(asset: MediaAsset, *, metadata: dict, waveform: dict
 async def _ensure_streaming_rendition(
     session: AsyncSession, asset: MediaAsset, *, metadata: dict
 ) -> MediaAsset:
-    storage_key = streaming_rendition_key(asset)
-    rendition = await repository.get_asset_by_storage_key(session, storage_key)
+    rendition_id = uuid4()
+    storage_key = streaming_rendition_key(asset, rendition_id)
     duration_seconds = _int_or_none(metadata.get("duration_seconds")) or asset.duration_seconds
     rendition_mime_type = "audio/wav"
-    if rendition is None:
-        rendition = MediaAsset(
-            session=asset.session,
-            kind=STREAMING_RENDITION_KIND,
-            storage_key=storage_key,
-            mime_type=rendition_mime_type,
-            processing_status="ready",
-            duration_seconds=duration_seconds,
-            size_bytes=None,
-            checksum=asset.checksum,
-            metadata_={
-                "bitrate_kbps": None,
-                "source_asset_id": str(asset.id),
-                "storage_policy": "deterministic_s3_key",
-                "transcoding": "copy_source_wav",
-            },
-        )
-        session.add(rendition)
-        await session.flush()
-    else:
-        existing = rendition.metadata_ if isinstance(rendition.metadata_, dict) else {}
-        rendition.processing_status = "ready"
-        rendition.duration_seconds = duration_seconds
-        rendition.checksum = rendition.checksum or asset.checksum
-        rendition.metadata_ = {
-            **existing,
+    rendition = MediaAsset(
+        id=rendition_id,
+        session=asset.session,
+        kind=STREAMING_RENDITION_KIND,
+        storage_key=storage_key,
+        mime_type=rendition_mime_type,
+        processing_status="processing",
+        duration_seconds=duration_seconds,
+        size_bytes=None,
+        checksum=asset.checksum,
+        revision=asset.revision,
+        is_active=False,
+        source_asset_id=asset.id,
+        metadata_={
             "bitrate_kbps": None,
             "source_asset_id": str(asset.id),
-            "storage_policy": "deterministic_s3_key",
+            "storage_policy": "versioned_s3_key",
             "transcoding": "copy_source_wav",
-        }
+        },
+    )
+    session.add(rendition)
+    await session.flush()
     return rendition
 
 
 def _recording_processing_status(recording: RecordingSession) -> str:
     assets = list(recording.media_assets)
-    source_assets = [asset for asset in assets if asset.kind in SOURCE_AUDIO_KINDS]
+    source_assets = [
+        asset
+        for asset in assets
+        if asset.kind in SOURCE_AUDIO_KINDS
+        and asset.is_active
+        and asset.archived_at is None
+    ]
     if not source_assets:
         return "pending"
     if any(asset.processing_status == "failed" for asset in source_assets):
         return "failed"
     has_rendition = any(
-        asset.kind == STREAMING_RENDITION_KIND and asset.processing_status == "ready"
+        asset.kind == STREAMING_RENDITION_KIND
+        and asset.processing_status == "ready"
+        and asset.is_active
+        and asset.archived_at is None
         for asset in assets
     )
     if all(asset.processing_status == "ready" for asset in source_assets) and has_rendition:
@@ -321,7 +408,7 @@ async def _enqueue_or_mark_failed(
     session: AsyncSession, asset: MediaAsset, job: ProcessingJob
 ) -> None:
     try:
-        await enqueue_asset_processing(asset.id)
+        await enqueue_asset_processing(asset.id, asset.revision)
     except Exception as exc:
         job.status = "failed"
         job.error_code = "enqueue_failed"

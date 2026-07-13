@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from orna_atlas.app.core.domain_types import ProcessingStatus, SessionAccess
+from orna_atlas.app.core.domain_types import ProcessingStatus, PublicationStatus, SessionAccess
 from orna_atlas.app.modules.locations.schemas import LocationRead
 from orna_atlas.app.modules.media.schemas import MediaAssetRead
 
@@ -98,6 +98,7 @@ class SessionBase(BaseModel):
     recorder: str | None = None
     weather: str | None = None
     access_level: SessionAccess = SessionAccess.PUBLIC
+    publication_status: PublicationStatus = PublicationStatus.DRAFT
     processing_status: ProcessingStatus = ProcessingStatus.PENDING
     is_featured: bool = False
     featured_sort_order: int | None = None
@@ -118,6 +119,7 @@ class SessionUpdate(BaseModel):
     recorder: str | None = None
     weather: str | None = None
     access_level: SessionAccess | None = None
+    publication_status: PublicationStatus | None = None
     processing_status: ProcessingStatus | None = None
     is_featured: bool | None = None
     featured_sort_order: int | None = None
@@ -135,6 +137,7 @@ class SessionUpdate(BaseModel):
                     "title",
                     "recorded_at",
                     "access_level",
+                    "publication_status",
                     "processing_status",
                     "is_featured",
                     "featured_sort_order",
@@ -182,6 +185,7 @@ class SessionDetailRead(SessionRead):
                 "recorder": data.recorder,
                 "weather": data.weather,
                 "access_level": data.access_level,
+                "publication_status": getattr(data, "publication_status", "published"),
                 "processing_status": getattr(data, "processing_status", "pending"),
                 "is_featured": getattr(data, "is_featured", False),
                 "featured_sort_order": getattr(data, "featured_sort_order", None),

@@ -3,6 +3,18 @@
     "schemas": {
       "AdminMediaAssetRead": {
         "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
           "checksum": {
             "anyOf": [
               {
@@ -35,6 +47,11 @@
             "title": "Id",
             "type": "string"
           },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/MediaKind"
           },
@@ -58,6 +75,12 @@
             "$ref": "#/components/schemas/ProcessingStatus",
             "default": "uploaded"
           },
+          "revision": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
           "session_id": {
             "format": "uuid",
             "title": "Session Id",
@@ -73,6 +96,18 @@
               }
             ],
             "title": "Size Bytes"
+          },
+          "source_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Asset Id"
           },
           "storage_key": {
             "title": "Storage Key",
@@ -1059,6 +1094,18 @@
             ],
             "title": "Civil Dawn At"
           },
+          "civil_dusk_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Civil Dusk At"
+          },
           "local_date": {
             "title": "Local Date",
             "type": "string"
@@ -1081,6 +1128,18 @@
             ],
             "title": "Minutes Until Sunrise"
           },
+          "solar_phase": {
+            "enum": [
+              "night",
+              "civil_dawn",
+              "daylight",
+              "civil_dusk",
+              "polar_day",
+              "polar_night"
+            ],
+            "title": "Solar Phase",
+            "type": "string"
+          },
           "state": {
             "enum": [
               "active",
@@ -1102,6 +1161,18 @@
               }
             ],
             "title": "Sunrise At"
+          },
+          "sunset_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sunset At"
           },
           "window_ends_at": {
             "anyOf": [
@@ -1132,7 +1203,8 @@
           "location",
           "local_date",
           "local_time",
-          "state"
+          "state",
+          "solar_phase"
         ],
         "title": "DawnLocation",
         "type": "object"
@@ -1886,6 +1958,18 @@
       },
       "MediaAssetRead": {
         "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
           "checksum": {
             "anyOf": [
               {
@@ -1918,6 +2002,11 @@
             "title": "Id",
             "type": "string"
           },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/MediaKind"
           },
@@ -1934,6 +2023,12 @@
             "$ref": "#/components/schemas/ProcessingStatus",
             "default": "uploaded"
           },
+          "revision": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
           "session_id": {
             "format": "uuid",
             "title": "Session Id",
@@ -1949,6 +2044,18 @@
               }
             ],
             "title": "Size Bytes"
+          },
+          "source_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Asset Id"
           }
         },
         "required": [
@@ -2261,6 +2368,15 @@
         "title": "ProcessingStatusRead",
         "type": "object"
       },
+      "PublicationStatus": {
+        "enum": [
+          "draft",
+          "published",
+          "archived"
+        ],
+        "title": "PublicationStatus",
+        "type": "string"
+      },
       "RecordingIntegrityRead": {
         "properties": {
           "human_noise_level": {
@@ -2437,7 +2553,6 @@
         "enum": [
           "public",
           "members_only",
-          "draft",
           "private"
         ],
         "title": "SessionAccess",
@@ -2555,6 +2670,10 @@
           "processing_status": {
             "$ref": "#/components/schemas/ProcessingStatus",
             "default": "pending"
+          },
+          "publication_status": {
+            "$ref": "#/components/schemas/PublicationStatus",
+            "default": "draft"
           },
           "recorded_at": {
             "format": "date-time",
@@ -2701,6 +2820,10 @@
             "$ref": "#/components/schemas/ProcessingStatus",
             "default": "pending"
           },
+          "publication_status": {
+            "$ref": "#/components/schemas/PublicationStatus",
+            "default": "draft"
+          },
           "recorded_at": {
             "format": "date-time",
             "title": "Recorded At",
@@ -2841,6 +2964,10 @@
           "processing_status": {
             "$ref": "#/components/schemas/ProcessingStatus",
             "default": "pending"
+          },
+          "publication_status": {
+            "$ref": "#/components/schemas/PublicationStatus",
+            "default": "draft"
           },
           "recorded_at": {
             "format": "date-time",
@@ -2985,6 +3112,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ProcessingStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "publication_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicationStatus"
               },
               {
                 "type": "null"
@@ -3904,6 +4041,174 @@
           }
         },
         "summary": "Read Admin",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/media-assets/{asset_id}": {
+      "delete": {
+        "operationId": "archive_media_asset_api_v1_admin_media_assets__asset_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Media Asset",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/media-assets/{asset_id}/object": {
+      "delete": {
+        "operationId": "purge_archived_media_asset_api_v1_admin_media_assets__asset_id__object_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Purge Archived Media Asset",
         "tags": [
           "admin"
         ]

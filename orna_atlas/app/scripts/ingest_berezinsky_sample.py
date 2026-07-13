@@ -73,6 +73,7 @@ async def _get_or_create_session(session, location: Location) -> RecordingSessio
             recorder="ORNA field kit",
             weather="Morning forest ambience",
             access_level="public",
+            publication_status="published",
             processing_status="pending",
             is_featured=True,
             featured_sort_order=0,
@@ -91,11 +92,10 @@ async def ingest_berezinsky_sample(audio_path: Path) -> UUID:
         raise RuntimeError("S3 storage is not configured")
 
     checksum = sha256_file(audio_path)
-    storage_key = f"sessions/berezinsky/{audio_path.name}"
-
     async with AsyncSessionLocal() as session:
         location = await _get_or_create_location(session)
         recording = await _get_or_create_session(session, location)
+        storage_key = f"sessions/{recording.id}/sources/{audio_path.name}"
 
         existing_asset = await session.execute(
             select(MediaAsset).where(

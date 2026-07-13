@@ -222,10 +222,14 @@
 
 ### Sprint 3: Business logic hardening
 
-- Publication/access/processing model.
-- Active master/versioning/concurrency.
-- Last successful BirdNET.
-- Archive/cleanup/player refresh/solar phase.
+Статус на 2026-07-13: **выполнен baseline**.
+
+- [x] Publication/access/processing model.
+- [x] Active master/versioning/concurrency.
+- [x] Last successful BirdNET.
+- [x] Archive/cleanup/player refresh/solar phase.
+
+Ограничения Sprint 3: component-тесты player races остаются follow-up; purge архивного объекта запускается явным admin endpoint, а не периодическим retention job; ручные frontend aliases продолжают мигрировать на generated types постепенно.
 
 ### Sprint 4: LLM-readiness
 
@@ -273,25 +277,25 @@
 
 ## 12. Финальный checklist
 
-- [ ] Current/target architecture разделены.
-- [ ] Transactions принадлежат services.
-- [ ] Enums/constraints добавлены.
-- [ ] Publication/access/processing разделены.
-- [ ] Public projection централизована.
-- [ ] Local admin закрыт вне local.
-- [ ] .env отсутствует в image.
-- [ ] Arbitrary paths/buckets запрещены.
-- [ ] Hidden coordinates не публичны.
-- [ ] Invalid pagination → 422.
-- [ ] Pending session не выдаёт grant.
-- [ ] URL refresh и switch работают.
-- [ ] Один active processing job.
-- [ ] S3 failure не оставляет ready state.
-- [ ] Last successful BirdNET сохраняется.
+- [x] Current/target architecture разделены.
+- [x] Transactions принадлежат services.
+- [x] Enums/constraints добавлены.
+- [x] Publication/access/processing разделены.
+- [x] Public projection централизована.
+- [x] Local admin закрыт вне local.
+- [x] .env отсутствует в image.
+- [x] Arbitrary paths/buckets запрещены для admin media lifecycle.
+- [x] Hidden coordinates не публичны.
+- [x] Invalid pagination → 422.
+- [x] Pending session не выдаёт grant.
+- [x] URL refresh и switch реализованы; component race tests остаются follow-up.
+- [x] Один active processing job на asset revision/job type.
+- [x] S3 failure не оставляет active ready state.
+- [x] Last successful BirdNET сохраняется.
 - [x] Integration/E2E baseline tests добавлены; component/player tests остаются follow-up.
 - [x] AGENTS/CURRENT_STATE/DOMAIN_RULES/CONTRIBUTING/ADR созданы.
 - [x] README содержит воспроизводимые команды и ссылки на authoritative guides.
-- [ ] Нет новых smells/regressions.
+- [x] Нет известных новых smells/regressions по итогам local checks и migration cycle.
 
 ## Краткий prompt для слабой модели
 
