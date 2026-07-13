@@ -6,6 +6,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml ./
+COPY orna_atlas ./orna_atlas
 RUN pip install --no-cache-dir '.[dev]'
 COPY . .
 CMD ["uvicorn", "orna_atlas.app.main:app", "--host", "0.0.0.0", "--port", "8000"]

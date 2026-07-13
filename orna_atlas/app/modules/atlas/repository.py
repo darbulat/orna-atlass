@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from orna_atlas.app.modules.locations.models import Location
+from orna_atlas.app.modules.locations.public import publicly_discoverable_clause
 from orna_atlas.app.modules.sessions.models import RecordingSession
 
 
@@ -17,7 +18,7 @@ class BoundingBox:
 
 
 def _coordinate_filters(bbox: BoundingBox | None):
-    filters = [Location.coordinate_visibility != "hidden_public"]
+    filters = [publicly_discoverable_clause()]
     if bbox is None:
         return filters
 
@@ -84,7 +85,7 @@ async def search_locations_and_sessions(
         .options(selectinload(Location.sessions))
         .where(
             RecordingSession.access_level == "public",
-            Location.coordinate_visibility != "hidden_public",
+            publicly_discoverable_clause(),
             or_(Location.name.ilike(term), Location.region.ilike(term), Location.habitat.ilike(term)),
         )
         .order_by(Location.name)
@@ -98,7 +99,7 @@ async def search_locations_and_sessions(
         .options(selectinload(RecordingSession.location))
         .where(
             RecordingSession.access_level == "public",
-            Location.coordinate_visibility != "hidden_public",
+            publicly_discoverable_clause(),
             or_(RecordingSession.title.ilike(term), RecordingSession.description.ilike(term)),
         )
         .order_by(RecordingSession.recorded_at.desc())

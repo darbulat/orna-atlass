@@ -25,6 +25,9 @@ def _collection_load_options():
         selectinload(Collection.session_links)
         .selectinload(CollectionSession.session)
         .selectinload(RecordingSession.media_assets),
+        selectinload(Collection.session_links)
+        .selectinload(CollectionSession.session)
+        .selectinload(RecordingSession.location),
     )
 
 

@@ -8,8 +8,10 @@ from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.core.errors import ServiceUnavailableError
 from orna_atlas.app.core.security import CurrentUser
 from orna_atlas.app.integrations.s3 import get_object_storage_client
+from orna_atlas.app.integrations.redis import invalidate_atlas_cache
 from orna_atlas.app.modules.admin.repository import add_audit_event
-from orna_atlas.app.modules.locations.service import require_location
+from orna_atlas.app.modules.locations.service import require_location_for_admin
+from orna_atlas.app.modules.locations.public import is_publicly_discoverable
 from orna_atlas.app.modules.memberships.service import has_playback_entitlement
 from orna_atlas.app.modules.sessions import repository
 from orna_atlas.app.modules.sessions.models import RecordingSession
@@ -161,6 +163,11 @@ async def authorize_playback_grant(
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> PlaybackGrantRead:
+    if (
+        not is_publicly_discoverable(recording.location)
+        and (current_user is None or current_user.role not in {"editor", "admin"})
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     if recording.access_level == "members_only":
         if current_user is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Membership required")
@@ -191,20 +198,30 @@ def _ready_streaming_rendition(recording: RecordingSession):
 
 
 async def create_session(session: AsyncSession, data: SessionCreate) -> RecordingSession:
-    await require_location(session, data.location_id)
+    await require_location_for_admin(session, data.location_id)
     if await repository.get_session_by_slug_for_admin(session, data.slug):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session slug exists")
-    return await repository.create_session(session, data)
+    recording = await repository.create_session(session, data)
+    await invalidate_atlas_cache()
+    return recording
 
 
 async def update_session(session: AsyncSession, session_id: UUID, data: SessionUpdate) -> RecordingSession:
     recording = await require_session_for_admin(session, session_id)
     if data.location_id is not None:
-        await require_location(session, data.location_id)
+        await require_location_for_admin(session, data.location_id)
     if (
         data.slug
         and data.slug != recording.slug
         and await repository.get_session_by_slug_for_admin(session, data.slug)
     ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session slug exists")
-    return await repository.update_session(session, recording, data)
+    recording = await repository.update_session(session, recording, data)
+    await invalidate_atlas_cache()
+    return recording
+
+
+async def delete_session(session: AsyncSession, session_id: UUID) -> None:
+    recording = await require_session_for_admin(session, session_id)
+    await repository.delete_session(session, recording)
+    await invalidate_atlas_cache()

@@ -208,9 +208,16 @@ def test_collection_summary_counts_public_sessions_only() -> None:
         title="Dawn Archive",
         description="Dawn journeys",
         sort_order=0,
-        location_links=[SimpleNamespace(location=SimpleNamespace())],
+        location_links=[
+            SimpleNamespace(location=SimpleNamespace(coordinate_visibility="exact_public"))
+        ],
         session_links=[
-            SimpleNamespace(session=SimpleNamespace(access_level="public")),
+            SimpleNamespace(
+                session=SimpleNamespace(
+                    access_level="public",
+                    location=SimpleNamespace(coordinate_visibility="exact_public"),
+                )
+            ),
             SimpleNamespace(session=SimpleNamespace(access_level="members_only")),
         ],
     )
@@ -223,6 +230,7 @@ def test_collection_summary_counts_public_sessions_only() -> None:
 
 def test_collection_detail_includes_summary_counts() -> None:
     now = datetime.now(UTC)
+    public_location = SimpleNamespace(coordinate_visibility="exact_public")
     public_session = SimpleNamespace(
         id=uuid4(),
         location_id=uuid4(),
@@ -241,6 +249,7 @@ def test_collection_detail_includes_summary_counts() -> None:
         created_at=now,
         updated_at=now,
         media_assets=[],
+        location=public_location,
     )
     collection = SimpleNamespace(
         id=uuid4(),

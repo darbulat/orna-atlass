@@ -112,7 +112,11 @@ def test_membership_entitlement_honors_status_and_expiry() -> None:
 
 @pytest.mark.asyncio
 async def test_members_only_playback_rejects_anonymous_user() -> None:
-    recording = SimpleNamespace(id=uuid4(), access_level="members_only")
+    recording = SimpleNamespace(
+        id=uuid4(),
+        access_level="members_only",
+        location=SimpleNamespace(coordinate_visibility="exact_public"),
+    )
 
     with pytest.raises(HTTPException) as error:
         await sessions_service.authorize_playback_grant(AsyncMock(), recording, None)
@@ -121,7 +125,11 @@ async def test_members_only_playback_rejects_anonymous_user() -> None:
 
 @pytest.mark.asyncio
 async def test_members_only_playback_rejects_inactive_member(monkeypatch) -> None:
-    recording = SimpleNamespace(id=uuid4(), access_level="members_only")
+    recording = SimpleNamespace(
+        id=uuid4(),
+        access_level="members_only",
+        location=SimpleNamespace(coordinate_visibility="exact_public"),
+    )
     user = CurrentUser(id=str(uuid4()), role="member", email="member@example.com")
     monkeypatch.setattr(sessions_service, "has_playback_entitlement", AsyncMock(return_value=False))
 
@@ -132,7 +140,11 @@ async def test_members_only_playback_rejects_inactive_member(monkeypatch) -> Non
 
 @pytest.mark.asyncio
 async def test_entitled_playback_creates_audit_event(monkeypatch) -> None:
-    recording = SimpleNamespace(id=uuid4(), access_level="members_only")
+    recording = SimpleNamespace(
+        id=uuid4(),
+        access_level="members_only",
+        location=SimpleNamespace(coordinate_visibility="exact_public"),
+    )
     user = CurrentUser(id=str(uuid4()), role="member", email="member@example.com")
     grant = SimpleNamespace(session_id=recording.id)
     db = AsyncMock()
