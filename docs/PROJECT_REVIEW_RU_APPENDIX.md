@@ -200,17 +200,25 @@
 
 ### Sprint 1: Stabilization
 
-- Docker/CI/admin guard/pagination.
-- Fail-closed playback.
-- Public coordinate policy и cache invalidation.
-- P0 tests.
+Статус на 2026-07-13: **выполнен**.
+
+- [x] Docker/CI/admin guard/pagination.
+- [x] Fail-closed playback.
+- [x] Public coordinate policy и cache invalidation.
+- [x] P0 tests.
+
+Ограничения Sprint 1: дальнейшее усиление DB constraints и унификация transaction ownership были вынесены в Sprint 2; защита публичных координат остаётся прикладным инвариантом и должна проверяться для каждого нового публичного DTO.
 
 ### Sprint 2: Architecture cleanup
 
-- Enums/constraints/transaction ownership.
-- Разделение media service и крупных frontend components.
-- Generated API types.
-- Удаление/маркировка пустых modules.
+Статус на 2026-07-13: **реализован в PR #23**.
+
+- [x] Enums/constraints/transaction ownership.
+- [x] Разделение media service и крупных frontend components.
+- [x] Generated API types.
+- [x] Удаление/маркировка пустых modules.
+
+Ограничения Sprint 2: generated types пока подключены только к collections API; `AtlasExplorer` и orchestration-часть `SessionPlayer` требуют дальнейшей декомпозиции по мере развития UI; разделение publication/access semantics остаётся задачей Sprint 3.
 
 ### Sprint 3: Business logic hardening
 
