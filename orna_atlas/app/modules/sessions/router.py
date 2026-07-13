@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.core.rate_limit import playback_rate_limit
+from orna_atlas.app.core.pagination import FeaturedLimit, PageLimit, PageOffset
 from orna_atlas.app.core.security import CurrentUser, get_optional_active_user
 from orna_atlas.app.db.session import get_db_session
 from orna_atlas.app.modules.sessions import service
@@ -21,14 +22,16 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.get("/featured", response_model=list[FeaturedSessionRead])
-async def list_featured_sessions(limit: int = 12, session: AsyncSession = Depends(get_db_session)):
+async def list_featured_sessions(
+    limit: FeaturedLimit = 12, session: AsyncSession = Depends(get_db_session)
+):
     return await service.list_featured_sessions(session, limit=limit)
 
 
 @router.get("", response_model=list[SessionRead])
 async def list_sessions(
-    limit: int = 50,
-    offset: int = 0,
+    limit: PageLimit = 50,
+    offset: PageOffset = 0,
     current_user: CurrentUser | None = Depends(get_optional_active_user),
     session: AsyncSession = Depends(get_db_session),
 ):

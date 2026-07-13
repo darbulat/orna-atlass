@@ -2,7 +2,7 @@
 
 ORNA Atlas is a living sound atlas of natural places: long-form field recordings linked to exact locations, local time, sunrise movement, habitat metadata, and high-quality audio assets.
 
-This repository contains the Sprint 6 production foundation for the first version of ORNA Atlas.
+The implemented capabilities and current limitations are tracked in `docs/CURRENT_STATE.md`.
 
 ## Core stack
 
@@ -37,8 +37,8 @@ docker compose exec api python -m orna_atlas.app.seed_atlas
 
 ```bash
 pip install '.[dev]'
-ruff check .
-pytest
+python -m ruff check .
+python -m pytest
 alembic upgrade head
 alembic revision -m "empty migration"
 ```

@@ -8,6 +8,8 @@ from orna_atlas.app.integrations.bird_analysis import BirdDetection
 from orna_atlas.app.modules.media.models import MediaAsset  # noqa: F401
 from orna_atlas.app.modules.sessions.models import BirdVocalPart, RecordingSession
 from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionUpdate
+from orna_atlas.app.modules.locations.models import Location
+from orna_atlas.app.modules.locations.public import publicly_discoverable_clause
 
 
 def _payload(data: SessionCreate | SessionUpdate, *, exclude_unset: bool = False) -> dict:
@@ -28,8 +30,17 @@ def _session_load_options():
 async def list_featured_sessions(session: AsyncSession, *, limit: int = 12) -> list[RecordingSession]:
     result = await session.execute(
         select(RecordingSession)
+        .join(Location)
         .options(selectinload(RecordingSession.location))
-        .where(RecordingSession.access_level == "public", RecordingSession.is_featured.is_(True))
+        .where(
+            RecordingSession.access_level == "public",
+            RecordingSession.is_featured.is_(True),
+            publicly_discoverable_clause(),
+            RecordingSession.media_assets.any(
+                (MediaAsset.kind == "streaming_rendition")
+                & (MediaAsset.processing_status == "ready")
+            ),
+        )
         .order_by(RecordingSession.featured_sort_order.nulls_last(), RecordingSession.recorded_at.desc())
         .limit(limit)
     )
@@ -54,8 +65,12 @@ async def list_sessions(
 ) -> list[RecordingSession]:
     result = await session.execute(
         select(RecordingSession)
+        .join(Location)
         .options(*_session_load_options())
-        .where(RecordingSession.access_level.in_(access_levels))
+        .where(
+            RecordingSession.access_level.in_(access_levels),
+            publicly_discoverable_clause(),
+        )
         .order_by(RecordingSession.recorded_at.desc())
         .limit(limit)
         .offset(offset)
@@ -75,10 +90,12 @@ async def get_visible_session(
 ) -> RecordingSession | None:
     result = await session.execute(
         select(RecordingSession)
+        .join(Location)
         .options(*_session_load_options())
         .where(
             RecordingSession.id == session_id,
             RecordingSession.access_level.in_(access_levels),
+            publicly_discoverable_clause(),
         )
     )
     return result.scalar_one_or_none()
@@ -105,10 +122,12 @@ async def get_visible_session_by_slug(
 ) -> RecordingSession | None:
     result = await session.execute(
         select(RecordingSession)
+        .join(Location)
         .options(*_session_load_options())
         .where(
             RecordingSession.slug == slug,
             RecordingSession.access_level.in_(access_levels),
+            publicly_discoverable_clause(),
         )
     )
     return result.scalar_one_or_none()

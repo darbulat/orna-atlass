@@ -55,10 +55,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install '.[dev]'
-      - run: ruff check .
+      - run: python -m ruff check .
       - run: alembic upgrade head
       - run: alembic check
-      - run: pytest
+      - run: python -m pytest
       - name: Prepare integration buckets
         run: >-
           python -c "import boto3;
@@ -68,7 +68,13 @@ jobs:
       - name: Test real dependencies
         env:
           RUN_INTEGRATION_TESTS: "1"
-        run: pytest -m integration tests/integration
+        run: python -m pytest -m integration tests/integration
+      - name: Build API image without local secrets
+        run: docker build --file Dockerfile.api --tag orna-atlas-api:test .
+      - name: Verify installed package outside source directory
+        run: >-
+          docker run --rm --workdir /tmp --entrypoint python orna-atlas-api:test
+          -c "import os, orna_atlas; assert not os.path.exists('/app/.env')"
 
   frontend:
     runs-on: ubuntu-latest

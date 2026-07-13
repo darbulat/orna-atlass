@@ -9,7 +9,6 @@ from orna_atlas.app.modules.admin import repository as admin_repository
 from orna_atlas.app.modules.admin.schemas import AuditEventRead
 from orna_atlas.app.modules.collections import service as collections_service
 from orna_atlas.app.modules.collections.schemas import CollectionAdminRead, CollectionCreate, CollectionUpdate
-from orna_atlas.app.modules.locations import repository as locations_repository
 from orna_atlas.app.modules.locations import service as locations_service
 from orna_atlas.app.modules.locations.schemas import LocationCreate, LocationRead, LocationUpdate
 from orna_atlas.app.modules.memberships import service as memberships_service
@@ -20,7 +19,6 @@ from orna_atlas.app.modules.media.schemas import (
     MediaAssetCreate,
     ProcessingStatusRead,
 )
-from orna_atlas.app.modules.sessions import repository as sessions_repository
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionRead, SessionUpdate
 from orna_atlas.app.modules.users import service as users_service
@@ -61,8 +59,7 @@ async def delete_location(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = admin_dependency,
 ):
-    location = await locations_service.require_location(session, location_id)
-    await locations_repository.delete_location(session, location)
+    await locations_service.delete_location(session, location_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -123,8 +120,7 @@ async def delete_session(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = admin_dependency,
 ):
-    recording = await sessions_service.require_session_for_admin(session, session_id)
-    await sessions_repository.delete_session(session, recording)
+    await sessions_service.delete_session(session, session_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

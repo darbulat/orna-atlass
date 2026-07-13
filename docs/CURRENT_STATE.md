@@ -1,17 +1,17 @@
 # ORNA Atlas: current implementation
 
-Last verified: 2026-07-12. This document describes code that exists now. `ARCHITECTURE*.md` and `IMPLEMENTATION_PLAN_rus.md` may also describe target behavior; when they disagree, code, migrations and tests are authoritative.
+Last verified: 2026-07-13. This document describes code that exists now. `ARCHITECTURE*.md` and `IMPLEMENTATION_PLAN_rus.md` may also describe target behavior; when they disagree, code, migrations and tests are authoritative.
 
 ## Capability matrix
 
 | Area | State | Evidence / limitation |
 |---|---|---|
-| Public atlas, sessions and collections | Implemented | FastAPI routers and Next.js pages exist; public projection rules are not yet centralized. |
+| Public atlas, sessions and collections | Implemented | FastAPI routers and Next.js pages exist; hidden locations are excluded by one shared public-discovery policy across location, atlas, session and collection flows. |
 | PostgreSQL persistence | Implemented | Async SQLAlchemy and Alembic; many tests still mock repositories. |
 | Redis cache and RQ | Implemented with limits | Redis integration and persistent jobs exist; concurrent processing needs stronger exclusion. |
 | S3-compatible audio | Implemented with limits | MinIO compose setup, uploads and presigned URLs exist; lifecycle/versioning remains incomplete. |
 | Playback | Implemented | Grants fail closed without a ready stored rendition; members-only sessions require an active entitlement and successful grants are audited. |
-| Coordinate privacy | Partially implemented | Visibility fields and approximate projection exist, but every public collection/location flow is not proven consistent. |
+| Coordinate privacy | Implemented with limits | Visibility fields, approximate projection and a shared hidden-location predicate cover current public flows; database enum/check constraints remain planned. |
 | Authentication and membership | Implemented | Short-lived signed access tokens, rotating server-side refresh tokens, secure cookies, self-service contracts and RBAC are present. Entitled users can discover and render members-only session list/detail records. |
 | Admin authentication | Implemented with local compatibility | Production uses admin-role tokens and has an audited one-time first-admin command. The local header defaults off, is accepted only when explicitly enabled in local/development, and is rejected elsewhere. |
 | BirdNET analysis | Implemented with limits | Worker integration exists; failure and last-successful-result policy needs hardening. |

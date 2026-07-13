@@ -13,12 +13,21 @@ from orna_atlas.app.modules.collections.schemas import (
     CollectionUpdate,
 )
 from orna_atlas.app.modules.locations.schemas import LocationRead
+from orna_atlas.app.modules.locations.public import is_publicly_discoverable
 from orna_atlas.app.modules.sessions.schemas import SessionRead
 
 
 def summary_from_collection(collection: Collection) -> CollectionSummaryRead:
     public_sessions = [
-        link.session for link in collection.session_links if link.session.access_level == "public"
+        link.session
+        for link in collection.session_links
+        if link.session.access_level == "public"
+        and is_publicly_discoverable(link.session.location)
+    ]
+    public_locations = [
+        link.location
+        for link in collection.location_links
+        if is_publicly_discoverable(link.location)
     ]
     return CollectionSummaryRead(
         id=collection.id,
@@ -26,18 +35,23 @@ def summary_from_collection(collection: Collection) -> CollectionSummaryRead:
         title=collection.title,
         description=collection.description,
         sort_order=collection.sort_order,
-        location_count=len(collection.location_links),
+        location_count=len(public_locations),
         session_count=len(public_sessions),
     )
 
 
 def detail_from_collection(collection: Collection) -> CollectionDetailRead:
     summary = summary_from_collection(collection)
-    locations = [LocationRead.model_validate(link.location) for link in collection.location_links]
+    locations = [
+        LocationRead.model_validate(link.location)
+        for link in collection.location_links
+        if is_publicly_discoverable(link.location)
+    ]
     sessions = [
         SessionRead.model_validate(link.session)
         for link in collection.session_links
         if link.session.access_level == "public"
+        and is_publicly_discoverable(link.session.location)
     ]
     return CollectionDetailRead(
         id=collection.id,

@@ -3,16 +3,21 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orna_atlas.app.core.pagination import PageLimit, PageOffset
 from orna_atlas.app.db.session import get_db_session
-from orna_atlas.app.modules.locations import repository, service
+from orna_atlas.app.modules.locations import service
 from orna_atlas.app.modules.locations.schemas import LocationRead
 
 router = APIRouter(prefix="/locations", tags=["locations"])
 
 
 @router.get("", response_model=list[LocationRead])
-async def list_locations(limit: int = 50, offset: int = 0, session: AsyncSession = Depends(get_db_session)):
-    return await repository.list_locations(session, limit=limit, offset=offset)
+async def list_locations(
+    limit: PageLimit = 50,
+    offset: PageOffset = 0,
+    session: AsyncSession = Depends(get_db_session),
+):
+    return await service.list_public_locations(session, limit=limit, offset=offset)
 
 
 @router.get("/{locator}", response_model=LocationRead)
