@@ -27,12 +27,18 @@ Mock silence is development fixture behavior, not a successful production fallba
 
 Membership entitlement is active only when `status=active` and `expires_at` is absent or in the future. Public sessions may issue anonymous grants; `members_only` sessions require an active entitlement. Editor and admin roles may inspect protected playback for editorial operations. Every successful grant creates an audit event; denied requests never create a success event.
 
+Entitled members can discover and render `members_only` session list/detail records through the
+authenticated session endpoints. Anonymous and non-entitled callers receive the public projection
+only; protected records are reported as not found.
+
 ## Authentication and roles
 
 - Access tokens are short-lived and may arrive through a Bearer header or httpOnly cookie.
 - Refresh tokens are stored only as hashes, rotated on use, and revoked on logout.
 - Editors do not inherit admin publication or user-management permissions.
 - The local admin header is a development-only escape hatch and is invalid production configuration.
+- The first production admin is promoted from an existing active account by the one-time,
+  transaction-locked bootstrap command. Once an admin exists, all role changes require admin auth.
 
 
 ## Processing jobs
@@ -55,4 +61,3 @@ Membership entitlement is active only when `status=active` and `expires_at` is a
 - Repeated create/process requests use an idempotency key or return the existing active operation.
 - Cache invalidation occurs after the database transaction commits.
 - A retry after partial S3/database failure must converge to one consistent active result.
-

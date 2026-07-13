@@ -45,11 +45,17 @@ async def list_bird_vocal_parts(session: AsyncSession, session_id: UUID) -> list
     return list(result.scalars())
 
 
-async def list_sessions(session: AsyncSession, *, limit: int = 50, offset: int = 0) -> list[RecordingSession]:
+async def list_sessions(
+    session: AsyncSession,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    access_levels: tuple[str, ...] = ("public",),
+) -> list[RecordingSession]:
     result = await session.execute(
         select(RecordingSession)
         .options(*_session_load_options())
-        .where(RecordingSession.access_level == "public")
+        .where(RecordingSession.access_level.in_(access_levels))
         .order_by(RecordingSession.recorded_at.desc())
         .limit(limit)
         .offset(offset)
@@ -58,10 +64,22 @@ async def list_sessions(session: AsyncSession, *, limit: int = 50, offset: int =
 
 
 async def get_session(session: AsyncSession, session_id: UUID) -> RecordingSession | None:
+    return await get_visible_session(session, session_id, access_levels=("public",))
+
+
+async def get_visible_session(
+    session: AsyncSession,
+    session_id: UUID,
+    *,
+    access_levels: tuple[str, ...],
+) -> RecordingSession | None:
     result = await session.execute(
         select(RecordingSession)
         .options(*_session_load_options())
-        .where(RecordingSession.id == session_id, RecordingSession.access_level == "public")
+        .where(
+            RecordingSession.id == session_id,
+            RecordingSession.access_level.in_(access_levels),
+        )
     )
     return result.scalar_one_or_none()
 
@@ -76,10 +94,22 @@ async def get_session_for_admin(session: AsyncSession, session_id: UUID) -> Reco
 
 
 async def get_session_by_slug(session: AsyncSession, slug: str) -> RecordingSession | None:
+    return await get_visible_session_by_slug(session, slug, access_levels=("public",))
+
+
+async def get_visible_session_by_slug(
+    session: AsyncSession,
+    slug: str,
+    *,
+    access_levels: tuple[str, ...],
+) -> RecordingSession | None:
     result = await session.execute(
         select(RecordingSession)
         .options(*_session_load_options())
-        .where(RecordingSession.slug == slug, RecordingSession.access_level == "public")
+        .where(
+            RecordingSession.slug == slug,
+            RecordingSession.access_level.in_(access_levels),
+        )
     )
     return result.scalar_one_or_none()
 

@@ -34,3 +34,29 @@ async def update_role(
     await session.commit()
     await session.refresh(user)
     return user
+
+
+async def bootstrap_first_admin(session: AsyncSession, email: str) -> User:
+    """Promote one existing active user when the deployment has no administrator."""
+    await repository.acquire_admin_bootstrap_lock(session)
+    if await repository.get_admin(session) is not None:
+        raise ValueError("An admin user already exists; use the authenticated admin API")
+    user = await repository.get_by_email(session, email)
+    if user is None:
+        raise ValueError("User not found; register the account before bootstrapping it")
+    if not user.is_active:
+        raise ValueError("Inactive users cannot be bootstrapped as administrators")
+    previous = user.role
+    user.role = "admin"
+    await repository.save(session)
+    await add_audit_event(
+        session,
+        event_type="user.admin_bootstrapped",
+        subject_type="user",
+        subject_id=str(user.id),
+        actor_user_id=None,
+        metadata={"previous_role": previous, "role": "admin"},
+    )
+    await session.commit()
+    await session.refresh(user)
+    return user

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.modules.users.models import User
@@ -12,6 +12,19 @@ async def get_by_id(session: AsyncSession, user_id: UUID) -> User | None:
 
 async def get_by_email(session: AsyncSession, email: str) -> User | None:
     result = await session.execute(select(User).where(User.email == email.lower()))
+    return result.scalar_one_or_none()
+
+
+async def acquire_admin_bootstrap_lock(session: AsyncSession) -> None:
+    """Serialize first-admin bootstrap attempts for the current transaction."""
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_id)"),
+        {"lock_id": 5712684683120764980},
+    )
+
+
+async def get_admin(session: AsyncSession) -> User | None:
+    result = await session.execute(select(User).where(User.role == "admin").limit(1))
     return result.scalar_one_or_none()
 
 

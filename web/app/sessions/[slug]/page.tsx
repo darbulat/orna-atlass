@@ -1,4 +1,5 @@
 import { SessionPlayer } from "../../../components/audio/SessionPlayer";
+import { cookies } from "next/headers";
 import { AnnotationTimeline } from "../../../components/sessions/AnnotationTimeline";
 import { BirdPartsTimeline } from "../../../components/sessions/BirdPartsTimeline";
 import { ProcessingStatusPanel } from "../../../components/sessions/ProcessingStatusPanel";
@@ -8,7 +9,14 @@ import { fetchSessionDetail, type SessionDetail } from "../../../lib/api/session
 export const dynamic = "force-dynamic";
 
 export default async function SessionPage({ params }: { params: { slug: string } }) {
-  const session = await fetchSessionDetail(params.slug);
+  const cookieHeader = cookies()
+    .getAll()
+    .map(({ name, value }) => `${name}=${value}`)
+    .join("; ");
+  const session = await fetchSessionDetail(
+    params.slug,
+    cookieHeader ? { Cookie: cookieHeader } : {},
+  );
 
   if (!session) {
     return (

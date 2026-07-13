@@ -12,8 +12,8 @@ Last verified: 2026-07-12. This document describes code that exists now. `ARCHIT
 | S3-compatible audio | Implemented with limits | MinIO compose setup, uploads and presigned URLs exist; lifecycle/versioning remains incomplete. |
 | Playback | Implemented | Grants fail closed without a ready stored rendition; members-only sessions require an active entitlement and successful grants are audited. |
 | Coordinate privacy | Partially implemented | Visibility fields and approximate projection exist, but every public collection/location flow is not proven consistent. |
-| Authentication and membership | Implemented | Short-lived signed access tokens, rotating server-side refresh tokens, secure cookies, self-service contracts and RBAC are present. |
-| Admin authentication | Implemented with local compatibility | Production uses admin-role tokens. The local header is accepted only when explicitly enabled and production config rejects it. |
+| Authentication and membership | Implemented | Short-lived signed access tokens, rotating server-side refresh tokens, secure cookies, self-service contracts and RBAC are present. Entitled users can discover and render members-only session list/detail records. |
+| Admin authentication | Implemented with local compatibility | Production uses admin-role tokens and has an audited one-time first-admin command. The local header defaults off, is accepted only when explicitly enabled in local/development, and is rejected elsewhere. |
 | BirdNET analysis | Implemented with limits | Worker integration exists; failure and last-successful-result policy needs hardening. |
 | Frontend tests | Smoke baseline | Playwright suite verifies public navigation; detailed player races and accessibility remain uncovered. |
 | Dependency integration tests | Opt-in baseline | `tests/integration` verifies PostgreSQL migration state, Redis and S3 round trip against disposable services. |
@@ -34,4 +34,3 @@ Inconsistent public projection, weak job concurrency protection and manually dup
 ## Updating this document
 
 Move a capability to “Implemented” only when code plus an appropriate test proves it. Mention limitations explicitly. Planned product behavior belongs in architecture/plan documents, not in this current-state matrix.
-

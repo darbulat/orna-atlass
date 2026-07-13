@@ -22,6 +22,7 @@ from orna_atlas.app.core.security import (
 from orna_atlas.app.main import app
 from orna_atlas.app.modules.memberships.models import Membership
 from orna_atlas.app.modules.sessions import service as sessions_service
+from orna_atlas.app.modules.users import service as users_service
 
 
 def test_password_hash_is_salted_and_verifiable() -> None:
@@ -61,6 +62,16 @@ def test_production_accepts_hardened_auth_configuration() -> None:
     )
 
     assert settings.environment == "production"
+
+
+def test_local_admin_is_disabled_by_default_and_rejected_in_staging() -> None:
+    assert not Settings(_env_file=None).local_admin_enabled
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="staging",
+            LOCAL_ADMIN_ENABLED=True,
+        )
 
 
 @pytest.mark.asyncio
@@ -139,6 +150,34 @@ async def test_entitled_playback_creates_audit_event(monkeypatch) -> None:
     db.commit.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_entitled_member_can_list_members_only_sessions(monkeypatch) -> None:
+    user = CurrentUser(id=str(uuid4()), role="member", email="member@example.com")
+    entitlement = AsyncMock(return_value=True)
+    list_sessions = AsyncMock(return_value=[])
+    monkeypatch.setattr(sessions_service, "has_playback_entitlement", entitlement)
+    monkeypatch.setattr(sessions_service.repository, "list_sessions", list_sessions)
+
+    await sessions_service.list_visible_sessions(AsyncMock(), user)
+
+    assert list_sessions.await_args.kwargs["access_levels"] == ("public", "members_only")
+
+
+@pytest.mark.asyncio
+async def test_non_entitled_member_cannot_resolve_members_only_session(monkeypatch) -> None:
+    user = CurrentUser(id=str(uuid4()), role="member", email="member@example.com")
+    entitlement = AsyncMock(return_value=False)
+    lookup = AsyncMock(return_value=None)
+    monkeypatch.setattr(sessions_service, "has_playback_entitlement", entitlement)
+    monkeypatch.setattr(sessions_service.repository, "get_visible_session_by_slug", lookup)
+
+    with pytest.raises(HTTPException) as error:
+        await sessions_service.require_visible_session(AsyncMock(), "protected-session", user)
+
+    assert error.value.status_code == 404
+    assert lookup.await_args.kwargs["access_levels"] == ("public",)
+
+
 def test_playback_grant_fails_closed_without_ready_rendition() -> None:
     recording = SimpleNamespace(id=uuid4(), media_assets=[])
 
@@ -151,8 +190,10 @@ class FakeRedis:
     def __init__(self) -> None:
         self.count = 0
         self.closed = False
+        self.keys: list[str] = []
 
-    async def incr(self, _key: str) -> int:
+    async def incr(self, key: str) -> int:
+        self.keys.append(key)
         self.count += 1
         return self.count
 
@@ -179,6 +220,69 @@ async def test_rate_limit_rejects_requests_over_limit(monkeypatch) -> None:
     assert error.value.status_code == 429
     assert error.value.headers == {"Retry-After": str(get_settings().rate_limit_window_seconds)}
     assert client.closed
+
+
+@pytest.mark.asyncio
+async def test_auth_rate_limit_ignores_untrusted_authorization_header(monkeypatch) -> None:
+    client = FakeRedis()
+    dependency = rate_limit("auth-test", lambda: 10)
+    monkeypatch.setattr("orna_atlas.app.core.rate_limit.get_redis_client", lambda: client)
+    first = SimpleNamespace(
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers={"authorization": "Bearer attacker-value-one"},
+    )
+    second = SimpleNamespace(
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers={"authorization": "Bearer attacker-value-two"},
+    )
+
+    await dependency(first)
+    await dependency(second)
+
+    assert client.keys[0] == client.keys[1]
+
+
+@pytest.mark.asyncio
+async def test_first_admin_bootstrap_is_one_time_and_audited(monkeypatch) -> None:
+    user = SimpleNamespace(
+        id=uuid4(), email="owner@example.com", role="member", is_active=True
+    )
+    db = AsyncMock()
+    lock = AsyncMock()
+    get_admin = AsyncMock(return_value=None)
+    get_user = AsyncMock(return_value=user)
+    audit = AsyncMock()
+    monkeypatch.setattr(users_service.repository, "acquire_admin_bootstrap_lock", lock)
+    monkeypatch.setattr(users_service.repository, "get_admin", get_admin)
+    monkeypatch.setattr(users_service.repository, "get_by_email", get_user)
+    monkeypatch.setattr(users_service.repository, "save", AsyncMock())
+    monkeypatch.setattr(users_service, "add_audit_event", audit)
+
+    result = await users_service.bootstrap_first_admin(db, "owner@example.com")
+
+    assert result is user
+    assert user.role == "admin"
+    lock.assert_awaited_once_with(db)
+    assert audit.await_args.kwargs["event_type"] == "user.admin_bootstrapped"
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_first_admin_bootstrap_refuses_when_admin_exists(monkeypatch) -> None:
+    db = AsyncMock()
+    monkeypatch.setattr(
+        users_service.repository, "acquire_admin_bootstrap_lock", AsyncMock()
+    )
+    monkeypatch.setattr(
+        users_service.repository,
+        "get_admin",
+        AsyncMock(return_value=SimpleNamespace(role="admin")),
+    )
+
+    with pytest.raises(ValueError, match="already exists"):
+        await users_service.bootstrap_first_admin(db, "owner@example.com")
+
+    db.commit.assert_not_awaited()
 
 
 def test_sprint8_routes_and_security_contract_are_documented() -> None:

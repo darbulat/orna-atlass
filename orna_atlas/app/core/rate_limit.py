@@ -1,5 +1,4 @@
 from collections.abc import Callable
-import hashlib
 import time
 
 from fastapi import HTTPException, Request, status
@@ -15,9 +14,6 @@ def rate_limit(scope: str, limit_getter: Callable[[], int]):
     async def enforce(request: Request) -> None:
         settings = get_settings()
         identity = request.client.host if request.client else "unknown"
-        authorization = request.headers.get("authorization")
-        if authorization:
-            identity = hashlib.sha256(authorization.encode()).hexdigest()[:24]
         bucket = int(time.time() // settings.rate_limit_window_seconds)
         key = f"rate-limit:{scope}:{identity}:{bucket}"
         client = get_redis_client()

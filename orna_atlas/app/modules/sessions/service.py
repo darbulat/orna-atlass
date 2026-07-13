@@ -48,6 +48,50 @@ async def require_public_session_by_slug(session: AsyncSession, slug: str) -> Re
     return recording
 
 
+async def _visible_access_levels(
+    session: AsyncSession, current_user: CurrentUser | None
+) -> tuple[str, ...]:
+    if current_user is None:
+        return ("public",)
+    if current_user.role in {"editor", "admin"} or await has_playback_entitlement(
+        session, UUID(current_user.id)
+    ):
+        return ("public", "members_only")
+    return ("public",)
+
+
+async def list_visible_sessions(
+    session: AsyncSession,
+    current_user: CurrentUser | None,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[RecordingSession]:
+    access_levels = await _visible_access_levels(session, current_user)
+    return await repository.list_sessions(
+        session, limit=limit, offset=offset, access_levels=access_levels
+    )
+
+
+async def require_visible_session(
+    session: AsyncSession, locator: str, current_user: CurrentUser | None
+) -> RecordingSession:
+    access_levels = await _visible_access_levels(session, current_user)
+    try:
+        session_id = UUID(locator)
+    except ValueError:
+        recording = await repository.get_visible_session_by_slug(
+            session, locator, access_levels=access_levels
+        )
+    else:
+        recording = await repository.get_visible_session(
+            session, session_id, access_levels=access_levels
+        )
+    if recording is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    return recording
+
+
 def waveform_for_session(recording: RecordingSession) -> WaveformRead:
     metadata = recording.metadata_ if isinstance(recording.metadata_, dict) else {}
     waveform = metadata.get("waveform") if isinstance(metadata.get("waveform"), dict) else {}

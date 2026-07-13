@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     )
     refresh_token_ttl_days: int = Field(default=30, ge=1, validation_alias="REFRESH_TOKEN_TTL_DAYS")
     auth_cookie_secure: bool = Field(default=False, validation_alias="AUTH_COOKIE_SECURE")
-    local_admin_enabled: bool = Field(default=True, validation_alias="LOCAL_ADMIN_ENABLED")
+    local_admin_enabled: bool = Field(default=False, validation_alias="LOCAL_ADMIN_ENABLED")
     auth_rate_limit: int = Field(default=10, ge=1, validation_alias="AUTH_RATE_LIMIT")
     search_rate_limit: int = Field(default=60, ge=1, validation_alias="SEARCH_RATE_LIMIT")
     playback_rate_limit: int = Field(default=30, ge=1, validation_alias="PLAYBACK_RATE_LIMIT")
@@ -38,11 +38,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def reject_insecure_production_auth(self) -> "Settings":
-        if self.environment.lower() == "production":
+        normalized_environment = self.environment.lower()
+        if self.local_admin_enabled and normalized_environment not in {"development", "local"}:
+            raise ValueError(
+                "LOCAL_ADMIN_ENABLED may only be true in development or local environments"
+            )
+        if normalized_environment == "production":
             if self.auth_secret_key == "development-only-change-me" or len(self.auth_secret_key) < 32:
                 raise ValueError("AUTH_SECRET_KEY must contain at least 32 characters in production")
-            if self.local_admin_enabled:
-                raise ValueError("LOCAL_ADMIN_ENABLED must be false in production")
             if not self.auth_cookie_secure:
                 raise ValueError("AUTH_COOKIE_SECURE must be true in production")
         return self
