@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from orna_atlas.app.main import app
 from orna_atlas.app.modules.sessions import service
-from orna_atlas.app.modules.sessions.schemas import PlaybackGrantRead, SessionDetailRead
+from orna_atlas.app.modules.sessions.schemas import SessionDetailRead
 
 
 def test_sprint3_public_audio_routes_are_registered() -> None:
@@ -89,14 +89,13 @@ def test_session_detail_schema_contains_location_integrity_and_safe_media() -> N
     assert "storage_key" not in detail["media_assets"][0]
 
 
-def test_playback_grant_schema_documents_mock_lifecycle() -> None:
+def test_playback_grant_schema_documents_protected_lifecycle() -> None:
     schema = TestClient(app).get("/openapi.json").json()
     grant_schema = schema["components"]["schemas"]["PlaybackGrantRead"]["properties"]
 
     assert {"session_id", "status", "stream_url", "expires_at", "refresh_after_seconds"}.issubset(
         grant_schema
     )
-    assert PlaybackGrantRead.mock_for_session(uuid4()).stream_url.endswith("/mock-stream")
 
 
 def test_waveform_metadata_overrides_defaults_without_duplicate_kwargs() -> None:

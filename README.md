@@ -76,6 +76,19 @@ The worker can also be run directly:
 python -m orna_atlas.app.workers.audio_pipeline worker
 ```
 
+## First production administrator
+
+Keep `LOCAL_ADMIN_ENABLED=false` outside explicit local/development environments. After migrations,
+register the intended owner as a normal user, then run this command once against the production
+database from a secured application shell:
+
+```bash
+python -m orna_atlas.app.scripts.bootstrap_admin --email owner@example.com
+```
+
+The command takes a PostgreSQL transaction lock, refuses to run if any administrator already
+exists, and writes an audit event. Further role changes must use the authenticated admin API.
+
 ## Documentation
 
 - [Project architecture](docs/ARCHITECTURE.md)

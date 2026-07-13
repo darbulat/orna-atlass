@@ -253,11 +253,14 @@ export async function fetchBirdParts(sessionId: string): Promise<BirdPartsRespon
   }
 }
 
-export async function fetchSessionDetail(slug: string): Promise<SessionDetail | null> {
+export async function fetchSessionDetail(
+  slug: string,
+  forwardedHeaders: HeadersInit = {},
+): Promise<SessionDetail | null> {
   try {
     const response = await fetch(apiUrl(`/api/v1/sessions/${slug}`), {
       cache: "no-store",
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", ...forwardedHeaders },
     });
     if (!response.ok) {
       return null;
@@ -356,12 +359,25 @@ export async function fetchFollowDawn(): Promise<DawnFollowResponse> {
 }
 
 export async function requestPlaybackGrant(sessionId: string): Promise<PlaybackGrant> {
-  const response = await fetch(apiUrl(`/api/v1/sessions/${sessionId}/playback-grants`), {
+  const requestGrant = () => fetch(apiUrl(`/api/v1/sessions/${sessionId}/playback-grants`), {
     method: "POST",
+    credentials: "include",
     headers: { Accept: "application/json" },
   });
+  let response = await requestGrant();
+  if (response.status === 401) {
+    const refreshResponse = await fetch(apiUrl("/api/v1/auth/refresh"), {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    if (refreshResponse.ok) {
+      response = await requestGrant();
+    }
+  }
   if (!response.ok) {
-    throw new Error("Unable to create playback grant");
+    const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(payload?.detail ?? "Unable to create playback grant");
   }
   return (await response.json()) as PlaybackGrant;
 }

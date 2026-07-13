@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from orna_atlas.app.core.config import Settings
 from orna_atlas.app.main import app
 from orna_atlas.app.modules.locations.schemas import LocationUpdate
 from orna_atlas.app.modules.sessions.schemas import SessionUpdate
@@ -30,7 +31,13 @@ def test_public_routes_are_read_only_and_admin_routes_mutate() -> None:
     assert {"post"}.issubset(schema["paths"]["/api/v1/admin/sessions"])
 
 
-def test_admin_local_mode_stub() -> None:
+def test_admin_local_mode_stub(monkeypatch) -> None:
+    settings = Settings(
+        _env_file=None,
+        APP_ENVIRONMENT="development",
+        LOCAL_ADMIN_ENABLED=True,
+    )
+    monkeypatch.setattr("orna_atlas.app.core.security.get_settings", lambda: settings)
     client = TestClient(app)
 
     unauthorized = client.get("/api/v1/admin/me")

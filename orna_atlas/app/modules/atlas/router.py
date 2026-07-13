@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from orna_atlas.app.core.rate_limit import search_rate_limit
 
 from orna_atlas.app.db.session import get_db_session
 from orna_atlas.app.integrations.redis import get_redis_client
@@ -104,7 +105,11 @@ async def get_follow_dawn(
     )
 
 
-@router.get("/search", response_model=list[SearchResult])
+@router.get(
+    "/search",
+    response_model=list[SearchResult],
+    dependencies=[Depends(search_rate_limit)],
+)
 async def search(
     q: str = Query(min_length=1, max_length=120),
     limit: int = Query(default=10, ge=1, le=25),
