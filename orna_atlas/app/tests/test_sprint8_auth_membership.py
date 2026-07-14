@@ -35,6 +35,7 @@ from orna_atlas.app.main import app
 from orna_atlas.app.modules.memberships.models import Membership
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.users import service as users_service
+from orna_atlas.app import seed_atlas
 
 
 def test_password_hash_is_salted_and_verifiable() -> None:
@@ -57,6 +58,12 @@ def test_access_token_round_trip_and_tamper_rejection() -> None:
     assert expires_at > datetime.now(UTC)
     with pytest.raises(HTTPException) as error:
         decode_access_token(f"{token[:-1]}x")
+    assert error.value.status_code == 401
+
+
+def test_malformed_jwt_segments_return_401() -> None:
+    with pytest.raises(HTTPException) as error:
+        decode_access_token("a.b.c")
     assert error.value.status_code == 401
 
 
@@ -196,6 +203,15 @@ def test_production_rejects_insecure_auth_defaults() -> None:
         Settings(APP_ENVIRONMENT="production")
 
 
+@pytest.mark.asyncio
+async def test_seed_environment_prefers_app_environment(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENVIRONMENT", "production")
+    monkeypatch.setenv("APP_ENV", "local")
+
+    with pytest.raises(RuntimeError, match="APP_ENVIRONMENT"):
+        await seed_atlas.seed(force=True)
+
+
 def test_production_accepts_hardened_auth_configuration() -> None:
     settings = Settings(
         APP_ENVIRONMENT="production",
@@ -264,6 +280,21 @@ async def test_members_only_playback_rejects_anonymous_user() -> None:
     with pytest.raises(AuthenticationError) as error:
         await sessions_service.authorize_playback_grant(AsyncMock(), recording, None)
     assert error.value.detail == "Membership required"
+
+
+@pytest.mark.asyncio
+async def test_archived_playback_rejects_anonymous_user() -> None:
+    recording = SimpleNamespace(
+        id=uuid4(),
+        access_level="public",
+        archived_at=datetime.now(UTC),
+        publication_status="published",
+        location=SimpleNamespace(coordinate_visibility="exact_public"),
+    )
+
+    with pytest.raises(NotFoundError) as error:
+        await sessions_service.authorize_playback_grant(AsyncMock(), recording, None)
+    assert error.value.detail == "Session not found"
 
 
 @pytest.mark.asyncio

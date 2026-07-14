@@ -147,6 +147,24 @@ async def activate_rendition(
     return archived
 
 
+async def incomplete_streaming_renditions_for_recovery(
+    session: AsyncSession,
+    asset: MediaAsset,
+) -> list[MediaAsset]:
+    """Find unactivated rendition attempts left behind by a timed-out pipeline."""
+    result = await session.execute(
+        select(MediaAsset)
+        .where(
+            MediaAsset.session_id == asset.session_id,
+            MediaAsset.kind == "streaming_rendition",
+            MediaAsset.is_active.is_(False),
+            MediaAsset.archived_at.is_(None),
+        )
+        .with_for_update()
+    )
+    return list(result.scalars())
+
+
 async def delete_asset(session: AsyncSession, asset: MediaAsset) -> None:
     await session.execute(delete(MediaAsset).where(MediaAsset.id == asset.id))
     await session.flush()

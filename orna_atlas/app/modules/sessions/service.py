@@ -179,6 +179,10 @@ async def authorize_playback_grant(
         current_user is None or current_user.role not in {"editor", "admin"}
     ):
         raise NotFoundError("Session not found")
+    if getattr(recording, "archived_at", None) is not None and (
+        current_user is None or current_user.role not in {"editor", "admin"}
+    ):
+        raise NotFoundError("Session not found")
     if recording.access_level == "members_only":
         if current_user is None:
             raise AuthenticationError("Membership required")

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -208,7 +209,14 @@ def decode_access_token(token: str) -> CurrentUser:
         if claims["role"] not in {"member", "editor", "admin"}:
             raise ValueError("invalid role")
         return CurrentUser(id=str(UUID(claims["sub"])), role=claims["role"], email=claims["email"])
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError, jwt.PyJWTError) as exc:
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        binascii.Error,
+        json.JSONDecodeError,
+        jwt.PyJWTError,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired access token",

@@ -98,7 +98,7 @@ def process_audio_asset(asset_id: str) -> str:
     }
     logger.info("pipeline_job_started", extra={**log_context, "status": "started"})
     try:
-        asyncio.run(_process_audio_asset(asset_id))
+        asyncio.run(_process_audio_asset(asset_id, meta=meta))
     except Exception:
         logger.exception("pipeline_job_failed", extra={**log_context, "status": "failed"})
         raise
@@ -109,9 +109,14 @@ def process_audio_asset(asset_id: str) -> str:
         request_id_context.reset(token)
 
 
-async def _process_audio_asset(asset_id: str) -> None:
+async def _process_audio_asset(asset_id: str, *, meta: dict | None = None) -> None:
+    processing_job_id = (meta or {}).get("processing_job_id")
     async with AsyncSessionLocal() as session:
-        await process_media_asset(session, UUID(asset_id))
+        await process_media_asset(
+            session,
+            UUID(asset_id),
+            processing_job_id=UUID(processing_job_id) if processing_job_id else None,
+        )
     await engine.dispose()
 
 

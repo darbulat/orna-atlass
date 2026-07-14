@@ -833,7 +833,10 @@ async def seed(
     adopt_legacy_seed: bool = False,
 ) -> None:
     resolved_environment = (
-        environment or os.getenv("APP_ENV") or get_settings().environment
+        environment
+        or os.getenv("APP_ENVIRONMENT")
+        or os.getenv("APP_ENV")
+        or get_settings().environment
     )
     _assert_seed_allowed(force=force, environment=resolved_environment)
     async with AsyncSessionLocal() as session:

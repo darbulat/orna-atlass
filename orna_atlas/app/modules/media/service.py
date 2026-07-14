@@ -232,6 +232,17 @@ async def recover_stale_asset_processing(session: AsyncSession, asset_id: UUID) 
         return False
 
     now = datetime.now(UTC)
+    stale_renditions = await repository.incomplete_streaming_renditions_for_recovery(
+        session,
+        asset,
+    )
+    if stale_renditions:
+        await repository.archive_assets(session, stale_renditions)
+        await repository.schedule_storage_cleanup(
+            session,
+            stale_renditions,
+            retain_until=now,
+        )
     job.status = "failed"
     job.error_code = "stale_lease_reconciled"
     job.error_message = "Orphaned pipeline lease was replaced by recovery"
@@ -376,7 +387,12 @@ async def process_due_storage_cleanup_jobs(
     return succeeded, failed
 
 
-async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAsset:
+async def process_media_asset(
+    session: AsyncSession,
+    asset_id: UUID,
+    *,
+    processing_job_id: UUID | None = None,
+) -> MediaAsset:
     asset = await repository.get_asset_for_processing(session, asset_id)
     if asset is None:
         raise NotFoundError("Media asset not found")
@@ -391,7 +407,11 @@ async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAss
 
     if job.status == "succeeded":
         return asset
-    if job.status == "running" and not _job_is_stale(job):
+    if (
+        job.status == "running"
+        and not _job_is_stale(job)
+        and (processing_job_id is None or processing_job_id != job.id)
+    ):
         return asset
     if not asset.is_active or asset.archived_at is not None:
         if job.status in {"queued", "running"}:
