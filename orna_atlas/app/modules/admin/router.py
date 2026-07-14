@@ -114,6 +114,26 @@ async def retry_asset_processing(
     return await media_service.retry_asset_processing(session, asset_id)
 
 
+@router.delete("/media-assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def archive_media_asset(
+    asset_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+):
+    await media_service.archive_asset(session, asset_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/media-assets/{asset_id}/object", status_code=status.HTTP_204_NO_CONTENT)
+async def purge_archived_media_asset(
+    asset_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+):
+    await media_service.purge_archived_asset(session, asset_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_session(
     session_id: UUID,

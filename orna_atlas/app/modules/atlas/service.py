@@ -97,7 +97,12 @@ def point_from_location(location: Location) -> AtlasPoint | None:
     if location.latitude is None or location.longitude is None:
         return None
     public_sessions = sorted(
-        (session for session in location.sessions if session.access_level == "public"),
+        (
+            session
+            for session in location.sessions
+            if session.access_level == "public"
+            and getattr(session, "publication_status", "published") == "published"
+        ),
         key=lambda item: item.recorded_at,
         reverse=True,
     )
@@ -232,10 +237,13 @@ def _dawn_location_from_point(
         local_time=local_now.strftime("%H:%M"),
         civil_dawn_at=window.civil_dawn_at,
         sunrise_at=window.sunrise_at,
+        sunset_at=getattr(window, "sunset_at", None),
+        civil_dusk_at=getattr(window, "civil_dusk_at", None),
         window_starts_at=window.window_starts_at,
         window_ends_at=window.window_ends_at,
         minutes_until_sunrise=minutes_until_sunrise,
         state=state,
+        solar_phase=getattr(window, "solar_phase", "night"),
     )
 
 

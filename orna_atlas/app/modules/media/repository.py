@@ -1,6 +1,8 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from datetime import UTC, datetime
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,6 +34,20 @@ async def get_asset(session: AsyncSession, asset_id: UUID) -> MediaAsset | None:
     return result.scalar_one_or_none()
 
 
+async def get_asset_for_processing(session: AsyncSession, asset_id: UUID) -> MediaAsset | None:
+    result = await session.execute(
+        select(MediaAsset)
+        .options(
+            selectinload(MediaAsset.processing_jobs),
+            selectinload(MediaAsset.session).selectinload(RecordingSession.media_assets),
+            selectinload(MediaAsset.session).selectinload(RecordingSession.location),
+        )
+        .where(MediaAsset.id == asset_id)
+        .with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_asset_by_storage_key(session: AsyncSession, storage_key: str) -> MediaAsset | None:
     result = await session.execute(select(MediaAsset).where(MediaAsset.storage_key == storage_key))
     return result.scalar_one_or_none()
@@ -48,12 +64,87 @@ async def list_assets_for_session(session: AsyncSession, session_id: UUID) -> li
 
 
 async def create_media_asset(
-    session: AsyncSession, recording: RecordingSession, data: MediaAssetCreate
+    session: AsyncSession,
+    recording: RecordingSession,
+    data: MediaAssetCreate,
+    *,
+    revision: int = 1,
+    is_active: bool = True,
 ) -> MediaAsset:
-    asset = MediaAsset(session=recording, **_payload(data))
+    asset = MediaAsset(
+        session=recording,
+        revision=revision,
+        is_active=is_active,
+        **_payload(data),
+    )
     session.add(asset)
     await session.flush()
     return asset
+
+
+async def active_source_assets_for_update(
+    session: AsyncSession, session_id: UUID
+) -> list[MediaAsset]:
+    result = await session.execute(
+        select(MediaAsset)
+        .where(
+            MediaAsset.session_id == session_id,
+            MediaAsset.kind.in_(("audio", "source_audio", "master_audio")),
+            MediaAsset.is_active.is_(True),
+            MediaAsset.archived_at.is_(None),
+        )
+        .order_by(MediaAsset.revision.desc())
+        .with_for_update()
+    )
+    return list(result.scalars())
+
+
+async def archive_assets(session: AsyncSession, assets: list[MediaAsset]) -> None:
+    now = datetime.now(UTC)
+    for asset in assets:
+        asset.is_active = False
+        asset.archived_at = now
+    await session.flush()
+
+
+async def active_processing_job(
+    session: AsyncSession, asset_id: UUID, *, job_type: str
+) -> ProcessingJob | None:
+    result = await session.execute(
+        select(ProcessingJob)
+        .where(
+            ProcessingJob.asset_id == asset_id,
+            ProcessingJob.job_type == job_type,
+            ProcessingJob.status.in_(("queued", "running")),
+        )
+        .order_by(ProcessingJob.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def activate_rendition(session: AsyncSession, rendition: MediaAsset) -> None:
+    result = await session.execute(
+        select(MediaAsset)
+        .where(
+            MediaAsset.session_id == rendition.session_id,
+            MediaAsset.kind == "streaming_rendition",
+            MediaAsset.is_active.is_(True),
+            MediaAsset.archived_at.is_(None),
+            MediaAsset.id != rendition.id,
+        )
+        .with_for_update()
+    )
+    await archive_assets(session, list(result.scalars()))
+    rendition.processing_status = "ready"
+    rendition.is_active = True
+    rendition.archived_at = None
+    await session.flush()
+
+
+async def delete_asset(session: AsyncSession, asset: MediaAsset) -> None:
+    await session.execute(delete(MediaAsset).where(MediaAsset.id == asset.id))
+    await session.flush()
 
 
 async def update_media_asset(

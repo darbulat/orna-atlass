@@ -60,10 +60,15 @@ class DawnLocation(BaseModel):
     local_time: str
     civil_dawn_at: datetime | None = None
     sunrise_at: datetime | None = None
+    sunset_at: datetime | None = None
+    civil_dusk_at: datetime | None = None
     window_starts_at: datetime | None = None
     window_ends_at: datetime | None = None
     minutes_until_sunrise: int | None = None
     state: Literal["active", "upcoming", "past", "polar"]
+    solar_phase: Literal[
+        "night", "civil_dawn", "daylight", "civil_dusk", "polar_day", "polar_night"
+    ]
 
 
 class DawnCurrentResponse(BaseModel):

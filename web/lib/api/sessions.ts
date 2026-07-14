@@ -23,6 +23,10 @@ export type MediaAssetRead = {
   duration_seconds: number | null;
   size_bytes: number | null;
   checksum: string | null;
+  revision: number;
+  is_active: boolean;
+  archived_at: string | null;
+  source_asset_id: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
   processing_jobs?: ProcessingJobRead[];
@@ -108,6 +112,7 @@ export type SessionDetail = {
   recorder: string | null;
   weather: string | null;
   access_level: string;
+  publication_status: "draft" | "published" | "archived";
   processing_status: string;
   media_assets: MediaAssetRead[];
   location: LocationRead;
@@ -181,10 +186,13 @@ export type DawnLocation = {
   local_time: string;
   civil_dawn_at: string | null;
   sunrise_at: string | null;
+  sunset_at: string | null;
+  civil_dusk_at: string | null;
   window_starts_at: string | null;
   window_ends_at: string | null;
   minutes_until_sunrise: number | null;
   state: "active" | "upcoming" | "past" | "polar";
+  solar_phase: "night" | "civil_dawn" | "daylight" | "civil_dusk" | "polar_day" | "polar_night";
 };
 
 export type DawnCurrentResponse = {
@@ -358,10 +366,11 @@ export async function fetchFollowDawn(): Promise<DawnFollowResponse> {
   }
 }
 
-export async function requestPlaybackGrant(sessionId: string): Promise<PlaybackGrant> {
+export async function requestPlaybackGrant(sessionId: string, signal?: AbortSignal): Promise<PlaybackGrant> {
   const requestGrant = () => fetch(apiUrl(`/api/v1/sessions/${sessionId}/playback-grants`), {
     method: "POST",
     credentials: "include",
+    signal,
     headers: { Accept: "application/json" },
   });
   let response = await requestGrant();
@@ -369,6 +378,7 @@ export async function requestPlaybackGrant(sessionId: string): Promise<PlaybackG
     const refreshResponse = await fetch(apiUrl("/api/v1/auth/refresh"), {
       method: "POST",
       credentials: "include",
+      signal,
       headers: { Accept: "application/json" },
     });
     if (refreshResponse.ok) {

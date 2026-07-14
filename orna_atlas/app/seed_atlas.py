@@ -595,6 +595,7 @@ async def _upsert_session(session, location: Location, payload: dict[str, Any]) 
         **payload,
         "location": location,
         "access_level": "public",
+        "publication_status": "published",
         "metadata_": _session_metadata(location),
     }
     if recording is None:

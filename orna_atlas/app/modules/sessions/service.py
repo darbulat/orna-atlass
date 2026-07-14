@@ -168,6 +168,10 @@ async def authorize_playback_grant(
         and (current_user is None or current_user.role not in {"editor", "admin"})
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if getattr(recording, "publication_status", "published") != "published" and (
+        current_user is None or current_user.role not in {"editor", "admin"}
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     if recording.access_level == "members_only":
         if current_user is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Membership required")
@@ -192,7 +196,12 @@ async def authorize_playback_grant(
 def _ready_streaming_rendition(recording: RecordingSession):
     assets = list(recording.media_assets)
     for asset in assets:
-        if asset.kind == STREAMING_RENDITION_KIND and asset.processing_status == "ready":
+        if (
+            asset.kind == STREAMING_RENDITION_KIND
+            and asset.processing_status == "ready"
+            and getattr(asset, "is_active", True)
+            and getattr(asset, "archived_at", None) is None
+        ):
             return asset
     return None
 

@@ -13,8 +13,12 @@ class RecordingSession(Base):
     __table_args__ = (
         CheckConstraint("duration_seconds IS NULL OR duration_seconds >= 0", name="ck_sessions_duration"),
         CheckConstraint(
-            "access_level IN ('public','members_only','draft','private')",
+            "access_level IN ('public','members_only','private')",
             name="ck_sessions_access_level",
+        ),
+        CheckConstraint(
+            "publication_status IN ('draft','published','archived')",
+            name="ck_sessions_publication_status",
         ),
         CheckConstraint(
             "processing_status IN ('pending','uploaded','queued','processing','ready','failed')",
@@ -34,6 +38,7 @@ class RecordingSession(Base):
     recorder: Mapped[str | None] = mapped_column(String(160))
     weather: Mapped[str | None] = mapped_column(String(240))
     access_level: Mapped[str] = mapped_column(String(40), default="public", index=True)
+    publication_status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
     processing_status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     featured_sort_order: Mapped[int | None] = mapped_column(Integer)
