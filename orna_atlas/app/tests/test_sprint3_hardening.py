@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 
+from orna_atlas.app.core.domain_errors import ServiceUnavailableError, ValidationError
 from orna_atlas.app.main import app as _app  # noqa: F401
 from orna_atlas.app.core.domain_types import PublicationStatus, SessionAccess
 from orna_atlas.app.integrations.sunrise import dawn_window, get_timezone
@@ -77,10 +77,10 @@ async def test_public_slug_lookup_requires_published_state() -> None:
     ],
 )
 def test_admin_media_rejects_unmanaged_paths_and_buckets(storage_key: str) -> None:
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         media_service.validate_managed_storage_key(storage_key)
 
-    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == "Storage key must be a managed relative sessions/ key"
 
 
 def test_rendition_keys_are_versioned_per_attempt() -> None:
@@ -174,10 +174,12 @@ async def test_purge_fails_closed_when_object_storage_is_unconfigured(monkeypatc
     )
     monkeypatch.setattr(media_service.repository, "delete_asset", delete_asset)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ServiceUnavailableError) as exc_info:
         await media_service.purge_archived_asset(db, asset.id)
 
-    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == (
+        "Object storage is not configured; archived asset was not purged"
+    )
     delete_asset.assert_not_awaited()
     db.commit.assert_not_awaited()
 
@@ -335,6 +337,12 @@ async def test_superseded_worker_does_not_fail_active_session(monkeypatch) -> No
         "active_source_assets_for_update",
         AsyncMock(return_value=[new_source]),
     )
+    schedule_cleanup = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        media_service.repository,
+        "schedule_storage_cleanup",
+        schedule_cleanup,
+    )
 
     with pytest.raises(media_service.ObsoleteAssetRevisionError):
         await media_service.process_media_asset(db, old_source.id)
@@ -343,6 +351,10 @@ async def test_superseded_worker_does_not_fail_active_session(monkeypatch) -> No
     assert job.error_code == "superseded"
     assert recording.processing_status == "queued"
     assert rendition.processing_status == "failed"
+    assert rendition.is_active is False
+    assert rendition.archived_at is not None
+    schedule_cleanup.assert_awaited_once()
+    assert schedule_cleanup.await_args.args == (db, [rendition])
     db.commit.assert_awaited()
 
 

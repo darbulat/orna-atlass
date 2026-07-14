@@ -1,11 +1,14 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from orna_atlas.app.modules.locations.models import Location
 from orna_atlas.app.modules.locations.public import publicly_discoverable_clause
 from orna_atlas.app.modules.locations.schemas import LocationCreate, LocationUpdate
+from orna_atlas.app.modules.sessions.models import RecordingSession
 
 
 def _payload(data: LocationCreate | LocationUpdate, *, exclude_unset: bool = False) -> dict:
@@ -41,7 +44,14 @@ async def get_location_by_slug(session: AsyncSession, slug: str) -> Location | N
 
 
 async def get_location_for_admin(session: AsyncSession, location_id: UUID) -> Location | None:
-    return await session.get(Location, location_id)
+    result = await session.execute(
+        select(Location)
+        .options(
+            selectinload(Location.sessions).selectinload(RecordingSession.media_assets)
+        )
+        .where(Location.id == location_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def get_location_by_slug_for_admin(session: AsyncSession, slug: str) -> Location | None:
@@ -63,6 +73,7 @@ async def update_location(session: AsyncSession, location: Location, data: Locat
     return location
 
 
-async def delete_location(session: AsyncSession, location: Location) -> None:
-    await session.delete(location)
+async def archive_location(session: AsyncSession, location: Location) -> None:
+    if location.archived_at is None:
+        location.archived_at = datetime.now(UTC)
     await session.flush()

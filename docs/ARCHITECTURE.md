@@ -1,5 +1,8 @@
 # ORNA Atlas project architecture
 
+This English document is the canonical target architecture. The Russian file is
+a maintained translation; runtime truth belongs to `CURRENT_STATE.md`.
+
 ## 1. Product goal
 
 ORNA Atlas is a map-first audio platform where every recording is attached to a real natural location. The user explores a planet-scale atlas, follows the moving sunrise line, discovers active points, and enters long-form ORNA Sessions: uninterrupted recordings of forests, wetlands, deserts, mountains, coasts, rain, wind, dawn, dusk, and night.

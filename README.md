@@ -23,24 +23,32 @@ The implemented capabilities and current limitations are tracked in `docs/CURREN
 docker compose up --build
 ```
 
-The compose stack starts the API, frontend, PostgreSQL, Redis, and the audio processing worker.
+The compose stack first runs `alembic upgrade head`, then starts the API,
+frontend, PostgreSQL, Redis, the audio worker, and the resilient
+storage-cleanup/pipeline-recovery workers.
 
 3. Add local atlas test data:
 
 ```bash
-docker compose exec api python -m orna_atlas.app.seed_atlas
+docker compose exec -e APP_ENVIRONMENT=local api python -m orna_atlas.app.seed_atlas --force
 ```
+
+Existing pre-ownership demo rows are never claimed implicitly. For a deliberate
+one-time local/test migration of known manifest rows already marked `seed=true`,
+add `--adopt-legacy-seed`; collection/session links are still left untouched.
 
 4. Open the frontend at <http://localhost:3000> and the API at <http://localhost:8000>.
 
 ## Backend checks
 
 ```bash
-pip install '.[dev]'
+pip install '.[dev,worker]'
 python -m ruff check .
 python -m pytest
 alembic upgrade head
-alembic revision -m "empty migration"
+alembic check
+APP_ENVIRONMENT=test RUN_MIGRATION_CYCLE_CHECK=1 \
+  python -m orna_atlas.app.scripts.verify_migration_cycle
 ```
 
 Real dependency smoke tests are opt-in and must target disposable local services:
@@ -55,8 +63,10 @@ Frontend checks and browser smoke tests:
 cd web
 npm ci
 npm run api:check
+npm run test:unit
 npm run typecheck
 npm run lint
+npm run build
 npm run test:e2e
 ```
 
@@ -75,7 +85,21 @@ The worker can also be run directly:
 
 ```bash
 python -m orna_atlas.app.workers.audio_pipeline worker
+python -m orna_atlas.app.workers.storage_cleanup worker
+python -m orna_atlas.app.workers.pipeline_recovery worker
 ```
+
+Pipeline job timeouts scale with declared recording duration; jobs with unknown
+duration receive the configured maximum timeout. Every stage persists its own
+status/attempt/error, and stale queued or running jobs are failed and re-enqueued
+through RQ after their heartbeat lease. See `docs/PERFORMANCE_BASELINE.md` for the
+1–6 hour stage benchmark.
+
+API/queue Prometheus metrics are exposed at `http://localhost:8000/metrics`; the
+RQ worker exposes fork-safe pipeline/stage metrics at
+`http://localhost:9101/metrics`. RS256 deployments publish sanitized verification
+keys at `/.well-known/jwks.json`; configure signing material through the documented
+`AUTH_*` environment variables rather than baking keys into an image.
 
 ## First production administrator
 

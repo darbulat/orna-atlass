@@ -639,6 +639,57 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdminLocationRead
+         * @description Authorized editorial projection containing exact and operational fields.
+         */
+        AdminLocationRead: {
+            /** Archived At */
+            archived_at?: string | null;
+            coordinate_visibility: components["schemas"]["CoordinateVisibility"];
+            /** Country Code */
+            country_code: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Exact Latitude */
+            exact_latitude: number;
+            /** Exact Longitude */
+            exact_longitude: number;
+            /** Habitat */
+            habitat: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Public Latitude */
+            public_latitude?: number | null;
+            /** Public Longitude */
+            public_longitude?: number | null;
+            /** Region */
+            region: string | null;
+            sensitivity_level: components["schemas"]["SensitivityLevel"];
+            /** Slug */
+            slug: string;
+            /** Timezone */
+            timezone: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** AdminMediaAssetRead */
         AdminMediaAssetRead: {
             /** Archived At */
@@ -1186,18 +1237,16 @@ export interface components {
              */
             timezone: string;
         };
-        /** LocationRead */
+        /**
+         * LocationRead
+         * @description Explicit public projection; never expose exact coordinates or internal metadata.
+         */
         LocationRead: {
             coordinate_visibility: components["schemas"]["CoordinateVisibility"];
             /** Coordinates Protected */
             readonly coordinates_protected: boolean;
             /** Country Code */
             country_code: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
             /** Description */
             description: string | null;
             /** Habitat */
@@ -1211,16 +1260,8 @@ export interface components {
             latitude: number | null;
             /** Longitude */
             longitude: number | null;
-            /** Metadata */
-            metadata: {
-                [key: string]: unknown;
-            };
             /** Name */
             name: string;
-            /** Public Latitude */
-            public_latitude?: number | null;
-            /** Public Longitude */
-            public_longitude?: number | null;
             /** Region */
             region: string | null;
             sensitivity_level: components["schemas"]["SensitivityLevel"];
@@ -1228,11 +1269,6 @@ export interface components {
             slug: string;
             /** Timezone */
             timezone: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /** LocationUpdate */
         LocationUpdate: {
@@ -1445,12 +1481,22 @@ export interface components {
             error_message: string | null;
             /** Finished At */
             finished_at: string | null;
+            /** Heartbeat At */
+            heartbeat_at?: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
             job_type: components["schemas"]["JobType"];
+            /** Queue Job Id */
+            queue_job_id?: string | null;
+            /** Request Id */
+            request_id?: string | null;
+            /** Stage States */
+            stage_states?: {
+                [key: string]: unknown;
+            };
             /** Started At */
             started_at: string | null;
             status: components["schemas"]["JobStatus"];
@@ -1993,7 +2039,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LocationRead"];
+                    "application/json": components["schemas"]["AdminLocationRead"];
                 };
             };
             /** @description Validation Error */
@@ -2067,7 +2113,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LocationRead"];
+                    "application/json": components["schemas"]["AdminLocationRead"];
                 };
             };
             /** @description Validation Error */

@@ -3,9 +3,9 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from orna_atlas.app.core.domain_errors import ValidationError
 from orna_atlas.app.main import app
 from orna_atlas.app.modules.atlas import service
 from orna_atlas.app.modules.locations.models import Location
@@ -23,10 +23,10 @@ def test_sprint5_routes_are_registered() -> None:
 
 
 def test_atlas_bbox_validation_rejects_invalid_ranges() -> None:
-    with pytest.raises(HTTPException):
+    with pytest.raises(ValidationError):
         service.parse_bbox("-181,-10,10,10")
 
-    with pytest.raises(HTTPException):
+    with pytest.raises(ValidationError):
         service.parse_bbox("10,20,30,0")
 
     assert service.parse_bbox("170,-10,-170,10").east == -170

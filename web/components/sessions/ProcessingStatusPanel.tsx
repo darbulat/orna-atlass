@@ -9,9 +9,6 @@ export function ProcessingStatusPanel({
 }) {
   const sourceAssets = assets.filter((asset) => asset.kind !== "streaming_rendition");
   const renditions = assets.filter((asset) => asset.kind === "streaming_rendition");
-  const latestJob = assets
-    .flatMap((asset) => asset.processing_jobs ?? [])
-    .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
 
   return (
     <section className="processing-panel" aria-label="Processing status">
@@ -29,8 +26,8 @@ export function ProcessingStatusPanel({
           <dd>{renditions.length}</dd>
         </div>
         <div>
-          <dt>Latest job</dt>
-          <dd>{latestJob ? `${formatStatus(latestJob.status)} / ${latestJob.attempt_count}` : "Not queued"}</dd>
+          <dt>Session status</dt>
+          <dd>{formatStatus(status)}</dd>
         </div>
       </dl>
       {assets.length > 0 ? (

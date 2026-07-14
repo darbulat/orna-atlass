@@ -4,14 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from orna_atlas.app.core.domain_types import JobStatus, JobType, MediaKind, ProcessingStatus
-
-
-def _reject_required_nulls(data: dict, fields: set[str]) -> dict:
-    null_fields = sorted(field for field in fields if field in data and data[field] is None)
-    if null_fields:
-        joined = ", ".join(null_fields)
-        raise ValueError(f"Fields may be omitted but cannot be null: {joined}")
-    return data
+from orna_atlas.app.core.schema_validation import reject_required_nulls
 
 
 class MediaAssetCreate(BaseModel):
@@ -39,7 +32,7 @@ class MediaAssetUpdate(BaseModel):
     @classmethod
     def reject_required_nulls(cls, data: object) -> object:
         if isinstance(data, dict):
-            return _reject_required_nulls(data, {"kind", "storage_key", "mime_type", "metadata"})
+            return reject_required_nulls(data, {"kind", "storage_key", "mime_type", "metadata"})
         return data
 
 
@@ -49,9 +42,13 @@ class ProcessingJobRead(BaseModel):
     job_type: JobType
     status: JobStatus
     attempt_count: int
+    stage_states: dict = Field(default_factory=dict)
+    request_id: str | None = None
+    queue_job_id: str | None = None
     error_code: str | None
     error_message: str | None
     started_at: datetime | None
+    heartbeat_at: datetime | None = None
     finished_at: datetime | None
     created_at: datetime
     updated_at: datetime

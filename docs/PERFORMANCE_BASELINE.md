@@ -23,3 +23,30 @@ Do not publish a number without the dataset size and commit. Sequential latency 
 ## Initial guardrails
 
 Until product SLOs are defined, investigate any endpoint with errors or a repeatable p95 regression greater than 20% against the same fixture and environment. Atlas scale must also be tested with a representative large dataset before claiming production capacity.
+
+## Long-form audio stage baseline
+
+Run the reproducible sparse-PCM benchmark without committing generated audio:
+
+```bash
+python -m orna_atlas.app.scripts.benchmark_audio_pipeline --hours 1 6
+```
+
+The fixture is mono 8 kHz/16-bit PCM. It has the full logical byte length and the
+waveform code reads every frame, while sparse allocation avoids leaving hundreds
+of megabytes on disk. These numbers cover checksum/metadata and streaming waveform
+generation only; they do not claim BirdNET, S3 network, transcoding or full worker
+capacity.
+
+| Date | Worktree | Duration | Logical size | Metadata | Waveform | Total | Max RSS | Configured timeout |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 2026-07-14 | `dbaa412` + worktree | 1 h | 57,600,044 B | 0.1310 s | 2.1801 s | 2.3111 s | 217,040 KiB | 3,600 s |
+| 2026-07-14 | `dbaa412` + worktree | 6 h | 345,600,044 B | 0.8684 s | 10.8725 s | 11.7409 s | 217,040 KiB | 21,600 s |
+
+Measured on Linux x86_64 with an Intel Core i7-13700H. The timeout scales by
+declared duration and is capped at six hours; an asset without trusted duration
+receives that maximum rather than the short default. RQ retries twice with a
+configurable interval. A recovery worker replaces queued or running jobs whose
+heartbeat remains stale beyond the maximum timeout. Re-run this benchmark on
+representative 44.1/48 kHz field audio and measure BirdNET and real object-storage
+latency separately before setting production SLOs or reducing the timeout ceiling.

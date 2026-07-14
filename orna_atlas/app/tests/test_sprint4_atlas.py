@@ -86,40 +86,22 @@ def test_atlas_point_uses_public_coordinates_and_latest_public_session() -> None
 
 
 async def test_low_zoom_atlas_applies_limit_after_clustering(monkeypatch) -> None:
-    now = datetime.now(UTC)
     requested_limits = []
-    locations = [
-        SimpleNamespace(
-            id=uuid4(),
-            slug=f"location-{index}",
-            name=f"Location {index}",
-            description=None,
-            country_code="NZ",
-            region="South Island",
-            habitat="wetland",
-            latitude=-45.0 + index * 10,
-            longitude=169.0,
-            timezone="Pacific/Auckland",
-            sensitivity_level="none",
-            sessions=[
-                SimpleNamespace(
-                    id=uuid4(),
-                    slug=f"session-{index}",
-                    title=f"Session {index}",
-                    recorded_at=now,
-                    duration_seconds=60,
-                    access_level="public",
-                )
-            ],
-        )
-        for index in range(3)
-    ]
 
-    async def fake_list_atlas_locations(session, *, bbox, habitats, limit):
+    async def fake_list_atlas_clusters(session, *, bbox, habitats, zoom, limit):
         requested_limits.append(limit)
-        return locations
+        return [
+            SimpleNamespace(
+                id=f"{zoom}:cluster-{index}",
+                latitude=-45.0 + index,
+                longitude=169.0,
+                count=index + 1,
+                habitats=["wetland"],
+            )
+            for index in range(limit)
+        ]
 
-    monkeypatch.setattr(service.repository, "list_atlas_locations", fake_list_atlas_locations)
+    monkeypatch.setattr(service.repository, "list_atlas_clusters", fake_list_atlas_clusters)
 
     response = await service.get_atlas_points(
         SimpleNamespace(),
@@ -130,6 +112,6 @@ async def test_low_zoom_atlas_applies_limit_after_clustering(monkeypatch) -> Non
         limit=2,
     )
 
-    assert requested_limits == [None]
+    assert requested_limits == [2]
     assert response.mode == "clusters"
     assert len(response.points) == 2

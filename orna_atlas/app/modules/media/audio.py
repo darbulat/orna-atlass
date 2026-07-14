@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import math
 import wave
 from array import array
 from pathlib import Path
@@ -109,20 +108,42 @@ def _extract_wav_metadata(path: Path) -> dict:
 def _waveform_peaks_from_wav(path: Path, buckets: int = WAVEFORM_BUCKETS) -> list[float]:
     with wave.open(str(path), "rb") as wav_file:
         sample_width = wav_file.getsampwidth()
-        total_samples = wav_file.getnframes() * wav_file.getnchannels()
-        if total_samples <= 0:
+        frame_count = wav_file.getnframes()
+        channels = wav_file.getnchannels()
+        if frame_count <= 0:
             return []
-        bucket_count = min(buckets, total_samples)
-        bucket_size = max(1, math.ceil(total_samples / bucket_count))
-        raw_peaks = [0] * bucket_count
-        sample_index = 0
-        while raw := wav_file.readframes(8192):
-            for sample in _pcm_samples(raw, sample_width):
-                bucket_index = min(sample_index // bucket_size, bucket_count - 1)
-                raw_peaks[bucket_index] = max(raw_peaks[bucket_index], abs(sample))
-                sample_index += 1
+        bucket_count = min(buckets, frame_count)
+        base_bucket_frames, extra_frames = divmod(frame_count, bucket_count)
+        raw_peaks: list[int] = []
+        for bucket_index in range(bucket_count):
+            remaining_frames = base_bucket_frames + (
+                1 if bucket_index < extra_frames else 0
+            )
+            bucket_peak = 0
+            while remaining_frames > 0:
+                requested_frames = min(8192, remaining_frames)
+                raw = wav_file.readframes(requested_frames)
+                if not raw:
+                    break
+                bucket_peak = max(bucket_peak, _pcm_peak(raw, sample_width))
+                frames_read = len(raw) // max(1, sample_width * channels)
+                remaining_frames -= frames_read
+            raw_peaks.append(bucket_peak)
     max_amplitude = float(max(1, 2 ** (sample_width * 8 - 1) - 1))
     return [round(min(1.0, peak / max_amplitude), 4) for peak in raw_peaks]
+
+
+def _pcm_peak(raw: bytes, sample_width: int) -> int:
+    """Find one chunk peak without a Python loop per sample for common PCM widths."""
+    if sample_width == 1:
+        return max((abs(byte - 128) for byte in raw), default=0)
+    if sample_width in {2, 4}:
+        samples = array("h" if sample_width == 2 else "i")
+        samples.frombytes(raw)
+        return max(map(abs, samples), default=0)
+    if sample_width == 3:
+        return max(map(abs, _pcm_samples(raw, sample_width)), default=0)
+    return 0
 
 
 def _pcm_samples(raw: bytes, sample_width: int) -> list[int]:

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -7,8 +8,17 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from jwt.algorithms import RSAAlgorithm
 
 from orna_atlas.app.core.config import Settings, get_settings
+from orna_atlas.app.core.domain_errors import (
+    AuthenticationError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+)
 from orna_atlas.app.core.rate_limit import rate_limit
 from orna_atlas.app.core.security import (
     CurrentUser,
@@ -17,8 +27,10 @@ from orna_atlas.app.core.security import (
     decode_access_token,
     get_current_admin,
     hash_password,
+    public_jwks,
     verify_password,
 )
+from orna_atlas.app import main as main_module
 from orna_atlas.app.main import app
 from orna_atlas.app.modules.memberships.models import Membership
 from orna_atlas.app.modules.sessions import service as sessions_service
@@ -46,6 +58,137 @@ def test_access_token_round_trip_and_tamper_rejection() -> None:
     with pytest.raises(HTTPException) as error:
         decode_access_token(f"{token[:-1]}x")
     assert error.value.status_code == 401
+
+
+def _rsa_private_key_and_pem() -> tuple[rsa.RSAPrivateKey, str]:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+    return private_key, private_pem
+
+
+def _rsa_jwk(private_key: rsa.RSAPrivateKey, kid: str, *, private: bool) -> dict[str, object]:
+    key = private_key if private else private_key.public_key()
+    payload = json.loads(RSAAlgorithm.to_jwk(key))
+    payload.update({"kid": kid, "use": "sig", "alg": "RS256"})
+    return payload
+
+
+def test_rs256_jwks_prefers_current_key_sanitizes_private_config_and_keeps_old_key(
+    monkeypatch,
+) -> None:
+    current_private_key, current_private_pem = _rsa_private_key_and_pem()
+    replacement_private_key, _ = _rsa_private_key_and_pem()
+    old_private_key, _ = _rsa_private_key_and_pem()
+    replacement = _rsa_jwk(replacement_private_key, "current", private=True)
+    replacement["k"] = "symmetric-material-must-not-leak"
+    old_public = _rsa_jwk(old_private_key, "old-2025", private=False)
+    settings = Settings(
+        _env_file=None,
+        AUTH_SIGNING_ALGORITHM="RS256",
+        AUTH_KEY_ID="current",
+        AUTH_PRIVATE_KEY=current_private_pem,
+        AUTH_JWKS_JSON=json.dumps({"keys": [replacement, old_public]}),
+    )
+    monkeypatch.setattr("orna_atlas.app.core.security.get_settings", lambda: settings)
+
+    token, _ = create_access_token(uuid4(), "member", "member@example.com")
+    current = decode_access_token(token)
+    jwks = public_jwks()
+
+    assert current.email == "member@example.com"
+    assert [key["kid"] for key in jwks["keys"]] == ["current", "old-2025"]
+    expected_current = _rsa_jwk(current_private_key, "current", private=False)
+    assert jwks["keys"][0]["n"] == expected_current["n"]
+    assert jwks["keys"][0]["n"] != replacement["n"]
+    assert jwks["keys"][1]["n"] == old_public["n"]
+    private_fields = {"d", "p", "q", "dp", "dq", "qi", "oth", "k"}
+    assert all(private_fields.isdisjoint(key) for key in jwks["keys"])
+
+
+def test_hs256_never_publishes_configured_symmetric_material(monkeypatch) -> None:
+    settings = Settings(
+        _env_file=None,
+        AUTH_SIGNING_ALGORITHM="HS256",
+        AUTH_SECRET_KEY="do-not-publish-this-secret",
+        AUTH_JWKS_JSON=json.dumps(
+            {"keys": [{"kty": "oct", "kid": "symmetric", "k": "also-secret"}]}
+        ),
+    )
+    monkeypatch.setattr("orna_atlas.app.core.security.get_settings", lambda: settings)
+
+    assert public_jwks() == {"keys": []}
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected_message"),
+    [
+        ("not-json", "must contain valid JSON"),
+        (json.dumps({"keys": {}}), "keys list"),
+        (
+            json.dumps({"keys": [{"kty": "oct", "kid": "symmetric", "k": "secret"}]}),
+            "must be an RSA key",
+        ),
+        (
+            json.dumps({"keys": [{"kty": "RSA", "kid": "broken", "n": "invalid"}]}),
+            ".e must be a non-empty string",
+        ),
+    ],
+)
+def test_rs256_rejects_malformed_or_non_rsa_jwks_config(
+    monkeypatch, configured: str, expected_message: str
+) -> None:
+    _, private_pem = _rsa_private_key_and_pem()
+    settings = Settings(
+        _env_file=None,
+        AUTH_SIGNING_ALGORITHM="RS256",
+        AUTH_PRIVATE_KEY=private_pem,
+        AUTH_JWKS_JSON=configured,
+    )
+    monkeypatch.setattr("orna_atlas.app.core.security.get_settings", lambda: settings)
+
+    with pytest.raises(ValueError, match=expected_message):
+        public_jwks()
+
+
+def test_rs256_rejects_duplicate_configured_key_ids(monkeypatch) -> None:
+    _, current_private_pem = _rsa_private_key_and_pem()
+    first_old_key, _ = _rsa_private_key_and_pem()
+    second_old_key, _ = _rsa_private_key_and_pem()
+    configured = {
+        "keys": [
+            _rsa_jwk(first_old_key, "duplicate", private=False),
+            _rsa_jwk(second_old_key, "duplicate", private=False),
+        ]
+    }
+    settings = Settings(
+        _env_file=None,
+        AUTH_SIGNING_ALGORITHM="RS256",
+        AUTH_PRIVATE_KEY=current_private_pem,
+        AUTH_JWKS_JSON=json.dumps(configured),
+    )
+    monkeypatch.setattr("orna_atlas.app.core.security.get_settings", lambda: settings)
+
+    with pytest.raises(ValueError, match="duplicate kid 'duplicate'"):
+        public_jwks()
+
+
+def test_rs256_app_startup_rejects_malformed_rotation_config(monkeypatch) -> None:
+    _, private_pem = _rsa_private_key_and_pem()
+    settings = Settings(
+        _env_file=None,
+        AUTH_SIGNING_ALGORITHM="RS256",
+        AUTH_PRIVATE_KEY=private_pem,
+        AUTH_JWKS_JSON="not-json",
+    )
+    monkeypatch.setattr(main_module, "get_settings", lambda: settings)
+    monkeypatch.setattr("orna_atlas.app.core.security.get_settings", lambda: settings)
+
+    with pytest.raises(ValueError, match="must contain valid JSON"):
+        main_module.create_app()
 
 
 def test_production_rejects_insecure_auth_defaults() -> None:
@@ -118,9 +261,9 @@ async def test_members_only_playback_rejects_anonymous_user() -> None:
         location=SimpleNamespace(coordinate_visibility="exact_public"),
     )
 
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(AuthenticationError) as error:
         await sessions_service.authorize_playback_grant(AsyncMock(), recording, None)
-    assert error.value.status_code == 401
+    assert error.value.detail == "Membership required"
 
 
 @pytest.mark.asyncio
@@ -133,9 +276,9 @@ async def test_members_only_playback_rejects_inactive_member(monkeypatch) -> Non
     user = CurrentUser(id=str(uuid4()), role="member", email="member@example.com")
     monkeypatch.setattr(sessions_service, "has_playback_entitlement", AsyncMock(return_value=False))
 
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(ForbiddenError) as error:
         await sessions_service.authorize_playback_grant(AsyncMock(), recording, user)
-    assert error.value.status_code == 403
+    assert error.value.detail == "Active membership required"
 
 
 @pytest.mark.asyncio
@@ -183,19 +326,19 @@ async def test_non_entitled_member_cannot_resolve_members_only_session(monkeypat
     monkeypatch.setattr(sessions_service, "has_playback_entitlement", entitlement)
     monkeypatch.setattr(sessions_service.repository, "get_visible_session_by_slug", lookup)
 
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(NotFoundError) as error:
         await sessions_service.require_visible_session(AsyncMock(), "protected-session", user)
 
-    assert error.value.status_code == 404
+    assert error.value.detail == "Session not found"
     assert lookup.await_args.kwargs["access_levels"] == ("public",)
 
 
 def test_playback_grant_fails_closed_without_ready_rendition() -> None:
     recording = SimpleNamespace(id=uuid4(), media_assets=[])
 
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(ConflictError) as error:
         sessions_service.create_playback_grant(recording)
-    assert error.value.status_code == 409
+    assert error.value.detail == "Playable rendition is not ready"
 
 
 class FakeRedis:

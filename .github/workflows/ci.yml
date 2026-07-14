@@ -58,6 +58,11 @@ jobs:
       - run: python -m ruff check .
       - run: alembic upgrade head
       - run: alembic check
+      - name: Verify geospatial and lifecycle migration reversibility
+        env:
+          APP_ENVIRONMENT: test
+          RUN_MIGRATION_CYCLE_CHECK: "1"
+        run: python -m orna_atlas.app.scripts.verify_migration_cycle
       - run: python -m pytest
       - name: Prepare integration buckets
         run: >-
@@ -71,10 +76,15 @@ jobs:
         run: python -m pytest -m integration tests/integration
       - name: Build API image without local secrets
         run: docker build --file Dockerfile.api --tag orna-atlas-api:test .
+      - name: Build dedicated ML worker image
+        run: docker build --file Dockerfile.worker --tag orna-atlas-worker:test .
       - name: Verify installed package outside source directory
         run: >-
           docker run --rm --workdir /tmp --entrypoint python orna-atlas-api:test
-          -c "import os, orna_atlas; assert not os.path.exists('/app/.env')"
+          -c "import importlib.util, os, orna_atlas;
+          assert not os.path.exists('/app/.env');
+          assert importlib.util.find_spec('tensorflow') is None;
+          assert importlib.util.find_spec('birdnetlib') is None"
 
   frontend:
     runs-on: ubuntu-latest
@@ -91,6 +101,8 @@ jobs:
       - run: pip install .
       - working-directory: web
         run: npm ci
+      - working-directory: web
+        run: npm run test:unit
       - working-directory: web
         run: npm run build
       - working-directory: web

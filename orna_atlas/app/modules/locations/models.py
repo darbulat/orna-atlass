@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Float, String, Text
+from geoalchemy2 import Geometry
+from geoalchemy2.elements import WKBElement
+from sqlalchemy import CheckConstraint, Computed, DateTime, Float, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,9 +34,16 @@ class Location(Base):
             name="ck_locations_coordinate_visibility",
         ),
         CheckConstraint(
+            "coordinate_visibility != 'approximate_public' "
+            "OR (public_latitude IS NOT NULL AND public_longitude IS NOT NULL)",
+            name="ck_locations_approximate_public_coordinates",
+        ),
+        CheckConstraint(
             "sensitivity_level IN ('none','low','medium','high','protected')",
             name="ck_locations_sensitivity_level",
         ),
+        Index("ix_locations_exact_point_gist", "exact_point", postgresql_using="gist"),
+        Index("ix_locations_public_point_gist", "public_point", postgresql_using="gist"),
     )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -48,10 +57,32 @@ class Location(Base):
     exact_longitude: Mapped[float] = mapped_column(Float)
     public_latitude: Mapped[float | None] = mapped_column(Float)
     public_longitude: Mapped[float | None] = mapped_column(Float)
+    exact_point: Mapped[WKBElement] = mapped_column(
+        Geometry(geometry_type="POINT", srid=4326, spatial_index=False),
+        Computed(
+            "ST_SetSRID(ST_MakePoint(exact_longitude, exact_latitude), 4326)",
+            persisted=True,
+        ),
+    )
+    public_point: Mapped[WKBElement | None] = mapped_column(
+        Geometry(geometry_type="POINT", srid=4326, spatial_index=False),
+        Computed(
+            "CASE "
+            "WHEN coordinate_visibility = 'hidden_public' THEN NULL "
+            "WHEN coordinate_visibility = 'exact_public' "
+            "AND sensitivity_level NOT IN ('protected','high','medium') "
+            "THEN ST_SetSRID(ST_MakePoint(exact_longitude, exact_latitude), 4326) "
+            "WHEN public_longitude IS NOT NULL AND public_latitude IS NOT NULL "
+            "THEN ST_SetSRID(ST_MakePoint(public_longitude, public_latitude), 4326) "
+            "ELSE NULL END",
+            persisted=True,
+        ),
+    )
     coordinate_visibility: Mapped[str] = mapped_column(String(40), default="exact_public", index=True)
     sensitivity_level: Mapped[str] = mapped_column(String(40), default="none", index=True)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)

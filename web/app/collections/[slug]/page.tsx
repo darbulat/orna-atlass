@@ -1,18 +1,29 @@
 import Link from "next/link";
 
+import { ApiError, apiErrorMessage } from "../../../lib/api/client";
 import { fetchCollectionDetail, type CollectionDetail } from "../../../lib/api/collections";
 
 export const dynamic = "force-dynamic";
 
-export default async function CollectionPage({ params }: { params: { slug: string } }) {
-  const collection = await fetchCollectionDetail(params.slug);
-
-  if (!collection) {
+export default async function CollectionPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  let collection: CollectionDetail;
+  try {
+    collection = await fetchCollectionDetail(slug);
+  } catch (error) {
+    const notFound = error instanceof ApiError && error.status === 404;
     return (
       <main className="shell" id="main-content">
-        <p className="eyebrow">Collection</p>
-        <h1>{formatSlug(params.slug)}</h1>
-        <p>This editorial collection is not available yet.</p>
+        <section className="panel unavailable-panel" role={notFound ? "status" : "alert"}>
+          <p className="eyebrow">Collection</p>
+          <h1>{notFound ? "Collection not found" : "Collection unavailable"}</h1>
+          <p>
+            {notFound
+              ? "This collection does not exist or is no longer published."
+              : apiErrorMessage(error, "This collection could not be loaded.")}
+          </p>
+          <small>{formatSlug(slug)}</small>
+        </section>
       </main>
     );
   }

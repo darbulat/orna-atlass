@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -41,27 +42,60 @@ def normalize_birdnet_detections(
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
 ) -> list[BirdDetection]:
     """Map raw BirdNET detections into normalized atlas bird part payloads."""
+    try:
+        threshold = float(min_confidence)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("min_confidence must be a finite value between 0 and 1") from exc
+    if not math.isfinite(threshold) or not 0 <= threshold <= 1:
+        raise ValueError("min_confidence must be a finite value between 0 and 1")
+
     normalized: list[BirdDetection] = []
     for detection in detections:
-        confidence = float(detection.get("confidence") or 0.0)
-        if confidence < min_confidence:
+        if not isinstance(detection, dict):
             continue
-        scientific_name = detection.get("scientific_name")
-        common_name = detection.get("common_name") or scientific_name or "Unknown species"
-        start_time = float(detection.get("start_time") or 0.0)
-        end_time = float(detection.get("end_time") or start_time)
-        if end_time < start_time:
-            end_time = start_time
+        try:
+            raw_confidence = detection.get("confidence")
+            raw_start_time = detection.get("start_time")
+            raw_end_time = detection.get("end_time")
+            confidence = float(0.0 if raw_confidence is None else raw_confidence)
+            start_time = float(0.0 if raw_start_time is None else raw_start_time)
+            end_time = float(start_time if raw_end_time is None else raw_end_time)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if (
+            not all(math.isfinite(value) for value in (confidence, start_time, end_time))
+            or not 0 <= confidence <= 1
+            or confidence < threshold
+            or start_time < 0
+            or end_time < start_time
+        ):
+            continue
+        raw_scientific_name = detection.get("scientific_name")
+        scientific_name = (
+            str(raw_scientific_name).strip() if raw_scientific_name else None
+        )
+        common_name = str(
+            detection.get("common_name") or scientific_name or "Unknown species"
+        ).strip()
+        species_code = species_code_from_scientific_name(scientific_name)
+        if (
+            not common_name
+            or len(common_name) > 180
+            or (scientific_name is not None and len(scientific_name) > 180)
+            or len(species_code) > 120
+        ):
+            continue
+        label = detection.get("label")
         normalized.append(
             BirdDetection(
-                species_code=species_code_from_scientific_name(scientific_name),
-                species_common_name=str(common_name),
-                species_scientific_name=str(scientific_name) if scientific_name else None,
+                species_code=species_code,
+                species_common_name=common_name,
+                species_scientific_name=scientific_name,
                 starts_at_seconds=start_time,
                 ends_at_seconds=end_time,
                 confidence=round(confidence, 4),
                 metadata={
-                    "label": detection.get("label"),
+                    "label": str(label)[:500] if label is not None else None,
                     "source": ANALYSIS_PROVIDER,
                 },
             )

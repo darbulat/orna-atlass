@@ -1,17 +1,25 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
+import os
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 
+from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.db.session import AsyncSessionLocal, engine
-from orna_atlas.app.integrations.redis import get_redis_client
+from orna_atlas.app.integrations.redis import invalidate_atlas_cache
 from orna_atlas.app.modules.collections.models import Collection, CollectionLocation, CollectionSession
 from orna_atlas.app.modules.locations.models import Location
-from orna_atlas.app.modules.media.models import MediaAsset  # noqa: F401
+from orna_atlas.app.modules.media.models import MediaAsset
 from orna_atlas.app.modules.sessions.models import BirdVocalPart, RecordingSession
+
+
+SEED_OWNER = "orna-atlas-demo-v1"
+ALLOWED_SEED_ENVIRONMENTS = frozenset({"local", "test"})
+SEED_ADVISORY_LOCK_ID = 0x4F524E41
 
 
 SEED_LOCATIONS: list[dict[str, Any]] = [
@@ -543,6 +551,7 @@ BIRD_PARTS_BY_SESSION: dict[str, list[dict[str, Any]]] = {
 def _session_metadata(location: Location) -> dict[str, Any]:
     return {
         "seed": True,
+        "seed_owner": SEED_OWNER,
         "recording_integrity": {
             "human_noise_level": "none",
             "post_processing": "No loops, no studio layers, light normalization only",
@@ -575,15 +584,47 @@ def _session_metadata(location: Location) -> dict[str, Any]:
     }
 
 
+def _is_seed_owned(record: object) -> bool:
+    metadata = getattr(record, "metadata_", None)
+    if not isinstance(metadata, dict) or metadata.get("seed") is not True:
+        return False
+    return metadata.get("seed_owner") == SEED_OWNER
+
+
+def _require_seed_owned(record: object, *, entity: str, slug: str) -> None:
+    if not _is_seed_owned(record):
+        raise RuntimeError(
+            f"Refusing to overwrite non-seed {entity} with slug {slug!r}"
+        )
+
+
+def _owned_metadata(metadata: object) -> dict[str, Any]:
+    existing = metadata if isinstance(metadata, dict) else {}
+    return {**existing, "seed": True, "seed_owner": SEED_OWNER}
+
+
+def _assert_seed_allowed(*, force: bool, environment: str) -> None:
+    normalized = environment.strip().lower()
+    if normalized not in ALLOWED_SEED_ENVIRONMENTS:
+        raise RuntimeError(
+            "Atlas seed is allowed only when APP_ENVIRONMENT is local or test"
+        )
+    if not force:
+        raise RuntimeError("Atlas seed requires explicit --force confirmation")
+
+
 async def _upsert_location(session, payload: dict[str, Any]) -> Location:
     location_data = {key: value for key, value in payload.items() if key != "sessions"}
+    location_data["metadata_"] = _owned_metadata(location_data.get("metadata_"))
     location = await session.scalar(select(Location).where(Location.slug == payload["slug"]))
     if location is None:
         location = Location(**location_data)
         session.add(location)
     else:
+        _require_seed_owned(location, entity="location", slug=payload["slug"])
         for key, value in location_data.items():
             setattr(location, key, value)
+        location.archived_at = None
     return location
 
 
@@ -602,8 +643,10 @@ async def _upsert_session(session, location: Location, payload: dict[str, Any]) 
         recording = RecordingSession(**session_data)
         session.add(recording)
     else:
+        _require_seed_owned(recording, entity="session", slug=payload["slug"])
         for key, value in session_data.items():
             setattr(recording, key, value)
+        recording.archived_at = None
     await session.flush()
     return recording
 
@@ -612,8 +655,22 @@ async def _mark_featured_sessions(session) -> None:
     for index, slug in enumerate(FEATURED_SESSION_SLUGS):
         recording = await session.scalar(select(RecordingSession).where(RecordingSession.slug == slug))
         if recording is not None:
-            recording.is_featured = True
-            recording.featured_sort_order = index
+            _require_seed_owned(recording, entity="session", slug=slug)
+            ready_asset = await session.scalar(
+                select(MediaAsset.id)
+                .where(
+                    MediaAsset.session_id == recording.id,
+                    MediaAsset.kind == "streaming_rendition",
+                    MediaAsset.processing_status == "ready",
+                    MediaAsset.is_active.is_(True),
+                    MediaAsset.archived_at.is_(None),
+                    MediaAsset.storage_deleted_at.is_(None),
+                )
+                .limit(1)
+            )
+            is_ready = recording.processing_status == "ready" and ready_asset is not None
+            recording.is_featured = is_ready
+            recording.featured_sort_order = index if is_ready else None
 
 
 async def _seed_bird_parts(session) -> None:
@@ -621,13 +678,44 @@ async def _seed_bird_parts(session) -> None:
         recording = await session.scalar(select(RecordingSession).where(RecordingSession.slug == session_slug))
         if recording is None:
             continue
-        existing = await session.scalars(
-            select(BirdVocalPart).where(BirdVocalPart.session_id == recording.id)
+        _require_seed_owned(recording, entity="session", slug=session_slug)
+        existing = list(
+            await session.scalars(
+                select(BirdVocalPart).where(BirdVocalPart.session_id == recording.id)
+            )
         )
+        preserved_signatures = {
+            _bird_part_signature(part)
+            for part in existing
+            if not _is_seed_owned(part)
+        }
         for part in existing:
-            await session.delete(part)
+            if _is_seed_owned(part):
+                await session.delete(part)
         for part in parts:
-            session.add(BirdVocalPart(session_id=recording.id, metadata_={"seed": True}, **part))
+            if _bird_part_signature(part) in preserved_signatures:
+                continue
+            session.add(
+                BirdVocalPart(
+                    session_id=recording.id,
+                    metadata_=_owned_metadata({}),
+                    **part,
+                )
+            )
+
+
+def _bird_part_signature(part: BirdVocalPart | dict[str, Any]) -> tuple[object, ...]:
+    def value(name: str):
+        return part.get(name) if isinstance(part, dict) else getattr(part, name)
+
+    return (
+        value("species_code"),
+        value("starts_at_seconds"),
+        value("ends_at_seconds"),
+        value("call_type"),
+        value("analysis_provider"),
+        value("analysis_model_version"),
+    )
 
 
 async def _seed_collections(session) -> None:
@@ -647,49 +735,114 @@ async def _seed_collections(session) -> None:
                 title=payload["title"],
                 description=payload["description"],
                 sort_order=payload["sort_order"],
-                metadata_={"seed": True},
+                metadata_=_owned_metadata({}),
             )
             session.add(collection)
             await session.flush()
         else:
+            _require_seed_owned(collection, entity="collection", slug=payload["slug"])
             collection.title = payload["title"]
             collection.description = payload["description"]
             collection.sort_order = payload["sort_order"]
+            collection.metadata_ = _owned_metadata(collection.metadata_)
         await session.execute(
-            delete(CollectionLocation).where(CollectionLocation.collection_id == collection.id)
+            delete(CollectionLocation).where(
+                CollectionLocation.collection_id == collection.id,
+                CollectionLocation.seed_owner == SEED_OWNER,
+            )
         )
         await session.execute(
-            delete(CollectionSession).where(CollectionSession.collection_id == collection.id)
+            delete(CollectionSession).where(
+                CollectionSession.collection_id == collection.id,
+                CollectionSession.seed_owner == SEED_OWNER,
+            )
         )
         await session.flush()
+        existing_location_ids = set(
+            (
+                await session.scalars(
+                    select(CollectionLocation.location_id).where(
+                        CollectionLocation.collection_id == collection.id
+                    )
+                )
+            ).all()
+        )
+        existing_session_ids = set(
+            (
+                await session.scalars(
+                    select(CollectionSession.session_id).where(
+                        CollectionSession.collection_id == collection.id
+                    )
+                )
+            ).all()
+        )
         for index, location_slug in enumerate(payload["location_slugs"]):
             location = slug_to_location.get(location_slug)
-            if location is not None:
+            if location is not None and location.id not in existing_location_ids:
                 session.add(
-                    CollectionLocation(collection_id=collection.id, location_id=location.id, sort_order=index)
+                    CollectionLocation(
+                        collection_id=collection.id,
+                        location_id=location.id,
+                        sort_order=index,
+                        seed_owner=SEED_OWNER,
+                    )
                 )
         for index, session_slug in enumerate(payload["session_slugs"]):
             recording = slug_to_session.get(session_slug)
-            if recording is not None:
+            if recording is not None and recording.id not in existing_session_ids:
                 session.add(
-                    CollectionSession(collection_id=collection.id, session_id=recording.id, sort_order=index)
+                    CollectionSession(
+                        collection_id=collection.id,
+                        session_id=recording.id,
+                        sort_order=index,
+                        seed_owner=SEED_OWNER,
+                    )
                 )
 
 
 async def _clear_atlas_cache() -> None:
-    redis = get_redis_client()
-    try:
-        keys = [key async for key in redis.scan_iter("atlas:points:*")]
-        if keys:
-            await redis.delete(*keys)
-    except Exception:
-        pass
-    finally:
-        await redis.aclose()
+    await invalidate_atlas_cache()
 
 
-async def seed() -> None:
+async def _adopt_legacy_seed_rows(session) -> None:
+    """Explicitly claim known legacy demo rows, never links or arbitrary data."""
+    manifests = (
+        (Location, [item["slug"] for item in SEED_LOCATIONS]),
+        (
+            RecordingSession,
+            [
+                recording["slug"]
+                for item in SEED_LOCATIONS
+                for recording in item["sessions"]
+            ],
+        ),
+        (Collection, [item["slug"] for item in SEED_COLLECTIONS]),
+    )
+    for model, slugs in manifests:
+        rows = (await session.scalars(select(model).where(model.slug.in_(slugs)))).all()
+        for row in rows:
+            metadata = row.metadata_ if isinstance(row.metadata_, dict) else {}
+            if metadata.get("seed") is True and metadata.get("seed_owner") is None:
+                row.metadata_ = {**metadata, "seed_owner": SEED_OWNER}
+
+
+async def seed(
+    *,
+    force: bool = False,
+    environment: str | None = None,
+    adopt_legacy_seed: bool = False,
+) -> None:
+    resolved_environment = (
+        environment or os.getenv("APP_ENV") or get_settings().environment
+    )
+    _assert_seed_allowed(force=force, environment=resolved_environment)
     async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"),
+            {"lock_id": SEED_ADVISORY_LOCK_ID},
+        )
+        if adopt_legacy_seed:
+            await _adopt_legacy_seed_rows(session)
         for location_payload in SEED_LOCATIONS:
             location = await _upsert_location(session, location_payload)
             await session.flush()
@@ -704,7 +857,24 @@ async def seed() -> None:
 
 
 def main() -> None:
-    asyncio.run(seed())
+    parser = argparse.ArgumentParser(description="Seed local ORNA Atlas demo content")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="confirm mutation of records owned by this seed",
+    )
+    parser.add_argument(
+        "--adopt-legacy-seed",
+        action="store_true",
+        help="claim only known legacy demo rows marked seed=true (local/test only)",
+    )
+    args = parser.parse_args()
+    asyncio.run(
+        seed(
+            force=args.force,
+            adopt_legacy_seed=args.adopt_legacy_seed,
+        )
+    )
     print(f"Seeded {len(SEED_LOCATIONS)} atlas locations and {len(SEED_COLLECTIONS)} collections.")
 
 

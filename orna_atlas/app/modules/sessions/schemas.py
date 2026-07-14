@@ -1,19 +1,12 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from orna_atlas.app.core.domain_types import ProcessingStatus, PublicationStatus, SessionAccess
+from orna_atlas.app.core.schema_validation import reject_required_nulls
 from orna_atlas.app.modules.locations.schemas import LocationRead
 from orna_atlas.app.modules.media.schemas import MediaAssetRead
-
-
-def _reject_required_nulls(data: dict, fields: set[str]) -> dict:
-    null_fields = sorted(field for field in fields if field in data and data[field] is None)
-    if null_fields:
-        joined = ", ".join(null_fields)
-        raise ValueError(f"Fields may be omitted but cannot be null: {joined}")
-    return data
 
 
 def _metadata_from_obj(obj: object) -> dict:
@@ -30,19 +23,78 @@ class RecordingIntegrityRead(BaseModel):
 
 class WaveformRead(BaseModel):
     session_id: UUID | None = None
-    duration_seconds: int | None = None
+    duration_seconds: int | None = Field(default=None, ge=0)
     peaks: list[float] = Field(default_factory=list)
-    sample_rate: int = 1
-    status: str = "placeholder"
+    sample_rate: int = Field(default=1, ge=1)
+    status: str = Field(default="placeholder", min_length=1, max_length=40)
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    @field_validator("peaks")
+    @classmethod
+    def validate_peaks(cls, values: list[float]) -> list[float]:
+        if len(values) > 10_000:
+            raise ValueError("waveform may contain at most 10000 peaks")
+        if any(value < -1 or value > 1 for value in values):
+            raise ValueError("waveform peaks must be between -1 and 1")
+        return values
 
 
 class SessionAnnotationRead(BaseModel):
     offset_seconds: float = Field(ge=0)
     duration_seconds: float | None = Field(default=None, ge=0)
-    label: str
-    annotation_type: str = "editorial_note"
+    label: str = Field(min_length=1, max_length=220)
+    annotation_type: str = Field(default="editorial_note", min_length=1, max_length=80)
     confidence: float | None = Field(default=None, ge=0, le=1)
     metadata: dict = Field(default_factory=dict)
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+
+def validate_session_metadata(metadata: dict) -> dict:
+    """Validate structured metadata written by admin/API flows."""
+    waveform = metadata.get("waveform")
+    if waveform is not None:
+        if not isinstance(waveform, dict):
+            raise ValueError("metadata.waveform must be an object")
+        WaveformRead.model_validate(waveform)
+    annotations = metadata.get("annotations")
+    if annotations is not None:
+        if not isinstance(annotations, list):
+            raise ValueError("metadata.annotations must be a list")
+        for annotation in annotations:
+            SessionAnnotationRead.model_validate(annotation)
+    return metadata
+
+
+def safe_waveform_projection(
+    *,
+    session_id: UUID | None,
+    duration_seconds: int | None,
+    value: object,
+) -> WaveformRead:
+    payload = {
+        "session_id": session_id,
+        "duration_seconds": duration_seconds,
+    }
+    if isinstance(value, dict):
+        payload.update(value)
+    try:
+        return WaveformRead.model_validate(payload)
+    except (TypeError, ValidationError, ValueError):
+        return WaveformRead(session_id=session_id, duration_seconds=duration_seconds)
+
+
+def safe_annotations_projection(value: object) -> list[SessionAnnotationRead]:
+    if not isinstance(value, list):
+        return []
+    projected: list[SessionAnnotationRead] = []
+    for annotation in value:
+        try:
+            projected.append(SessionAnnotationRead.model_validate(annotation))
+        except (TypeError, ValidationError, ValueError):
+            continue
+    return projected
 
 
 class BirdVocalPartRead(BaseModel):
@@ -104,6 +156,11 @@ class SessionBase(BaseModel):
     featured_sort_order: int | None = None
     metadata: dict = Field(default_factory=dict)
 
+    @field_validator("metadata")
+    @classmethod
+    def validate_structured_metadata(cls, value: dict) -> dict:
+        return validate_session_metadata(value)
+
 
 class SessionCreate(SessionBase):
     pass
@@ -125,11 +182,16 @@ class SessionUpdate(BaseModel):
     featured_sort_order: int | None = None
     metadata: dict | None = None
 
+    @field_validator("metadata")
+    @classmethod
+    def validate_structured_metadata(cls, value: dict | None) -> dict | None:
+        return validate_session_metadata(value) if value is not None else value
+
     @model_validator(mode="before")
     @classmethod
     def reject_required_nulls(cls, data: object) -> object:
         if isinstance(data, dict):
-            return _reject_required_nulls(
+            return reject_required_nulls(
                 data,
                 {
                     "location_id",
@@ -170,6 +232,7 @@ class SessionDetailRead(SessionRead):
         source = data
         if isinstance(data, dict):
             metadata = data.get("metadata") or data.get("metadata_") or {}
+            metadata = metadata if isinstance(metadata, dict) else {}
             data = dict(data)
         else:
             metadata = _metadata_from_obj(data)
@@ -195,13 +258,14 @@ class SessionDetailRead(SessionRead):
                 "media_assets": getattr(data, "media_assets", []),
                 "location": getattr(data, "location"),
             }
-        data.setdefault("recording_integrity", metadata.get("recording_integrity", {}))
-        waveform = metadata.get("waveform", {})
-        if isinstance(waveform, dict):
-            waveform = {"session_id": data.get("id"), "duration_seconds": data.get("duration_seconds"), **waveform}
-        data.setdefault("waveform", waveform)
-        annotations = metadata.get("annotations", [])
-        data.setdefault("annotations", annotations if isinstance(annotations, list) else [])
+        integrity = metadata.get("recording_integrity", {})
+        data["recording_integrity"] = integrity if isinstance(integrity, dict) else {}
+        data["waveform"] = safe_waveform_projection(
+            session_id=data.get("id"),
+            duration_seconds=data.get("duration_seconds"),
+            value=metadata.get("waveform"),
+        )
+        data["annotations"] = safe_annotations_projection(metadata.get("annotations"))
         if isinstance(source, dict):
             parts = list(source.get("bird_vocal_parts") or [])
         else:

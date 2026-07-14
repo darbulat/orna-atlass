@@ -5,10 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from orna_atlas.app.core.errors import ServiceUnavailableError
+from orna_atlas.app.core.domain_errors import NotFoundError, ServiceUnavailableError
 from orna_atlas.app.integrations import redis as redis_integration
 from orna_atlas.app.main import app
 from orna_atlas.app.modules.collections import service as collections_service
@@ -174,10 +173,10 @@ async def test_hidden_location_playback_is_not_discoverable_to_anonymous_user() 
         location=SimpleNamespace(coordinate_visibility="hidden_public"),
     )
 
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(NotFoundError) as error:
         await sessions_service.authorize_playback_grant(AsyncMock(), recording, None)
 
-    assert error.value.status_code == 404
+    assert error.value.detail == "Session not found"
 
 
 def test_docker_context_excludes_local_secrets_and_media() -> None:

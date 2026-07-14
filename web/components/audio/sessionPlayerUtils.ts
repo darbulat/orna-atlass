@@ -90,7 +90,7 @@ export function buildWeatherItems(session: SessionDetail) {
 }
 
 export function timelineTotalSeconds(session: SessionDetail) {
-  const latestBirdPartEnd = Math.max(...(session.bird_parts?.parts.map((part) => part.ends_at_seconds) ?? [0]));
+  const latestBirdPartEnd = Math.max(...(session.bird_parts?.parts?.map((part) => part.ends_at_seconds) ?? [0]));
   return Math.max(session.duration_seconds ?? 0, latestBirdPartEnd, 1);
 }
 

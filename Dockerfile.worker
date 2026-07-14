@@ -1,0 +1,15 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 \
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus-multiproc \
+    WORKER_METRICS_PORT=9101
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml ./
+COPY alembic.ini ./
+COPY orna_atlas ./orna_atlas
+RUN pip install --no-cache-dir '.[worker]'
+EXPOSE 9101
+CMD ["sh", "-c", "mkdir -p \"$PROMETHEUS_MULTIPROC_DIR\" && rm -f \"$PROMETHEUS_MULTIPROC_DIR\"/*.db && exec python -m orna_atlas.app.workers.audio_pipeline worker"]

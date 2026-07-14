@@ -4,34 +4,51 @@ import { AnnotationTimeline } from "../../../components/sessions/AnnotationTimel
 import { BirdPartsTimeline } from "../../../components/sessions/BirdPartsTimeline";
 import { ProcessingStatusPanel } from "../../../components/sessions/ProcessingStatusPanel";
 import { RecordingIntegrityPanel } from "../../../components/sessions/RecordingIntegrityPanel";
+import { ApiError, apiErrorMessage } from "../../../lib/api/client";
 import { fetchSessionDetail, type SessionDetail } from "../../../lib/api/sessions";
 
 export const dynamic = "force-dynamic";
 
-export default async function SessionPage({ params }: { params: { slug: string } }) {
-  const cookieHeader = cookies()
+export default async function SessionPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const cookieHeader = (await cookies())
     .getAll()
     .map(({ name, value }) => `${name}=${value}`)
     .join("; ");
-  const session = await fetchSessionDetail(
-    params.slug,
-    cookieHeader ? { Cookie: cookieHeader } : {},
-  );
-
-  if (!session) {
-    return (
-      <main className="shell session-shell" id="main-content">
-        <p className="eyebrow">Session</p>
-        <h1>{formatSlug(params.slug)}</h1>
-        <p>
-          Session metadata is not available yet. Once the Sprint 3 API has content, this page will render the
-          session hero, recording integrity, player shell, waveform, and annotation timeline.
-        </p>
-      </main>
+  try {
+    const session = await fetchSessionDetail(
+      slug,
+      cookieHeader ? { Cookie: cookieHeader } : {},
     );
+    return <SessionDetailView session={session} />;
+  } catch (error) {
+    return <SessionLoadState slug={slug} error={error} />;
   }
+}
 
-  return <SessionDetailView session={session} />;
+function SessionLoadState({ slug, error }: { slug: string; error: unknown }) {
+  const status = error instanceof ApiError ? error.status : null;
+  const heading = status === 404
+    ? "Session not found"
+    : status === 403
+      ? "Session access is restricted"
+      : status === 409 || status === 425
+        ? "Session is not ready"
+        : "Session unavailable";
+  const message = status === 404
+    ? "This recording does not exist or is no longer published."
+    : apiErrorMessage(error, "This recording could not be loaded.");
+
+  return (
+    <main className="shell session-shell" id="main-content">
+      <section className="panel unavailable-panel" role={status === 404 ? "status" : "alert"}>
+        <p className="eyebrow">Session</p>
+        <h1>{heading}</h1>
+        <p>{message}</p>
+        <small>{formatSlug(slug)}</small>
+      </section>
+    </main>
+  );
 }
 
 function SessionDetailView({ session }: { session: SessionDetail }) {
@@ -67,10 +84,18 @@ function SessionDetailView({ session }: { session: SessionDetail }) {
       </section>
 
       <SessionPlayer session={session} />
-      <ProcessingStatusPanel status={session.processing_status} assets={session.media_assets} />
-      <RecordingIntegrityPanel integrity={session.recording_integrity} />
-      <BirdPartsTimeline birdParts={session.bird_parts} durationSeconds={session.duration_seconds} />
-      <AnnotationTimeline annotations={session.annotations} waveform={session.waveform} />
+      <ProcessingStatusPanel status={session.processing_status} assets={session.media_assets ?? []} />
+      {session.recording_integrity ? (
+        <RecordingIntegrityPanel integrity={session.recording_integrity} />
+      ) : (
+        <p className="not-ready-state" role="status">Recording integrity has not been reviewed yet.</p>
+      )}
+      <BirdPartsTimeline birdParts={session.bird_parts ?? null} durationSeconds={session.duration_seconds ?? null} />
+      {session.waveform ? (
+        <AnnotationTimeline annotations={session.annotations ?? []} waveform={session.waveform} />
+      ) : (
+        <p className="not-ready-state" role="status">Waveform data is still being prepared.</p>
+      )}
     </main>
   );
 }
@@ -79,7 +104,7 @@ function formatSlug(slug: string) {
   return slug.replaceAll("-", " ");
 }
 
-function formatDuration(seconds: number | null) {
+function formatDuration(seconds: number | null | undefined) {
   if (!seconds) {
     return "Unknown";
   }

@@ -1,6 +1,162 @@
 {
   "components": {
     "schemas": {
+      "AdminLocationRead": {
+        "description": "Authorized editorial projection containing exact and operational fields.",
+        "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "coordinate_visibility": {
+            "$ref": "#/components/schemas/CoordinateVisibility"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "exact_latitude": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Exact Latitude",
+            "type": "number"
+          },
+          "exact_longitude": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Exact Longitude",
+            "type": "number"
+          },
+          "habitat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Habitat"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "public_latitude": {
+            "anyOf": [
+              {
+                "maximum": 90.0,
+                "minimum": -90.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Latitude"
+          },
+          "public_longitude": {
+            "anyOf": [
+              {
+                "maximum": 180.0,
+                "minimum": -180.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Longitude"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "sensitivity_level": {
+            "$ref": "#/components/schemas/SensitivityLevel"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "description",
+          "country_code",
+          "region",
+          "habitat",
+          "exact_latitude",
+          "exact_longitude",
+          "coordinate_visibility",
+          "sensitivity_level",
+          "timezone",
+          "metadata",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AdminLocationRead",
+        "type": "object"
+      },
       "AdminMediaAssetRead": {
         "properties": {
           "archived_at": {
@@ -1518,6 +1674,7 @@
         "type": "object"
       },
       "LocationRead": {
+        "description": "Explicit public projection; never expose exact coordinates or internal metadata.",
         "properties": {
           "coordinate_visibility": {
             "$ref": "#/components/schemas/CoordinateVisibility"
@@ -1537,11 +1694,6 @@
               }
             ],
             "title": "Country Code"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
           },
           "description": {
             "anyOf": [
@@ -1596,40 +1748,9 @@
             ],
             "title": "Longitude"
           },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
           "name": {
             "title": "Name",
             "type": "string"
-          },
-          "public_latitude": {
-            "anyOf": [
-              {
-                "maximum": 90.0,
-                "minimum": -90.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Public Latitude"
-          },
-          "public_longitude": {
-            "anyOf": [
-              {
-                "maximum": 180.0,
-                "minimum": -180.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Public Longitude"
           },
           "region": {
             "anyOf": [
@@ -1652,11 +1773,6 @@
           "timezone": {
             "title": "Timezone",
             "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
           }
         },
         "required": [
@@ -1672,9 +1788,6 @@
           "coordinate_visibility",
           "sensitivity_level",
           "timezone",
-          "metadata",
-          "created_at",
-          "updated_at",
           "coordinates_protected"
         ],
         "title": "LocationRead",
@@ -2275,6 +2388,18 @@
             ],
             "title": "Finished At"
           },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat At"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -2282,6 +2407,33 @@
           },
           "job_type": {
             "$ref": "#/components/schemas/JobType"
+          },
+          "queue_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Job Id"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "stage_states": {
+            "additionalProperties": true,
+            "title": "Stage States",
+            "type": "object"
           },
           "started_at": {
             "anyOf": [
@@ -2562,6 +2714,8 @@
         "properties": {
           "annotation_type": {
             "default": "editorial_note",
+            "maxLength": 80,
+            "minLength": 1,
             "title": "Annotation Type",
             "type": "string"
           },
@@ -2591,6 +2745,8 @@
             "title": "Duration Seconds"
           },
           "label": {
+            "maxLength": 220,
+            "minLength": 1,
             "title": "Label",
             "type": "string"
           },
@@ -3324,6 +3480,7 @@
           "duration_seconds": {
             "anyOf": [
               {
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -3341,6 +3498,7 @@
           },
           "sample_rate": {
             "default": 1,
+            "minimum": 1.0,
             "title": "Sample Rate",
             "type": "integer"
           },
@@ -3358,6 +3516,8 @@
           },
           "status": {
             "default": "placeholder",
+            "maxLength": 40,
+            "minLength": 1,
             "title": "Status",
             "type": "string"
           }
@@ -3757,7 +3917,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LocationRead"
+                  "$ref": "#/components/schemas/AdminLocationRead"
                 }
               }
             },
@@ -3940,7 +4100,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LocationRead"
+                  "$ref": "#/components/schemas/AdminLocationRead"
                 }
               }
             },

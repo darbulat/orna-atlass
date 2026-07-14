@@ -25,6 +25,7 @@ import type {
   SearchResult,
   SessionDetail,
 } from "../../lib/api/sessions";
+import { ApiError, apiErrorMessage } from "../../lib/api/client";
 import { fetchCurrentDawn, fetchSessionDetail, searchAtlas } from "../../lib/api/sessions";
 import { useGlobalPlayerSuppression } from "../audio/PlayerProvider";
 import { SessionPlayer } from "../audio/SessionPlayer";
@@ -318,6 +319,8 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [dawnRefreshError, setDawnRefreshError] = useState<string | null>(null);
   const [carouselStart, setCarouselStart] = useState(0);
   const allLocations = useMemo(() => atlasPoints.filter(isPoint), [atlasPoints]);
   const activeDawnSlugs = useMemo(
@@ -336,6 +339,10 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
   const [sidePanelSessionSlug, setSidePanelSessionSlug] = useState<string | null>(sidePanelSession?.slug ?? null);
   const [currentSidePanelSession, setCurrentSidePanelSession] = useState(sidePanelSession);
+  const [sidePanelState, setSidePanelState] = useState<
+    "idle" | "loading" | "ready" | "not_found" | "forbidden" | "not_ready" | "unavailable"
+  >(sidePanelSession ? "ready" : "idle");
+  const [sidePanelError, setSidePanelError] = useState<string | null>(null);
   const currentSidePanelSessionRef = useRef<SessionDetail | null>(sidePanelSession);
   const selected = locations.find((point) => point.slug === selectedSlug) ?? locations[0] ?? null;
   const selectedDawn = [...currentDawn.active_locations, ...currentDawn.next_locations]
@@ -376,16 +383,26 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     if (trimmed.length < 2) {
       setSearchResults([]);
       setIsSearching(false);
+      setSearchError(null);
       return;
     }
 
     let isCurrent = true;
     setIsSearching(true);
+    setSearchError(null);
     const timeoutId = window.setTimeout(async () => {
-      const results = await searchAtlas(trimmed);
-      if (isCurrent) {
-        setSearchResults(results);
-        setIsSearching(false);
+      try {
+        const results = await searchAtlas(trimmed);
+        if (isCurrent) {
+          setSearchResults(results);
+        }
+      } catch (error) {
+        if (isCurrent) {
+          setSearchResults([]);
+          setSearchError(apiErrorMessage(error, "Search is unavailable."));
+        }
+      } finally {
+        if (isCurrent) setIsSearching(false);
       }
     }, 250);
 
@@ -399,9 +416,16 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     let isCurrent = true;
     const refreshMs = Math.max(currentDawn.window.refresh_seconds, 1) * 1000;
     const intervalId = window.setInterval(async () => {
-      const nextDawn = await fetchCurrentDawn(Math.max(250, allLocations.length));
-      if (isCurrent) {
-        setCurrentDawn(nextDawn);
+      try {
+        const nextDawn = await fetchCurrentDawn(Math.max(250, allLocations.length));
+        if (isCurrent) {
+          setCurrentDawn(nextDawn);
+          setDawnRefreshError(null);
+        }
+      } catch (error) {
+        if (isCurrent) {
+          setDawnRefreshError(apiErrorMessage(error, "Dawn timing could not be refreshed."));
+        }
       }
     }, refreshMs);
 
@@ -421,24 +445,45 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     }
     if (!sidePanelSessionSlug) {
       setCurrentSidePanelSession(null);
+      setSidePanelState("idle");
+      setSidePanelError(null);
       return;
     }
     if (currentSidePanelSessionRef.current?.slug === sidePanelSessionSlug) {
+      setSidePanelState("ready");
       return;
     }
     if (sidePanelSession?.slug === sidePanelSessionSlug) {
       setCurrentSidePanelSession(sidePanelSession);
+      setSidePanelState("ready");
+      setSidePanelError(null);
       return;
     }
 
     let isCurrent = true;
     setCurrentSidePanelSession(null);
-    void fetchSessionDetail(sidePanelSessionSlug).then((session) => {
-      if (!isCurrent) {
-        return;
-      }
-      setCurrentSidePanelSession(session ?? null);
-    });
+    setSidePanelState("loading");
+    setSidePanelError(null);
+    void fetchSessionDetail(sidePanelSessionSlug)
+      .then((session) => {
+        if (!isCurrent) return;
+        setCurrentSidePanelSession(session);
+        setSidePanelState("ready");
+      })
+      .catch((error) => {
+        if (!isCurrent) return;
+        const status = error instanceof ApiError ? error.status : null;
+        setSidePanelState(
+          status === 404
+            ? "not_found"
+            : status === 403
+              ? "forbidden"
+              : status === 409 || status === 425
+                ? "not_ready"
+                : "unavailable",
+        );
+        setSidePanelError(apiErrorMessage(error, "The session could not be loaded."));
+      });
 
     return () => {
       isCurrent = false;
@@ -589,20 +634,50 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
               </button>
             )}
           </div>
-          <button className="about-link" type="button">
+          <Link className="about-link" href="/about">
             About
             <span aria-hidden="true">○</span>
-          </button>
+          </Link>
           <div className="globe-tools" aria-label="Globe tools">
-            <button type="button" aria-label="Use current location">⌖</button>
-            <button type="button" aria-label="Tune filters">≋</button>
-            <button type="button" aria-label="Search">⌕</button>
+            <button
+              type="button"
+              aria-label="Use current location"
+              title="Current-location matching is not available yet"
+              disabled
+            >
+              ⌖
+            </button>
+            <button
+              type="button"
+              aria-label="Tune filters"
+              onClick={() => document.getElementById("atlas-listening-time")?.focus()}
+            >
+              ≋
+            </button>
+            <button
+              type="button"
+              aria-label="Search"
+              onClick={() => document.getElementById("atlas-search")?.focus()}
+            >
+              ⌕
+            </button>
           </div>
         </div>
 
         <div className="atlas-discovery-panel">
+          {dawnRefreshError ? (
+            <p className="atlas-data-warning" role="status">
+              {dawnRefreshError} Showing the last successful dawn update.
+            </p>
+          ) : null}
           <p>Where would you like to listen?</p>
-          <div className="time-tabs" role="tablist" aria-label="Listening time">
+          <div
+            className="time-tabs"
+            id="atlas-listening-time"
+            role="tablist"
+            aria-label="Listening time"
+            tabIndex={-1}
+          >
             {listeningModes.map((mode) => (
               <button
                 key={mode}
@@ -669,7 +744,8 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
             {query.trim().length >= 2 ? (
               <div className="search-results" aria-live="polite">
                 {isSearching ? <p>Searching...</p> : null}
-                {!isSearching && searchResults.length === 0 ? <p>No public results found.</p> : null}
+                {searchError ? <p role="alert">{searchError}</p> : null}
+                {!isSearching && !searchError && searchResults.length === 0 ? <p>No public results found.</p> : null}
                 {searchResults.map((result) =>
                   result.type === "session" && result.session_slug ? (
                     <Link key={`${result.type}-${result.id}`} href={`/sessions/${result.session_slug}`}>
@@ -699,8 +775,25 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
             <SessionPlayer session={currentSidePanelSession} onClose={() => setIsSidePanelOpen(false)} />
           ) : (
             <section className="atlas-side-empty" aria-live="polite">
-              <h2>No session selected</h2>
-              <p>Select a public atlas point with a published recording to load the player.</p>
+              <h2>
+                {sidePanelState === "loading"
+                  ? "Loading session"
+                  : sidePanelState === "not_found"
+                    ? "Session not found"
+                    : sidePanelState === "forbidden"
+                      ? "Session access is restricted"
+                      : sidePanelState === "not_ready"
+                        ? "Session is not ready"
+                        : sidePanelState === "unavailable"
+                          ? "Session unavailable"
+                          : "No session selected"}
+              </h2>
+              <p>
+                {sidePanelError
+                  ?? (sidePanelState === "loading"
+                    ? "Preparing the listening console…"
+                    : "Select a public atlas point with a published recording to load the player.")}
+              </p>
             </section>
           )}
         </aside>

@@ -229,7 +229,10 @@
 - [x] Last successful BirdNET.
 - [x] Archive/cleanup/player refresh/solar phase.
 
-Ограничения Sprint 3: component-тесты player races остаются follow-up; purge архивного объекта запускается явным admin endpoint, а не периодическим retention job; ручные frontend aliases продолжают мигрировать на generated types постепенно.
+После полного remediation: player races покрыты reducer/browser tests, архивные
+объекты удаляет периодический retention worker, а публичные frontend contracts
+sessions/atlas/dawn/auth/playback/collections используют generated OpenAPI schemas.
+Дальнейшая декомпозиция крупных UI/service-файлов остаётся задачей поддерживаемости.
 
 ### Sprint 4: LLM-readiness
 
@@ -242,7 +245,10 @@
 - [x] Structured logs: JSON request completion event, correlation ID, status и duration в `core/logging.py`.
 - [x] Performance baseline: воспроизводимый протокол и таблица результатов в `docs/PERFORMANCE_BASELINE.md`.
 
-Ограничения baseline: Playwright пока покрывает public navigation, но не player races/accessibility; локальные performance-числа записаны, однако замер всё ещё нужно повторить на целевом dataset/environment. Эти пункты являются последующим расширением покрытия, а не скрытой декларацией готовности production.
+После полного remediation Playwright покрывает public navigation, membership,
+playback races и базовую keyboard/ARIA семантику. Browser-to-real-DB/media fixtures,
+axe scan и замеры на целевом dataset/environment всё ещё явно перечислены в
+`CURRENT_STATE.md` и `PERFORMANCE_BASELINE.md` как ограничения, а не production claims.
 
 ## 11. Вопросы владельцу
 
@@ -288,14 +294,87 @@
 - [x] Hidden coordinates не публичны.
 - [x] Invalid pagination → 422.
 - [x] Pending session не выдаёт grant.
-- [x] URL refresh и switch реализованы; component race tests остаются follow-up.
+- [x] URL refresh и switch реализованы и покрыты reducer/browser race tests.
 - [x] Один active processing job на asset revision/job type.
 - [x] S3 failure не оставляет active ready state.
 - [x] Last successful BirdNET сохраняется.
-- [x] Integration/E2E baseline tests добавлены; component/player tests остаются follow-up.
+- [x] Integration/E2E и player state-machine tests добавлены.
 - [x] AGENTS/CURRENT_STATE/DOMAIN_RULES/CONTRIBUTING/ADR созданы.
 - [x] README содержит воспроизводимые команды и ссылки на authoritative guides.
 - [x] Нет известных новых smells/regressions по итогам local checks и migration cycle.
+
+## 13. Checklist полного закрытия review
+
+Этот checklist продолжает baseline четырёх спринтов и отслеживает пункты из
+`PROJECT_REVIEW_RU.md`, которые не были полностью закрыты первоначальной реализацией.
+Галочка ставится только после реализации, регрессионного теста и обновления
+`CURRENT_STATE.md`.
+
+### 1. PostGIS и масштабируемый atlas
+
+- [x] Координаты хранятся в PostGIS `geometry(Point, 4326)`, а не только в `Float`.
+- [x] Exact и public geometry разделены, hidden location не имеет public geometry.
+- [x] Добавлены GiST-индексы и миграционный backfill с upgrade/downgrade проверкой.
+- [x] Bbox/anti-meridian и low-zoom clustering выполняются в PostgreSQL.
+- [x] Scale-тест доказывает отсутствие full-table materialization в Python.
+
+### 2. Public и admin DTO
+
+- [x] Public location DTO не содержит exact geometry, internal metadata и служебные поля.
+- [x] Admin location DTO явно содержит необходимые редактору exact данные.
+- [x] Atlas, search, sessions и collections используют одну public projection.
+- [x] Privacy invariant покрыт API/DB integration-тестами.
+
+### 3. Lifecycle и seed safety
+
+- [x] Session/location удаляются через archive/tombstone, а не прямой hard delete.
+- [x] S3 cleanup выполняется надёжной retention-задачей с повторными попытками.
+- [x] Seed разрешён только в local/test с явным подтверждением.
+- [x] Seed изменяет только seed-owned rows и не публикует неготовый featured content.
+
+### 4. Metadata и BirdNET validation
+
+- [x] Annotation/waveform metadata валидируется при записи и безопасно читается из legacy rows.
+- [x] BirdNET отбрасывает NaN/inf, отрицательные интервалы и confidence вне `0..1`.
+- [x] DB integrity failure корректно откатывает pipeline transaction.
+
+### 5. Search и cache resilience
+
+- [x] Search использует единую стабильную pagination для смешанных результатов.
+- [x] Повреждённый Redis payload удаляется и пересобирается без HTTP 500.
+- [x] Cache invalidation централизована и запускается только after-commit.
+
+### 6. Pipeline и async I/O
+
+- [x] Pipeline разбит на повторяемые этапы с отдельными status/error/attempt.
+- [x] S3 и Redis не блокируют event loop в async API routes.
+- [x] Partial failures и параллельные workers покрыты реальными integration-тестами.
+- [x] Long-form timeout/retry policy подтверждена измерениями.
+
+### 7. Frontend contracts и errors
+
+- [x] Sessions/atlas/dawn/auth/playback используют generated OpenAPI types.
+- [x] Typed API errors различают empty, 404, auth, conflict, 5xx и network outage.
+- [x] UI не подменяет backend outage пустым или выдуманным dawn payload.
+
+### 8. Player state machine и frontend coverage
+
+- [x] Player transitions оформлены reducer/state machine.
+- [x] State-machine unit и browser tests покрывают grant refresh, switch race, abort, seek и cleanup.
+- [x] Playwright покрывает playback, membership и accessibility flows.
+
+### 9. Production architecture и observability
+
+- [x] API и ML worker собираются отдельными images; API не содержит ML/dev dependencies.
+- [x] Request ID связан с processing job ID; добавлены queue/pipeline metrics.
+- [x] RS256 signing и sanitized JWKS поддерживают безопасную ротацию ключей.
+- [x] Domain services используют transport-independent errors.
+
+### 10. Документация и итоговая проверка
+
+- [x] `CURRENT_STATE.md`, review roadmap и checklist отражают фактический runtime.
+- [x] Крупные оставшиеся smells явно перечислены или устранены.
+- [x] Unit, integration, migration, frontend, E2E и image checks проходят.
 
 ## Краткий prompt для слабой модели
 

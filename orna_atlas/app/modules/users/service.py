@@ -1,8 +1,8 @@
 from uuid import UUID
 
-from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orna_atlas.app.core.domain_errors import AuthenticationError
 from orna_atlas.app.modules.admin.repository import add_audit_event
 from orna_atlas.app.modules.users import repository
 from orna_atlas.app.modules.users.models import User
@@ -12,7 +12,7 @@ from orna_atlas.app.modules.users.schemas import UserRoleUpdate
 async def require_user(session: AsyncSession, user_id: UUID) -> User:
     user = await repository.get_by_id(session, user_id)
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is unavailable")
+        raise AuthenticationError("User is unavailable")
     return user
 
 

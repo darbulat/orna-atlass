@@ -1,12 +1,11 @@
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
-from math import floor
 from typing import Literal
 
-from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orna_atlas.app.core.domain_errors import ValidationError
 from orna_atlas.app.modules.atlas import repository
 from orna_atlas.app.modules.atlas.repository import BoundingBox
 from orna_atlas.app.modules.atlas.schemas import (
@@ -29,6 +28,9 @@ DawnState = Literal["active", "upcoming", "past", "polar"]
 DAWN_BEFORE_MINUTES = 45
 DAWN_AFTER_MINUTES = 30
 DAWN_CACHE_SECONDS = 60
+DAWN_MIN_CANDIDATES = 128
+DAWN_MAX_CANDIDATES = 4000
+DAWN_CANDIDATE_MULTIPLIER = 8
 
 
 def parse_bbox(value: str | None) -> BoundingBox | None:
@@ -36,27 +38,15 @@ def parse_bbox(value: str | None) -> BoundingBox | None:
         return None
     parts = value.split(",")
     if len(parts) != 4:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="bbox must be west,south,east,north",
-        )
+        raise ValidationError("bbox must be west,south,east,north")
     try:
         west, south, east, north = (round(float(part), 6) for part in parts)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="bbox contains non-numeric values",
-        ) from exc
+        raise ValidationError("bbox contains non-numeric values") from exc
     if not (-180 <= west <= 180 and -180 <= east <= 180 and -90 <= south <= 90 and -90 <= north <= 90):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="bbox is outside valid coordinate ranges",
-        )
+        raise ValidationError("bbox is outside valid coordinate ranges")
     if south > north:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="bbox south cannot be north of bbox north",
-        )
+        raise ValidationError("bbox south cannot be north of bbox north")
     return BoundingBox(west=west, south=south, east=east, north=north)
 
 
@@ -91,6 +81,25 @@ def stable_cache_key(
 def stable_dawn_cache_key(*, kind: Literal["current", "follow"], now: datetime, limit: int) -> str:
     bucket = int(now.timestamp()) // DAWN_CACHE_SECONDS
     return f"atlas:dawn:{kind}:{bucket}:{limit}"
+
+
+def _sunrise_meridian(now: datetime) -> float:
+    """Approximate longitude where local solar time is 06:00."""
+    utc_now = now.astimezone(UTC)
+    decimal_hour = (
+        utc_now.hour
+        + utc_now.minute / 60
+        + utc_now.second / 3600
+        + utc_now.microsecond / 3_600_000_000
+    )
+    return ((90.0 - decimal_hour * 15.0 + 180.0) % 360.0) - 180.0
+
+
+def _dawn_candidate_limit(limit: int) -> int:
+    return min(
+        DAWN_MAX_CANDIDATES,
+        max(DAWN_MIN_CANDIDATES, limit * DAWN_CANDIDATE_MULTIPLIER),
+    )
 
 
 def point_from_location(location: Location) -> AtlasPoint | None:
@@ -135,32 +144,6 @@ def point_from_location(location: Location) -> AtlasPoint | None:
     )
 
 
-def _cluster_id(latitude: float, longitude: float, zoom: int) -> str:
-    scale = max(1, 7 - zoom)
-    return f"{floor(latitude / scale) * scale}:{floor(longitude / scale) * scale}"
-
-
-def cluster_points(points: list[AtlasPoint], zoom: int) -> list[AtlasCluster]:
-    groups: dict[str, list[AtlasPoint]] = {}
-    for point in points:
-        groups.setdefault(_cluster_id(point.latitude, point.longitude, zoom), []).append(point)
-    clusters: list[AtlasCluster] = []
-    for key, items in groups.items():
-        latitude = sum(item.latitude for item in items) / len(items)
-        longitude = sum(item.longitude for item in items) / len(items)
-        habitats = sorted({item.habitat for item in items if item.habitat})
-        clusters.append(
-            AtlasCluster(
-                id=key,
-                latitude=latitude,
-                longitude=longitude,
-                count=len(items),
-                habitats=habitats,
-            )
-        )
-    return clusters
-
-
 async def get_atlas_points(
     session: AsyncSession,
     *,
@@ -173,14 +156,36 @@ async def get_atlas_points(
     parsed_bbox = parse_bbox(bbox)
     normalized_habitats = normalize_habitats(habitats)
     mode: Literal["points", "clusters"] = "clusters" if zoom < 5 else "points"
-    locations = await repository.list_atlas_locations(
-        session,
-        bbox=parsed_bbox,
-        habitats=normalized_habitats,
-        limit=None if mode == "clusters" else limit,
-    )
-    points = [point for location in locations if (point := point_from_location(location)) is not None]
-    payload_points = cluster_points(points, zoom)[:limit] if mode == "clusters" else points
+    if mode == "clusters":
+        clusters = await repository.list_atlas_clusters(
+            session,
+            bbox=parsed_bbox,
+            habitats=normalized_habitats,
+            zoom=zoom,
+            limit=limit,
+        )
+        payload_points: list[AtlasPoint | AtlasCluster] = [
+            AtlasCluster(
+                id=item.id,
+                latitude=item.latitude,
+                longitude=item.longitude,
+                count=item.count,
+                habitats=item.habitats,
+            )
+            for item in clusters
+        ]
+    else:
+        locations = await repository.list_atlas_locations(
+            session,
+            bbox=parsed_bbox,
+            habitats=normalized_habitats,
+            limit=limit,
+        )
+        payload_points = [
+            point
+            for location in locations
+            if (point := point_from_location(location)) is not None
+        ]
     return AtlasPointsResponse(
         bbox=None
         if parsed_bbox is None
@@ -262,11 +267,10 @@ async def get_current_dawn(
     generated_at = now or datetime.now(UTC)
     if generated_at.tzinfo is None:
         generated_at = generated_at.replace(tzinfo=UTC)
-    locations = await repository.list_atlas_locations(
+    locations = await repository.list_dawn_candidate_locations(
         session,
-        bbox=None,
-        habitats=None,
-        limit=None,
+        target_longitude=_sunrise_meridian(generated_at),
+        limit=_dawn_candidate_limit(limit),
     )
     dawn_locations = [
         _dawn_location_from_point(point, now=generated_at)
@@ -301,11 +305,10 @@ async def get_follow_dawn(
     generated_at = now or datetime.now(UTC)
     if generated_at.tzinfo is None:
         generated_at = generated_at.replace(tzinfo=UTC)
-    locations = await repository.list_atlas_locations(
+    locations = await repository.list_dawn_candidate_locations(
         session,
-        bbox=None,
-        habitats=None,
-        limit=None,
+        target_longitude=_sunrise_meridian(generated_at),
+        limit=_dawn_candidate_limit(limit),
     )
     dawn_locations = [
         _dawn_location_from_point(point, now=generated_at, roll_past_forward=True)

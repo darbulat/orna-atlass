@@ -22,11 +22,53 @@ class Settings(BaseSettings):
     s3_secret_access_key: str | None = Field(default=None, validation_alias="S3_SECRET_ACCESS_KEY")
     s3_presign_expires_seconds: int = Field(default=900, validation_alias="S3_PRESIGN_EXPIRES_SECONDS")
     audio_job_timeout_seconds: int = Field(default=600, ge=60, validation_alias="AUDIO_JOB_TIMEOUT_SECONDS")
+    audio_job_timeout_per_hour_seconds: int = Field(
+        default=3600,
+        ge=60,
+        validation_alias="AUDIO_JOB_TIMEOUT_PER_HOUR_SECONDS",
+    )
+    audio_job_max_timeout_seconds: int = Field(
+        default=21600,
+        ge=60,
+        validation_alias="AUDIO_JOB_MAX_TIMEOUT_SECONDS",
+    )
+    audio_job_max_retries: int = Field(
+        default=2,
+        ge=0,
+        le=10,
+        validation_alias="AUDIO_JOB_MAX_RETRIES",
+    )
+    audio_job_retry_interval_seconds: int = Field(
+        default=60,
+        ge=1,
+        validation_alias="AUDIO_JOB_RETRY_INTERVAL_SECONDS",
+    )
+    pipeline_stale_after_seconds: int = Field(
+        default=25200,
+        ge=300,
+        validation_alias="PIPELINE_STALE_AFTER_SECONDS",
+    )
+    worker_metrics_port: int = Field(
+        default=9101,
+        ge=1024,
+        le=65535,
+        validation_alias="WORKER_METRICS_PORT",
+    )
     audio_job_result_ttl_seconds: int = Field(
         default=3600, ge=60, validation_alias="AUDIO_JOB_RESULT_TTL_SECONDS"
     )
+    media_retention_days: int = Field(
+        default=30, ge=0, validation_alias="MEDIA_RETENTION_DAYS"
+    )
     environment: str = Field(default="development", validation_alias="APP_ENVIRONMENT")
-    auth_secret_key: str = Field(default="development-only-change-me", validation_alias="AUTH_SECRET_KEY")
+    auth_secret_key: str = Field(
+        default="development-only-change-me-32-bytes",
+        validation_alias="AUTH_SECRET_KEY",
+    )
+    auth_signing_algorithm: str = Field(default="HS256", validation_alias="AUTH_SIGNING_ALGORITHM")
+    auth_key_id: str = Field(default="orna-primary", validation_alias="AUTH_KEY_ID")
+    auth_private_key: str | None = Field(default=None, validation_alias="AUTH_PRIVATE_KEY")
+    auth_jwks_json: str | None = Field(default=None, validation_alias="AUTH_JWKS_JSON")
     access_token_ttl_seconds: int = Field(
         default=900, ge=60, validation_alias="ACCESS_TOKEN_TTL_SECONDS"
     )
@@ -43,12 +85,30 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def reject_insecure_production_auth(self) -> "Settings":
         normalized_environment = self.environment.lower()
+        if self.auth_signing_algorithm not in {"HS256", "RS256"}:
+            raise ValueError("AUTH_SIGNING_ALGORITHM must be HS256 or RS256")
+        if self.auth_signing_algorithm == "RS256" and not self.auth_private_key:
+            raise ValueError("AUTH_PRIVATE_KEY is required for RS256 signing")
+        if self.audio_job_max_timeout_seconds < self.audio_job_timeout_seconds:
+            raise ValueError(
+                "AUDIO_JOB_MAX_TIMEOUT_SECONDS must be at least AUDIO_JOB_TIMEOUT_SECONDS"
+            )
+        if self.pipeline_stale_after_seconds <= self.audio_job_max_timeout_seconds:
+            raise ValueError(
+                "PIPELINE_STALE_AFTER_SECONDS must exceed AUDIO_JOB_MAX_TIMEOUT_SECONDS"
+            )
         if self.local_admin_enabled and normalized_environment not in {"development", "local"}:
             raise ValueError(
                 "LOCAL_ADMIN_ENABLED may only be true in development or local environments"
             )
         if normalized_environment == "production":
-            if self.auth_secret_key == "development-only-change-me" or len(self.auth_secret_key) < 32:
+            if (
+                self.auth_signing_algorithm == "HS256"
+                and (
+                    self.auth_secret_key == "development-only-change-me-32-bytes"
+                    or len(self.auth_secret_key) < 32
+                )
+            ):
                 raise ValueError("AUTH_SECRET_KEY must contain at least 32 characters in production")
             if not self.auth_cookie_secure:
                 raise ValueError("AUTH_COOKIE_SECURE must be true in production")
