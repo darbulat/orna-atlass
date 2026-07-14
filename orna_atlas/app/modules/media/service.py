@@ -90,6 +90,8 @@ async def create_asset_for_session(
     if should_enqueue_audio_pipeline(data.kind, enqueue_processing=data.enqueue_processing):
         recording.processing_status = "queued"
         job = await repository.create_processing_job(session, asset, job_type=PIPELINE_JOB_TYPE)
+    else:
+        recording.processing_status = _recording_processing_status(recording)
     await session.commit()
 
     if job is not None:
@@ -123,7 +125,9 @@ async def enqueue_asset_processing(asset_id: UUID, revision: int) -> str:
 
 
 async def retry_asset_processing(session: AsyncSession, asset_id: UUID) -> ProcessingStatusRead:
-    asset = await require_asset(session, asset_id)
+    asset = await repository.get_asset_for_processing(session, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media asset not found")
     if asset.kind not in SOURCE_AUDIO_KINDS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -165,7 +169,12 @@ async def purge_archived_asset(session: AsyncSession, asset_id: UUID) -> None:
         )
     validate_managed_storage_key(asset.storage_key)
     storage_client = get_object_storage_client()
-    if storage_client.is_configured() and storage_client.object_exists(asset.storage_key):
+    if not storage_client.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Object storage is not configured; archived asset was not purged",
+        )
+    if storage_client.object_exists(asset.storage_key):
         storage_client.delete_object(asset.storage_key)
     recording = asset.session
     await repository.delete_asset(session, asset)
@@ -184,6 +193,9 @@ async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAss
     if job.status == "running":
         return asset
     if not asset.is_active or asset.archived_at is not None:
+        if job.status in {"queued", "running"}:
+            _mark_job_superseded(job, "Media asset revision is no longer active")
+            await session.commit()
         raise ObsoleteAssetRevisionError("Media asset revision is no longer active")
     _mark_job_running(asset, job)
     await session.commit()
@@ -213,6 +225,14 @@ async def process_media_asset(session: AsyncSession, asset_id: UUID) -> MediaAss
         await _clear_processing_caches(asset.session)
         await session.refresh(asset, attribute_names=["processing_jobs"])
         return asset
+    except ObsoleteAssetRevisionError as exc:
+        if rendition is not None and rendition.processing_status != "ready":
+            rendition.processing_status = "failed"
+            rendition.is_active = False
+        _mark_job_superseded(job, str(exc))
+        asset.session.processing_status = _recording_processing_status(asset.session)
+        await session.commit()
+        raise
     except Exception as exc:
         if rendition is not None and rendition.processing_status != "ready":
             rendition.processing_status = "failed"
@@ -364,18 +384,24 @@ def _recording_processing_status(recording: RecordingSession) -> str:
         return "pending"
     if any(asset.processing_status == "failed" for asset in source_assets):
         return "failed"
+    if any(asset.processing_status == "processing" for asset in source_assets):
+        return "processing"
+    if any(asset.processing_status == "queued" for asset in source_assets):
+        return "queued"
+    active_source_ids = {asset.id for asset in source_assets}
     has_rendition = any(
         asset.kind == STREAMING_RENDITION_KIND
         and asset.processing_status == "ready"
         and asset.is_active
         and asset.archived_at is None
+        and (asset.source_asset_id is None or asset.source_asset_id in active_source_ids)
         for asset in assets
     )
     if all(asset.processing_status == "ready" for asset in source_assets) and has_rendition:
         return "ready"
-    if any(asset.processing_status == "processing" for asset in source_assets):
-        return "processing"
-    return "queued"
+    if any(asset.processing_status == "uploaded" for asset in source_assets):
+        return "uploaded"
+    return "pending"
 
 
 def _mark_job_running(asset: MediaAsset, job: ProcessingJob) -> None:
@@ -392,6 +418,13 @@ def _mark_job_running(asset: MediaAsset, job: ProcessingJob) -> None:
 
 def _mark_job_succeeded(job: ProcessingJob) -> None:
     job.status = "succeeded"
+    job.finished_at = datetime.now(UTC)
+
+
+def _mark_job_superseded(job: ProcessingJob, message: str) -> None:
+    job.status = "failed"
+    job.error_code = "superseded"
+    job.error_message = message[:1000]
     job.finished_at = datetime.now(UTC)
 
 

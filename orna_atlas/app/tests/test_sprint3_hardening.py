@@ -133,7 +133,8 @@ async def test_retry_returns_existing_active_processing_job(monkeypatch) -> None
     status_payload = SimpleNamespace(session_id=asset.session_id)
     db = AsyncMock()
     create_job = AsyncMock()
-    monkeypatch.setattr(media_service, "require_asset", AsyncMock(return_value=asset))
+    get_asset = AsyncMock(return_value=asset)
+    monkeypatch.setattr(media_service.repository, "get_asset_for_processing", get_asset)
     monkeypatch.setattr(
         media_service.repository,
         "active_processing_job",
@@ -149,8 +150,200 @@ async def test_retry_returns_existing_active_processing_job(monkeypatch) -> None
     result = await media_service.retry_asset_processing(db, asset.id)
 
     assert result is status_payload
+    get_asset.assert_awaited_once_with(db, asset.id)
     create_job.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_purge_fails_closed_when_object_storage_is_unconfigured(monkeypatch) -> None:
+    asset = SimpleNamespace(
+        id=uuid4(),
+        storage_key="sessions/archive/source.wav",
+        archived_at=datetime.now(UTC),
+        is_active=False,
+        session=SimpleNamespace(),
+    )
+    db = AsyncMock()
+    delete_asset = AsyncMock()
+    monkeypatch.setattr(media_service, "require_asset", AsyncMock(return_value=asset))
+    monkeypatch.setattr(
+        media_service,
+        "get_object_storage_client",
+        lambda: SimpleNamespace(is_configured=lambda: False),
+    )
+    monkeypatch.setattr(media_service.repository, "delete_asset", delete_asset)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await media_service.purge_archived_asset(db, asset.id)
+
+    assert exc_info.value.status_code == 503
+    delete_asset.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+def test_recording_status_uses_new_uploaded_source_not_old_rendition() -> None:
+    old_source_id = uuid4()
+    new_source_id = uuid4()
+    recording = SimpleNamespace(
+        media_assets=[
+            SimpleNamespace(
+                id=old_source_id,
+                kind="source_audio",
+                processing_status="ready",
+                is_active=False,
+                archived_at=datetime.now(UTC),
+                source_asset_id=None,
+            ),
+            SimpleNamespace(
+                id=new_source_id,
+                kind="source_audio",
+                processing_status="uploaded",
+                is_active=True,
+                archived_at=None,
+                source_asset_id=None,
+            ),
+            SimpleNamespace(
+                id=uuid4(),
+                kind="streaming_rendition",
+                processing_status="ready",
+                is_active=True,
+                archived_at=None,
+                source_asset_id=old_source_id,
+            ),
+        ]
+    )
+
+    assert media_service._recording_processing_status(recording) == "uploaded"
+
+
+@pytest.mark.asyncio
+async def test_obsolete_queued_job_is_marked_superseded(monkeypatch) -> None:
+    job = SimpleNamespace(
+        status="queued",
+        error_code=None,
+        error_message=None,
+        finished_at=None,
+    )
+    asset = SimpleNamespace(
+        id=uuid4(),
+        is_active=False,
+        archived_at=datetime.now(UTC),
+    )
+    db = AsyncMock()
+    monkeypatch.setattr(
+        media_service.repository,
+        "get_asset_for_processing",
+        AsyncMock(return_value=asset),
+    )
+    monkeypatch.setattr(
+        media_service.repository,
+        "latest_processing_job",
+        AsyncMock(return_value=job),
+    )
+
+    with pytest.raises(media_service.ObsoleteAssetRevisionError):
+        await media_service.process_media_asset(db, asset.id)
+
+    assert job.status == "failed"
+    assert job.error_code == "superseded"
+    assert job.finished_at is not None
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_superseded_worker_does_not_fail_active_session(monkeypatch) -> None:
+    session_id = uuid4()
+    old_source = SimpleNamespace(
+        id=uuid4(),
+        session_id=session_id,
+        kind="source_audio",
+        storage_key="sessions/old.wav",
+        processing_status="queued",
+        is_active=True,
+        archived_at=None,
+        duration_seconds=None,
+        size_bytes=None,
+        checksum=None,
+        metadata_={},
+    )
+    new_source = SimpleNamespace(
+        id=uuid4(),
+        session_id=session_id,
+        kind="source_audio",
+        processing_status="queued",
+        is_active=True,
+        archived_at=None,
+        source_asset_id=None,
+    )
+    recording = SimpleNamespace(
+        id=session_id,
+        duration_seconds=None,
+        processing_status="queued",
+        metadata_={},
+        media_assets=[old_source, new_source],
+    )
+    old_source.session = recording
+    job = SimpleNamespace(
+        status="queued",
+        attempt_count=0,
+        error_code=None,
+        error_message=None,
+        started_at=None,
+        finished_at=None,
+    )
+    rendition = SimpleNamespace(
+        id=uuid4(),
+        kind="streaming_rendition",
+        storage_key="sessions/rendition.wav",
+        processing_status="processing",
+        is_active=False,
+        archived_at=None,
+        source_asset_id=old_source.id,
+    )
+    recording.media_assets.append(rendition)
+    db = AsyncMock()
+    monkeypatch.setattr(
+        media_service.repository,
+        "get_asset_for_processing",
+        AsyncMock(return_value=old_source),
+    )
+    monkeypatch.setattr(
+        media_service.repository,
+        "latest_processing_job",
+        AsyncMock(return_value=job),
+    )
+    monkeypatch.setattr(
+        media_service,
+        "extract_audio_metadata",
+        lambda _asset: {"duration_seconds": 1, "size_bytes": 1},
+    )
+    monkeypatch.setattr(media_service, "generate_waveform", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        media_service,
+        "_ensure_streaming_rendition",
+        AsyncMock(return_value=rendition),
+    )
+    monkeypatch.setattr(media_service, "_upload_streaming_rendition", lambda *_args: None)
+    monkeypatch.setattr(
+        media_service,
+        "get_object_storage_client",
+        lambda: SimpleNamespace(object_exists=lambda _key: True),
+    )
+    monkeypatch.setattr(
+        media_service.repository,
+        "active_source_assets_for_update",
+        AsyncMock(return_value=[new_source]),
+    )
+
+    with pytest.raises(media_service.ObsoleteAssetRevisionError):
+        await media_service.process_media_asset(db, old_source.id)
+
+    assert job.status == "failed"
+    assert job.error_code == "superseded"
+    assert recording.processing_status == "queued"
+    assert rendition.processing_status == "failed"
+    db.commit.assert_awaited()
 
 
 def test_solar_phase_distinguishes_polar_day_and_night() -> None:

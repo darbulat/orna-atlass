@@ -90,10 +90,15 @@ def upgrade() -> None:
         WITH ranked AS (
             SELECT id, row_number() OVER (
                 PARTITION BY session_id
-                ORDER BY created_at DESC, id DESC
+                ORDER BY
+                    CASE WHEN processing_status = 'ready' THEN 0 ELSE 1 END,
+                    created_at DESC,
+                    id DESC
             ) AS position
             FROM media_assets
-            WHERE kind = 'streaming_rendition' AND processing_status = 'ready'
+            WHERE kind = 'streaming_rendition'
+              AND is_active = true
+              AND archived_at IS NULL
         )
         UPDATE media_assets AS asset
         SET is_active = false, archived_at = CURRENT_TIMESTAMP
@@ -169,5 +174,9 @@ def downgrade() -> None:
         "ck_sessions_access_level",
         "recording_sessions",
         "access_level IN ('public','members_only','draft','private')",
+    )
+    op.execute(
+        "UPDATE recording_sessions SET access_level = 'draft' "
+        "WHERE publication_status = 'draft'"
     )
     op.drop_column("recording_sessions", "publication_status")

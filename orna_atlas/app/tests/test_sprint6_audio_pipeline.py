@@ -1,8 +1,10 @@
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 import math
 import struct
 import wave
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
@@ -15,6 +17,7 @@ from orna_atlas.app.modules.media.service import (
     should_enqueue_audio_pipeline,
     streaming_rendition_key,
 )
+from orna_atlas.app.workers.audio_pipeline import enqueue_audio_processing
 
 
 def test_sprint6_routes_are_registered() -> None:
@@ -70,6 +73,16 @@ def test_audio_pipeline_only_enqueues_source_assets() -> None:
     assert should_enqueue_audio_pipeline("master_audio")
     assert not should_enqueue_audio_pipeline("image")
     assert not should_enqueue_audio_pipeline("source_audio", enqueue_processing=False)
+
+
+def test_audio_pipeline_uses_rq_safe_deterministic_job_id(monkeypatch) -> None:
+    asset_id = uuid4()
+    enqueue = MagicMock(return_value=SimpleNamespace(id="queued"))
+    monkeypatch.setattr("rq.Queue.enqueue", enqueue)
+    monkeypatch.setattr("redis.Redis.from_url", MagicMock())
+
+    assert enqueue_audio_processing(asset_id, revision=3) == "queued"
+    assert enqueue.call_args.kwargs["job_id"] == f"audio-{asset_id}-r3"
 
 
 def test_streaming_rendition_key_is_deterministic() -> None:
