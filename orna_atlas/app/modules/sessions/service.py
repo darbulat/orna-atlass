@@ -21,6 +21,7 @@ from orna_atlas.app.modules.locations.service import require_location_for_admin
 from orna_atlas.app.modules.locations.public import is_publicly_discoverable
 from orna_atlas.app.modules.memberships.service import has_playback_entitlement
 from orna_atlas.app.modules.media import repository as media_repository
+from orna_atlas.app.modules.media.hls_token import issue_hls_token
 from orna_atlas.app.modules.sessions import repository
 from orna_atlas.app.modules.sessions.models import RecordingSession
 from orna_atlas.app.modules.sessions.schemas import (
@@ -147,13 +148,24 @@ def create_playback_grant(recording: RecordingSession) -> PlaybackGrantRead:
             raise ConflictError("Playable rendition is unavailable")
         settings = get_settings()
         expires_in = settings.s3_presign_expires_seconds
-        stream_url = storage_client.generate_presigned_get_url(
-            rendition.storage_key, expires_in=expires_in
-        )
+        expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
+        rendition_metadata = getattr(rendition, "metadata_", {})
+        metadata = rendition_metadata if isinstance(rendition_metadata, dict) else {}
+        if metadata.get("format") == "hls":
+            token = issue_hls_token(
+                rendition.id, expires_at=expires_at, secret=settings.auth_secret_key
+            )
+            stream_url = (
+                f"{settings.api_prefix}/media/hls/{rendition.id}/{token}/index.m3u8"
+            )
+        else:
+            stream_url = storage_client.generate_presigned_get_url(
+                rendition.storage_key, expires_in=expires_in
+            )
         return PlaybackGrantRead(
             session_id=recording.id,
             stream_url=stream_url,
-            expires_at=datetime.now(UTC) + timedelta(seconds=expires_in),
+            expires_at=expires_at,
             refresh_after_seconds=min(600, max(60, expires_in - 60)),
         )
     except DomainError:

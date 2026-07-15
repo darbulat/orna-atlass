@@ -51,6 +51,15 @@ class RecordingSession(Base):
 
     location = relationship("Location", back_populates="sessions")
     media_assets = relationship("MediaAsset", back_populates="session", cascade="all, delete-orphan")
+    recording_segments = relationship(
+        "RecordingSegment",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="RecordingSegment.sequence_number",
+    )
+    hls_processing_jobs = relationship(
+        "HlsProcessingJob", back_populates="session", cascade="all, delete-orphan"
+    )
     bird_vocal_parts = relationship(
         "BirdVocalPart", back_populates="session", cascade="all, delete-orphan", order_by="BirdVocalPart.starts_at_seconds"
     )
@@ -67,6 +76,12 @@ class BirdVocalPart(Base):
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     session_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("recording_sessions.id", ondelete="CASCADE"), index=True
+    )
+    recording_segment_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("recording_segments.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     species_code: Mapped[str] = mapped_column(String(120), index=True)
     species_common_name: Mapped[str] = mapped_column(String(180))

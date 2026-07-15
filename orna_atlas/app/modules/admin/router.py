@@ -22,6 +22,8 @@ from orna_atlas.app.modules.media.schemas import (
     AdminMediaAssetRead,
     MediaAssetCreate,
     ProcessingStatusRead,
+    RecordingSegmentBatchCreate,
+    RecordingSegmentRead,
 )
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionRead, SessionUpdate
@@ -100,6 +102,21 @@ async def create_session_asset(
     _: CurrentUser = admin_dependency,
 ):
     return await media_service.create_asset_for_session(session, session_id, data)
+
+
+@router.post(
+    "/sessions/{session_id}/segments",
+    response_model=list[RecordingSegmentRead],
+    status_code=status.HTTP_201_CREATED,
+)
+async def register_session_segments(
+    session_id: UUID,
+    data: RecordingSegmentBatchCreate,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+):
+    segments, _job = await media_service.register_recording_segments(session, session_id, data)
+    return segments
 
 
 @router.get("/sessions/{session_id}/processing", response_model=ProcessingStatusRead)

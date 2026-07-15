@@ -85,3 +85,32 @@ class ProcessingStatusRead(BaseModel):
     processing_status: ProcessingStatus
     media_assets: list[AdminMediaAssetRead]
     latest_job: ProcessingJobRead | None = None
+
+
+class RecordingSegmentCreate(BaseModel):
+    sequence_number: int = Field(ge=1)
+    storage_key: str = Field(min_length=1, max_length=512)
+    checksum: str | None = Field(default=None, max_length=128)
+
+
+class RecordingSegmentBatchCreate(BaseModel):
+    segments: list[RecordingSegmentCreate] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_contiguous_sequence(self) -> "RecordingSegmentBatchCreate":
+        sequence = [item.sequence_number for item in self.segments]
+        if sequence != list(range(1, len(sequence) + 1)):
+            raise ValueError("Segment sequence numbers must be contiguous and ordered from 1")
+        if len({item.storage_key for item in self.segments}) != len(self.segments):
+            raise ValueError("Segment storage keys must be unique")
+        return self
+
+
+class RecordingSegmentRead(BaseModel):
+    id: UUID
+    sequence_number: int
+    start_offset_ms: int | None
+    duration_ms: int | None
+    source_asset_id: UUID
+
+    model_config = ConfigDict(from_attributes=True)

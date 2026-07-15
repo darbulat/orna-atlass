@@ -10,7 +10,12 @@ from orna_atlas.app.modules.auth.models import RefreshToken  # noqa: F401
 from orna_atlas.app.modules.memberships.models import Membership  # noqa: F401
 from orna_atlas.app.modules.users.models import User  # noqa: F401
 from orna_atlas.app.modules.locations.models import Location  # noqa: F401
-from orna_atlas.app.modules.media.models import MediaAsset, ProcessingJob  # noqa: F401
+from orna_atlas.app.modules.media.models import (  # noqa: F401
+    HlsProcessingJob,
+    MediaAsset,
+    ProcessingJob,
+    RecordingSegment,
+)
 from orna_atlas.app.modules.sessions.models import BirdVocalPart, RecordingSession  # noqa: F401
 from orna_atlas.app.modules.collections.models import Collection, CollectionLocation, CollectionSession  # noqa: F401
 
