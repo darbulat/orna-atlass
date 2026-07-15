@@ -84,6 +84,9 @@ test("grant refresh preserves playback position and resumes audio", async ({ pag
   await slider.press("ArrowRight");
   await expect(slider).toHaveAttribute("aria-valuenow", "5");
   await expect.poll(() => grantRequests).toBeGreaterThan(1);
+  await expect.poll(async () => page.evaluate(() => (
+    window as typeof window & { __lastAudio?: { src: string } }
+  ).__lastAudio?.src ?? "")).toContain(`/test-stream/${firstSessionId}/2.mp3`);
 
   const audioState = await page.evaluate(() => {
     const audio = (window as typeof window & {

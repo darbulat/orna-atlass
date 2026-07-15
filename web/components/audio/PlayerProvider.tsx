@@ -58,7 +58,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     hlsRef.current?.destroy();
     hlsRef.current = null;
     const resolvedUrl = streamUrl(url);
-    const hasNativeHls = Boolean(audio.canPlayType("application/vnd.apple.mpegurl"));
+    const hasNativeHls = typeof audio.canPlayType === "function"
+      && Boolean(audio.canPlayType("application/vnd.apple.mpegurl"));
     if (isHlsStream(resolvedUrl) && !hasNativeHls && Hls.isSupported()) {
       const hls = new Hls();
       hlsRef.current = hls;
