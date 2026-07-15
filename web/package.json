@@ -6,6 +6,7 @@
     "postinstall": "node scripts/copy-cesium-assets.mjs",
     "dev": "next dev",
     "build": "next build",
+    "start": "next start",
     "api:export": "cd .. && python -m orna_atlas.app.scripts.export_openapi --output web/openapi.json",
     "api:generate": "npm run api:export && openapi-typescript openapi.json -o lib/api/generated.ts",
     "api:check": "npm run api:generate && git diff --exit-code -- openapi.json lib/api/generated.ts",

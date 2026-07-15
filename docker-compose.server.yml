@@ -46,6 +46,7 @@ services:
         condition: service_healthy
 
   web:
+    command: sh -c "npm install && npm run build && npm run start"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL in .env}
       API_SERVER_URL: http://api:8000

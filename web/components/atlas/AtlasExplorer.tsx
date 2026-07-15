@@ -2,22 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArcGisMapServerImageryProvider,
-  Cartesian3,
-  Color,
-  EllipsoidTerrainProvider,
-  Entity,
-  HorizontalOrigin,
-  ImageryLayer,
-  LabelStyle,
-  ScreenSpaceEventHandler,
-  ScreenSpaceEventType,
-  TileMapServiceImageryProvider,
-  VerticalOrigin,
-  Viewer,
-  buildModuleUrl,
-} from "cesium";
+import type { Entity, ScreenSpaceEventHandler, Viewer as CesiumViewer } from "cesium";
 import type {
   AtlasCluster,
   AtlasPoint,
@@ -84,14 +69,43 @@ function useLocationCardCount() {
   return cardCount;
 }
 
-function configureCesiumBaseUrl() {
+type CesiumModule = typeof import("cesium");
+
+let cesiumScriptPromise: Promise<CesiumModule> | undefined;
+
+function loadCesiumScript() {
+  const cesiumWindow = window as typeof window & {
+    CESIUM_BASE_URL?: string;
+    Cesium?: CesiumModule;
+  };
+  if (cesiumWindow.Cesium) return Promise.resolve(cesiumWindow.Cesium);
+  if (cesiumScriptPromise) return cesiumScriptPromise;
+
+  cesiumWindow.CESIUM_BASE_URL = "/cesium/";
+  cesiumScriptPromise = new Promise<CesiumModule>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "/cesium/Cesium.js";
+    script.async = true;
+    script.dataset.cesiumRuntime = "true";
+    script.addEventListener("load", () => {
+      if (cesiumWindow.Cesium) resolve(cesiumWindow.Cesium);
+      else reject(new Error("Cesium runtime loaded without exposing window.Cesium"));
+    });
+    script.addEventListener("error", () => reject(new Error("Failed to load Cesium runtime")));
+    document.head.append(script);
+  });
+  return cesiumScriptPromise;
+}
+
+function configureCesiumBaseUrl({ buildModuleUrl }: CesiumModule) {
   const urlBuilder = buildModuleUrl as typeof buildModuleUrl & { setBaseUrl?: (value: string) => void };
   urlBuilder.setBaseUrl?.("/cesium/");
 }
 
 function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: CesiumGlobeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const viewerRef = useRef<Viewer | null>(null);
+  const viewerRef = useRef<CesiumViewer | null>(null);
+  const cesiumRef = useRef<CesiumModule | null>(null);
   const pointByEntityIdRef = useRef(new Map<string, AtlasPoint>());
   const onSelectRef = useRef(onSelectPoint);
   const [isWebglUnavailable, setIsWebglUnavailable] = useState(false);
@@ -108,13 +122,27 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
 
     let isDisposed = false;
     let clickHandler: ScreenSpaceEventHandler | null = null;
-    let viewer: Viewer | null = null;
+    let viewer: CesiumViewer | null = null;
     setIsViewerReady(false);
     const pointByEntityId = pointByEntityIdRef.current;
 
     async function createViewer() {
       try {
-        configureCesiumBaseUrl();
+        const cesium = await loadCesiumScript();
+        if (isDisposed) return;
+        cesiumRef.current = cesium;
+        const {
+          ArcGisMapServerImageryProvider,
+          Cartesian3,
+          EllipsoidTerrainProvider,
+          ImageryLayer,
+          ScreenSpaceEventHandler,
+          ScreenSpaceEventType,
+          TileMapServiceImageryProvider,
+          Viewer,
+          buildModuleUrl,
+        } = cesium;
+        configureCesiumBaseUrl(cesium);
         viewer = new Viewer(host, {
           animation: false,
           baseLayer: false,
@@ -205,13 +233,16 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
         viewerRef.current.destroy();
       }
       viewerRef.current = null;
+      cesiumRef.current = null;
       pointByEntityId.clear();
     };
   }, []);
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!isViewerReady || !viewer || viewer.isDestroyed()) return;
+    const cesium = cesiumRef.current;
+    if (!isViewerReady || !viewer || viewer.isDestroyed() || !cesium) return;
+    const { Cartesian3, Color, HorizontalOrigin, LabelStyle, VerticalOrigin } = cesium;
 
     viewer.entities.removeAll();
     pointByEntityIdRef.current.clear();
@@ -259,7 +290,9 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!isViewerReady || !viewer || viewer.isDestroyed() || !selectedSlug) return;
+    const cesium = cesiumRef.current;
+    if (!isViewerReady || !viewer || viewer.isDestroyed() || !selectedSlug || !cesium) return;
+    const { Cartesian3 } = cesium;
 
     const selected = points.find((item) => isPoint(item) && item.slug === selectedSlug);
     if (!selected || !isPoint(selected)) return;
