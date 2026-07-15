@@ -227,7 +227,9 @@ async def test_maintenance_worker_survives_iteration_failure(
     sleep.assert_awaited_once_with(1)
 
 
-@pytest.mark.parametrize("worker_module", ["storage_cleanup", "pipeline_recovery"])
+@pytest.mark.parametrize(
+    "worker_module", ["audio_pipeline", "storage_cleanup", "pipeline_recovery"]
+)
 def test_maintenance_worker_loads_complete_mapper_registry(worker_module: str) -> None:
     result = subprocess.run(
         [

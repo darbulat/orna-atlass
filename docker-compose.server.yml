@@ -1,6 +1,8 @@
 services:
   api:
     environment:
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:?set S3_ENDPOINT_URL in .env}
       S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:?set S3_PUBLIC_ENDPOINT_URL in .env}
     depends_on: !override
       migrate:
@@ -11,6 +13,8 @@ services:
         condition: service_healthy
 
   worker:
+    environment:
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:?set S3_ENDPOINT_URL in .env}
     ports: !override
       - "127.0.0.1:9101:9101"
     depends_on: !override
@@ -22,6 +26,8 @@ services:
         condition: service_healthy
 
   storage-cleanup-worker:
+    environment:
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:?set S3_ENDPOINT_URL in .env}
     depends_on: !override
       migrate:
         condition: service_completed_successfully
@@ -29,6 +35,8 @@ services:
         condition: service_healthy
 
   pipeline-recovery-worker:
+    environment:
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:?set S3_ENDPOINT_URL in .env}
     depends_on: !override
       migrate:
         condition: service_completed_successfully

@@ -48,8 +48,10 @@ docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
 ```
 
 The override disables MinIO, keeps PostgreSQL, Redis, and worker metrics bound
-to loopback, and requires `NEXT_PUBLIC_API_URL` and `S3_PUBLIC_ENDPOINT_URL` to
-be supplied explicitly.
+to loopback, and requires `NEXT_PUBLIC_API_URL`, `CORS_ORIGINS`,
+`S3_ENDPOINT_URL`, and `S3_PUBLIC_ENDPOINT_URL` to be supplied explicitly.
+Set `CORS_ORIGINS` to a JSON list containing the public frontend origin, for
+example `["https://atlas.example.com"]`.
 
 ## Backend checks
 
