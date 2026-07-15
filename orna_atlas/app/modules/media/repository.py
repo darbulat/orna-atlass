@@ -6,7 +6,13 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from orna_atlas.app.modules.media.models import MediaAsset, ProcessingJob, StorageCleanupJob
+from orna_atlas.app.modules.media.models import (
+    HlsProcessingJob,
+    MediaAsset,
+    ProcessingJob,
+    RecordingSegment,
+    StorageCleanupJob,
+)
 from orna_atlas.app.modules.media.schemas import MediaAssetCreate, MediaAssetUpdate
 from orna_atlas.app.modules.sessions.models import RecordingSession
 
@@ -51,6 +57,71 @@ async def get_asset_for_processing(session: AsyncSession, asset_id: UUID) -> Med
 async def get_asset_by_storage_key(session: AsyncSession, storage_key: str) -> MediaAsset | None:
     result = await session.execute(select(MediaAsset).where(MediaAsset.storage_key == storage_key))
     return result.scalar_one_or_none()
+
+
+async def list_recording_segments(
+    session: AsyncSession, session_id: UUID, *, for_update: bool = False
+) -> list[RecordingSegment]:
+    query = (
+        select(RecordingSegment)
+        .options(selectinload(RecordingSegment.source_asset))
+        .where(RecordingSegment.session_id == session_id)
+        .order_by(RecordingSegment.sequence_number)
+    )
+    if for_update:
+        query = query.with_for_update()
+    result = await session.execute(query)
+    return list(result.scalars())
+
+
+async def create_recording_segment(
+    session: AsyncSession,
+    *,
+    recording: RecordingSession,
+    source_asset: MediaAsset,
+    sequence_number: int,
+) -> RecordingSegment:
+    segment = RecordingSegment(
+        session=recording,
+        source_asset=source_asset,
+        sequence_number=sequence_number,
+    )
+    session.add(segment)
+    await session.flush()
+    return segment
+
+
+async def create_hls_processing_job(
+    session: AsyncSession, *, session_id: UUID, source_fingerprint: str
+) -> HlsProcessingJob:
+    job = HlsProcessingJob(session_id=session_id, source_fingerprint=source_fingerprint)
+    session.add(job)
+    await session.flush()
+    return job
+
+
+async def get_hls_processing_job(
+    session: AsyncSession, job_id: UUID, *, for_update: bool = False
+) -> HlsProcessingJob | None:
+    query = select(HlsProcessingJob).where(HlsProcessingJob.id == job_id)
+    if for_update:
+        query = query.with_for_update()
+    result = await session.execute(query)
+    return result.scalar_one_or_none()
+
+
+async def latest_hls_processing_job(
+    session: AsyncSession, session_id: UUID, *, for_update: bool = False
+) -> HlsProcessingJob | None:
+    query = (
+        select(HlsProcessingJob)
+        .where(HlsProcessingJob.session_id == session_id)
+        .order_by(HlsProcessingJob.created_at.desc())
+        .limit(1)
+    )
+    if for_update:
+        query = query.with_for_update()
+    return (await session.execute(query)).scalar_one_or_none()
 
 
 async def list_assets_for_session(session: AsyncSession, session_id: UUID) -> list[MediaAsset]:
@@ -198,17 +269,26 @@ async def schedule_storage_cleanup(
     jobs: list[StorageCleanupJob] = []
     for asset in candidates:
         job = existing.get(asset.storage_key)
+        object_keys = (
+            (getattr(asset, "metadata_", None) or {}).get("object_keys")
+            if getattr(asset, "kind", None) == "streaming_rendition"
+            else None
+        )
         if job is None:
             job = StorageCleanupJob(
                 asset=asset,
                 storage_key=asset.storage_key,
+                object_keys=object_keys,
                 retain_until=retain_until,
                 next_attempt_at=retain_until,
             )
             session.add(job)
-        elif job.status != "succeeded" and retain_until < job.retain_until:
-            job.retain_until = retain_until
-            job.next_attempt_at = min(job.next_attempt_at, retain_until)
+        elif job.status != "succeeded":
+            if object_keys:
+                job.object_keys = object_keys
+            if retain_until < job.retain_until:
+                job.retain_until = retain_until
+                job.next_attempt_at = min(job.next_attempt_at, retain_until)
         jobs.append(job)
     await session.flush()
     return jobs

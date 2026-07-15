@@ -244,6 +244,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/sessions/{session_id}/segments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Session Segments */
+        post: operations["register_session_segments_api_v1_admin_sessions__session_id__segments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/sessions/{session_id}/segments/process": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Session Segments */
+        post: operations["retry_session_segments_api_v1_admin_sessions__session_id__segments_process_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users/{user_id}/role": {
         parameters: {
             query?: never;
@@ -440,6 +474,23 @@ export interface paths {
         };
         /** Get Location */
         get: operations["get_location_api_v1_locations__locator__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/media/hls/{asset_id}/{token}/{object_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Hls Object */
+        get: operations["get_hls_object_api_v1_media_hls__asset_id___token___object_name__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1545,6 +1596,39 @@ export interface components {
             /** Recordist Notes */
             recordist_notes?: string | null;
         };
+        /** RecordingSegmentBatchCreate */
+        RecordingSegmentBatchCreate: {
+            /** Segments */
+            segments: components["schemas"]["RecordingSegmentCreate"][];
+        };
+        /** RecordingSegmentCreate */
+        RecordingSegmentCreate: {
+            /** Checksum */
+            checksum?: string | null;
+            /** Sequence Number */
+            sequence_number: number;
+            /** Storage Key */
+            storage_key: string;
+        };
+        /** RecordingSegmentRead */
+        RecordingSegmentRead: {
+            /** Duration Ms */
+            duration_ms: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Sequence Number */
+            sequence_number: number;
+            /**
+             * Source Asset Id
+             * Format: uuid
+             */
+            source_asset_id: string;
+            /** Start Offset Ms */
+            start_offset_ms: number | null;
+        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -2495,6 +2579,82 @@ export interface operations {
             };
         };
     };
+    register_session_segments_api_v1_admin_sessions__session_id__segments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-orna-admin"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordingSegmentBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordingSegmentRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_session_segments_api_v1_admin_sessions__session_id__segments_process_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-orna-admin"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_user_role_api_v1_admin_users__user_id__role_patch: {
         parameters: {
             query?: never;
@@ -2873,6 +3033,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LocationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_hls_object_api_v1_media_hls__asset_id___token___object_name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+                token: string;
+                object_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

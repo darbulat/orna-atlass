@@ -1,5 +1,6 @@
 "use client";
 
+import Hls from "hls.js";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -7,7 +8,7 @@ import type { ReactNode } from "react";
 import { apiErrorMessage } from "../../lib/api/client";
 import { apiUrl, requestPlaybackGrant, type PlaybackGrant, type SessionDetail } from "../../lib/api/sessions";
 import { initialPlayerState, playerReducer, type PlaybackState } from "./playerMachine";
-import { detachAudio, disposePlayerResources } from "./playerResources";
+import { detachAudio, disposePlayerResources, isHlsStream } from "./playerResources";
 
 type PlayerContextValue = {
   currentSession: SessionDetail | null;
@@ -38,6 +39,7 @@ function formatClockTime(value: string) {
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const currentSessionRef = useRef<SessionDetail | null>(null);
   const grantRequestRef = useRef(0);
   const grantAbortRef = useRef<AbortController | null>(null);
@@ -50,6 +52,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
+  }, []);
+
+  const attachStream = useCallback((audio: HTMLAudioElement, url: string) => {
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
+    const resolvedUrl = streamUrl(url);
+    const hasNativeHls = typeof audio.canPlayType === "function"
+      && Boolean(audio.canPlayType("application/vnd.apple.mpegurl"));
+    if (isHlsStream(resolvedUrl) && !hasNativeHls && Hls.isSupported()) {
+      const hls = new Hls();
+      hlsRef.current = hls;
+      hls.attachMedia(audio);
+      hls.loadSource(resolvedUrl);
+      return;
+    }
+    audio.src = resolvedUrl;
   }, []);
 
   const updatePlaybackProgress = useCallback(() => {
@@ -111,7 +129,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   audio.onloadedmetadata = updatePlaybackProgress;
                 }
               };
-              audio.src = streamUrl(refreshedGrant.stream_url);
+              attachStream(audio, refreshedGrant.stream_url);
               audio.load();
               restorePosition();
               if (shouldResume) {
@@ -143,7 +161,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         })();
       }, delayMs);
     },
-    [clearRefreshTimer, updatePlaybackProgress],
+    [attachStream, clearRefreshTimer, updatePlaybackProgress],
   );
 
   const play = useCallback(
@@ -175,6 +193,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       grantAbortRef.current = controller;
       clearRefreshTimer();
       if (audioRef.current) {
+        hlsRef.current?.destroy();
+        hlsRef.current = null;
         detachAudio(audioRef.current);
       }
       currentSessionRef.current = session;
@@ -192,7 +212,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           audioRef.current = new Audio();
         }
         const audio = audioRef.current;
-        audio.src = streamUrl(nextGrant.stream_url);
+        attachStream(audio, nextGrant.stream_url);
         audio.ontimeupdate = updatePlaybackProgress;
         audio.onloadedmetadata = updatePlaybackProgress;
         audio.ondurationchange = updatePlaybackProgress;
@@ -230,7 +250,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [clearRefreshTimer, player.grant, scheduleGrantRefresh, updatePlaybackProgress],
+    [attachStream, clearRefreshTimer, player.grant, scheduleGrantRefresh, updatePlaybackProgress],
   );
 
   const pause = useCallback(() => {
@@ -258,6 +278,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => () => {
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
     disposePlayerResources({
       audio: audioRef.current,
       abortController: grantAbortRef.current,

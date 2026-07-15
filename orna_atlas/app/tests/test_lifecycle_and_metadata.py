@@ -124,6 +124,50 @@ async def test_storage_cleanup_is_idempotent_and_marks_tombstone(monkeypatch) ->
 
 
 @pytest.mark.asyncio
+async def test_hls_cleanup_deletes_only_persisted_inventory(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    prefix = f"sessions/{uuid4()}/hls/generation"
+    inventory = [
+        f"{prefix}/init_0001.mp4",
+        f"{prefix}/segment_000000.m4s",
+        f"{prefix}/index.m3u8",
+    ]
+    asset = SimpleNamespace(storage_deleted_at=None)
+    job = SimpleNamespace(
+        id=uuid4(),
+        status="pending",
+        retain_until=now,
+        next_attempt_at=now,
+        locked_at=None,
+        attempt_count=0,
+        error_code=None,
+        error_message=None,
+        storage_key=inventory[-1],
+        object_keys=inventory,
+        completed_at=None,
+        asset=asset,
+    )
+    storage = SimpleNamespace(
+        is_configured=lambda: True,
+        object_exists=MagicMock(return_value=True),
+        delete_object=MagicMock(),
+    )
+    db = AsyncMock()
+    monkeypatch.setattr(
+        media_service.repository,
+        "get_storage_cleanup_job_for_update",
+        AsyncMock(return_value=job),
+    )
+    monkeypatch.setattr(media_service, "get_object_storage_client", lambda: storage)
+
+    assert await media_service.process_storage_cleanup_job(db, job.id, now=now) is True
+
+    assert [call.args[0] for call in storage.delete_object.call_args_list] == inventory
+    assert not hasattr(storage, "delete_prefix")
+    assert asset.storage_deleted_at == job.completed_at
+
+
+@pytest.mark.asyncio
 async def test_storage_cleanup_failure_is_persisted_for_retry(monkeypatch) -> None:
     now = datetime.now(UTC)
     job = SimpleNamespace(

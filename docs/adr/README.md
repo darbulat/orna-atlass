@@ -6,4 +6,5 @@ ADRs document durable decisions that affect several modules. Status values are `
 - [ADR-0002: Playback authorization is fail-closed](0002-fail-closed-playback.md)
 - [ADR-0003: Versioned media assets](0003-versioned-media-assets.md)
 - [ADR-0004: Service-owned transactions](0004-service-owned-transactions.md)
+- [ADR-0005: Segmented sources produce inventory-gated private HLS](0005-segmented-hls-playback.md)
 

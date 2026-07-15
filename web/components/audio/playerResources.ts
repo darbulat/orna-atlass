@@ -11,6 +11,14 @@ type PlayerAudioResource = Pick<
   | "ontimeupdate"
 >;
 
+export function isHlsStream(url: string): boolean {
+  try {
+    return new URL(url, "https://orna-atlas.invalid").pathname.endsWith(".m3u8");
+  } catch {
+    return false;
+  }
+}
+
 export function detachAudio(audio: PlayerAudioResource) {
   audio.ontimeupdate = null;
   audio.onloadedmetadata = null;

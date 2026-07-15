@@ -12,9 +12,10 @@ from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.core.logging import request_id_context
 from orna_atlas.app.core.metrics import start_metrics_http_server
 from orna_atlas.app.db.session import AsyncSessionLocal, engine
-from orna_atlas.app.modules.media.service import process_media_asset
+from orna_atlas.app.modules.media.service import process_hls_job, process_media_asset
 
 AUDIO_QUEUE_NAME = "audio-processing"
+HLS_QUEUE_NAME = "hls-processing"
 logger = logging.getLogger(__name__)
 
 
@@ -82,6 +83,39 @@ def enqueue_audio_processing(
     return job.id
 
 
+def enqueue_hls_processing(job_id: UUID | str, *, request_id: str | None = None) -> str:
+    from rq import Queue, Retry
+
+    redis = Redis.from_url(get_settings().redis_url)
+    settings = get_settings()
+    retry = (
+        Retry(max=settings.audio_job_max_retries, interval=settings.audio_job_retry_interval_seconds)
+        if settings.audio_job_max_retries
+        else None
+    )
+    job = Queue(HLS_QUEUE_NAME, connection=redis).enqueue(
+        "orna_atlas.app.workers.audio_pipeline.process_hls_session",
+        str(job_id),
+        job_id=f"hls-{job_id}",
+        job_timeout=settings.audio_job_max_timeout_seconds,
+        result_ttl=settings.audio_job_result_ttl_seconds,
+        retry=retry,
+        meta={"request_id": request_id, "hls_processing_job_id": str(job_id)},
+    )
+    return job.id
+
+
+def process_hls_session(job_id: str) -> str:
+    asyncio.run(_process_hls_session(job_id))
+    return job_id
+
+
+async def _process_hls_session(job_id: str) -> None:
+    async with AsyncSessionLocal() as session:
+        await process_hls_job(session, UUID(job_id))
+    await engine.dispose()
+
+
 def process_audio_asset(asset_id: str) -> str:
     from rq import get_current_job
 
@@ -126,8 +160,11 @@ def run_worker() -> None:
     settings = get_settings()
     start_metrics_http_server(settings.worker_metrics_port)
     redis = Redis.from_url(settings.redis_url)
-    queue = Queue(AUDIO_QUEUE_NAME, connection=redis)
-    worker = Worker([queue], connection=redis)
+    queues = [
+        Queue(AUDIO_QUEUE_NAME, connection=redis),
+        Queue(HLS_QUEUE_NAME, connection=redis),
+    ]
+    worker = Worker(queues, connection=redis)
     worker.work()
 
 

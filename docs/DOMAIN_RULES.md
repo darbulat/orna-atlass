@@ -53,6 +53,15 @@ only; protected records are reported as not found.
 - Admin-provided storage keys must remain inside the managed relative `sessions/` namespace; absolute paths and arbitrary S3 buckets are rejected.
 - Services own transaction boundaries; repositories flush/query but do not commit independently.
 
+## Segmented recordings and HLS
+
+- Segment sequence numbers are contiguous and each segment remains linked to one immutable source asset.
+- Timeline offsets derive from ordered ffprobe durations; BirdNET intervals are source-local until translated by that offset.
+- A session HLS build is unique for its ordered source-set fingerprint and processes no more than one WAV at a time.
+- Every init and media fragment must be uploaded and verified before the final manifest is published and the rendition activated.
+- A private HLS request must have a valid rendition-scoped grant and name an object in the rendition's verified inventory.
+- Cleanup deletes only the recorded inventory. Prefix-wide deletion is forbidden.
+
 ## Time and dawn
 
 - Timezone values are valid IANA names; invalid values are rejected, never silently coerced to UTC.
