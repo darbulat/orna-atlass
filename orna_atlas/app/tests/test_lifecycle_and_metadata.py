@@ -1,4 +1,6 @@
 import asyncio
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -223,6 +225,27 @@ async def test_maintenance_worker_survives_iteration_failure(
 
     assert run_once.await_count == 2
     sleep.assert_awaited_once_with(1)
+
+
+@pytest.mark.parametrize(
+    "worker_module", ["audio_pipeline", "storage_cleanup", "pipeline_recovery"]
+)
+def test_maintenance_worker_loads_complete_mapper_registry(worker_module: str) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                f"from orna_atlas.app.workers import {worker_module}; "
+                "from sqlalchemy.orm import configure_mappers; configure_mappers()"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_new_session_metadata_rejects_malformed_structures() -> None:

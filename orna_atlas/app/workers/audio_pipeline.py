@@ -11,6 +11,7 @@ from redis import Redis
 from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.core.logging import request_id_context
 from orna_atlas.app.core.metrics import start_metrics_http_server
+from orna_atlas.app.db import models as _models  # noqa: F401
 from orna_atlas.app.db.session import AsyncSessionLocal, engine
 from orna_atlas.app.modules.media.service import process_hls_job, process_media_asset
 
