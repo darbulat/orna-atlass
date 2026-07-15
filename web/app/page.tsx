@@ -6,10 +6,12 @@ import { fetchFeaturedSessions, type FeaturedSession } from "../lib/api/sessions
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [featuredSessions, collections] = await Promise.all([
+  const [featuredResult, collectionsResult] = await Promise.allSettled([
     fetchFeaturedSessions(6),
     fetchCollections(6),
   ]);
+  const featuredSessions = featuredResult.status === "fulfilled" ? featuredResult.value : null;
+  const collections = collectionsResult.status === "fulfilled" ? collectionsResult.value : null;
 
   return (
     <main className="shell" id="main-content">
@@ -31,7 +33,11 @@ export default async function HomePage() {
           <p className="eyebrow">Editorial</p>
           <h2 id="featured-heading">Featured sessions</h2>
         </div>
-        {featuredSessions.length > 0 ? (
+        {featuredSessions === null ? (
+          <p className="unavailable-state" role="alert">
+            Featured sessions are temporarily unavailable. Please try again soon.
+          </p>
+        ) : featuredSessions.length > 0 ? (
           <div className="panel featured-grid">
             {featuredSessions.map((session: FeaturedSession) => (
               <article key={session.id}>
@@ -53,7 +59,11 @@ export default async function HomePage() {
           <p className="eyebrow">Collections</p>
           <h2 id="collections-heading">Atlas journeys</h2>
         </div>
-        {collections.length > 0 ? (
+        {collections === null ? (
+          <p className="unavailable-state" role="alert">
+            Collections are temporarily unavailable. Please try again soon.
+          </p>
+        ) : collections.length > 0 ? (
           <div className="panel featured-grid">
             {collections.map((collection: CollectionSummary) => (
               <article key={collection.id}>

@@ -5,14 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from orna_atlas.app.modules.locations.schemas import LocationRead
 from orna_atlas.app.modules.sessions.schemas import SessionRead
-
-
-def _reject_required_nulls(data: dict, fields: set[str]) -> dict:
-    null_fields = sorted(field for field in fields if field in data and data[field] is None)
-    if null_fields:
-        joined = ", ".join(null_fields)
-        raise ValueError(f"Fields may be omitted but cannot be null: {joined}")
-    return data
+from orna_atlas.app.core.schema_validation import reject_required_nulls
 
 
 class CollectionSummaryRead(BaseModel):
@@ -73,7 +66,7 @@ class CollectionUpdate(BaseModel):
     @classmethod
     def reject_required_nulls(cls, data: object) -> object:
         if isinstance(data, dict):
-            return _reject_required_nulls(
+            return reject_required_nulls(
                 data,
                 {"slug", "title", "is_public", "sort_order", "metadata", "location_ids", "session_ids"},
             )

@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 from pydantic import ValidationError
 
+from orna_atlas.app.core.domain_errors import ValidationError as DomainValidationError
 from orna_atlas.app.core.domain_types import CoordinateVisibility
 from orna_atlas.app.modules.locations import repository as locations_repository
 from orna_atlas.app.modules.locations import service as locations_service
@@ -161,14 +161,14 @@ async def test_location_update_requires_coordinates_when_switching_to_approximat
     )
     monkeypatch.setattr(locations_service.repository, "update_location", persist)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(DomainValidationError) as exc_info:
         await locations_service.update_location(
             AsyncMock(),
             location_id,
             LocationUpdate(coordinate_visibility=CoordinateVisibility.APPROXIMATE_PUBLIC),
         )
 
-    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == "Approximate public visibility requires public coordinates"
     persist.assert_not_awaited()
 
 

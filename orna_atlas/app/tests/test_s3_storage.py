@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 
+from orna_atlas.app.core.domain_errors import ConflictError
 from orna_atlas.app.integrations.s3 import ObjectStorageClient, ObjectStorageConfig, parse_storage_reference
 from orna_atlas.app.modules.media.models import MediaAsset
 from orna_atlas.app.modules.media.service import (
@@ -202,20 +202,20 @@ def test_create_playback_grant_fails_closed_when_object_missing(monkeypatch) -> 
 
     monkeypatch.setattr(sessions_service, "get_object_storage_client", lambda: client)
 
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(ConflictError) as error:
         create_playback_grant(recording)
 
-    assert error.value.status_code == 409
+    assert error.value.detail == "Playable rendition is unavailable"
 
 
 def test_create_playback_grant_fails_closed_without_ready_rendition() -> None:
     session_id = uuid4()
     recording = SimpleNamespace(id=session_id, media_assets=[])
 
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(ConflictError) as error:
         create_playback_grant(recording)
 
-    assert error.value.status_code == 409
+    assert error.value.detail == "Playable rendition is not ready"
 
 
 def test_object_storage_config_requires_credentials() -> None:

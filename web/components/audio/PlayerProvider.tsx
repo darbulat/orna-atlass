@@ -1,21 +1,13 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { apiErrorMessage } from "../../lib/api/client";
 import { apiUrl, requestPlaybackGrant, type PlaybackGrant, type SessionDetail } from "../../lib/api/sessions";
-
-type PlaybackState =
-  | "idle"
-  | "requesting_grant"
-  | "ready"
-  | "playing"
-  | "paused"
-  | "refreshing_grant"
-  | "stalled"
-  | "ended"
-  | "error";
+import { initialPlayerState, playerReducer, type PlaybackState } from "./playerMachine";
+import { detachAudio, disposePlayerResources } from "./playerResources";
 
 type PlayerContextValue = {
   currentSession: SessionDetail | null;
@@ -50,12 +42,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const grantRequestRef = useRef(0);
   const grantAbortRef = useRef<AbortController | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
-  const [currentSession, setCurrentSession] = useState<SessionDetail | null>(null);
-  const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
-  const [grant, setGrant] = useState<PlaybackGrant | null>(null);
-  const [currentTimeSeconds, setCurrentTimeSeconds] = useState(0);
-  const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [player, dispatch] = useReducer(playerReducer, initialPlayerState);
   const [isGlobalPlayerSuppressed, setIsGlobalPlayerSuppressed] = useState(false);
 
   const clearRefreshTimer = useCallback(() => {
@@ -70,12 +57,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!audio) {
       return;
     }
-    setCurrentTimeSeconds(Number.isFinite(audio.currentTime) ? audio.currentTime : 0);
-    setDurationSeconds(
-      Number.isFinite(audio.duration) && audio.duration > 0
-        ? audio.duration
-        : currentSessionRef.current?.duration_seconds ?? null,
-    );
+    dispatch({
+      type: "progress",
+      currentTimeSeconds: Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
+      durationSeconds:
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.duration
+          : currentSessionRef.current?.duration_seconds ?? null,
+    });
   }, []);
 
   const scheduleGrantRefresh = useCallback(
@@ -91,7 +80,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             return;
           }
           const requestId = ++grantRequestRef.current;
-          setPlaybackState("refreshing_grant");
+          dispatch({ type: "refresh_started", sessionId: session.id });
           const controller = new AbortController();
           grantAbortRef.current?.abort();
           grantAbortRef.current = controller;
@@ -106,13 +95,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             if (audio) {
               audio.pause();
               const restorePosition = () => {
+                if (requestId !== grantRequestRef.current || currentSessionRef.current?.id !== session.id) {
+                  return;
+                }
                 try {
                   audio.currentTime = resumeAt;
                 } catch {
                   // The media element will emit another metadata event if the stream is still loading.
                 }
               };
-              audio.addEventListener("loadedmetadata", restorePosition, { once: true });
+              audio.onloadedmetadata = () => {
+                restorePosition();
+                updatePlaybackProgress();
+                if (requestId === grantRequestRef.current && currentSessionRef.current?.id === session.id) {
+                  audio.onloadedmetadata = updatePlaybackProgress;
+                }
+              };
               audio.src = streamUrl(refreshedGrant.stream_url);
               audio.load();
               restorePosition();
@@ -120,36 +118,54 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 await audio.play();
               }
             }
-            setGrant(refreshedGrant);
+            if (requestId !== grantRequestRef.current || currentSessionRef.current?.id !== session.id) {
+              return;
+            }
             scheduleGrantRefresh(session, refreshedGrant);
-            setPlaybackState(audioRef.current?.paused ? "paused" : "playing");
-          } catch (err) {
+            dispatch({
+              type: "grant_refreshed",
+              sessionId: session.id,
+              grant: refreshedGrant,
+              resumed: Boolean(audio && !audio.paused),
+            });
+          } catch (error) {
             if (controller.signal.aborted) {
               return;
             }
             if (requestId === grantRequestRef.current) {
-              setError(err instanceof Error ? err.message : "Unable to refresh playback grant");
-              setPlaybackState("error");
+              dispatch({
+                type: "failed",
+                sessionId: session.id,
+                message: apiErrorMessage(error, "Unable to refresh playback grant"),
+              });
             }
           }
         })();
       }, delayMs);
     },
-    [clearRefreshTimer],
+    [clearRefreshTimer, updatePlaybackProgress],
   );
 
   const play = useCallback(
     async (session: SessionDetail) => {
-      const grantExpiresAt = grant ? new Date(grant.expires_at).getTime() : 0;
+      const grantExpiresAt = player.grant ? new Date(player.grant.expires_at).getTime() : 0;
       if (
         currentSessionRef.current?.id === session.id
         && audioRef.current?.src
         && grantExpiresAt > Date.now() + 30_000
       ) {
-        setError(null);
-        await audioRef.current.play();
-        updatePlaybackProgress();
-        setPlaybackState("playing");
+        dispatch({ type: "clear_error" });
+        try {
+          await audioRef.current.play();
+          updatePlaybackProgress();
+          dispatch({ type: "playing" });
+        } catch (error) {
+          dispatch({
+            type: "failed",
+            sessionId: session.id,
+            message: apiErrorMessage(error, "Playback failed"),
+          });
+        }
         return;
       }
 
@@ -159,17 +175,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       grantAbortRef.current = controller;
       clearRefreshTimer();
       if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.removeAttribute("src");
-        audioRef.current.load();
+        detachAudio(audioRef.current);
       }
       currentSessionRef.current = session;
-      setCurrentSession(session);
-      setPlaybackState("requesting_grant");
-      setCurrentTimeSeconds(0);
-      setDurationSeconds(session.duration_seconds);
-      setError(null);
-      setGrant(null);
+      dispatch({ type: "request_grant", session });
 
       try {
         const nextGrant = await requestPlaybackGrant(session.id, controller.signal);
@@ -177,49 +186,57 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        setGrant(nextGrant);
-        setPlaybackState("ready");
+        dispatch({ type: "grant_ready", sessionId: session.id, grant: nextGrant });
 
         if (!audioRef.current) {
           audioRef.current = new Audio();
         }
-        audioRef.current.src = streamUrl(nextGrant.stream_url);
-        audioRef.current.ontimeupdate = updatePlaybackProgress;
-        audioRef.current.onloadedmetadata = updatePlaybackProgress;
-        audioRef.current.ondurationchange = updatePlaybackProgress;
-        audioRef.current.onended = () => {
+        const audio = audioRef.current;
+        audio.src = streamUrl(nextGrant.stream_url);
+        audio.ontimeupdate = updatePlaybackProgress;
+        audio.onloadedmetadata = updatePlaybackProgress;
+        audio.ondurationchange = updatePlaybackProgress;
+        audio.onended = () => {
           const sessionDuration = currentSessionRef.current?.duration_seconds;
           const audioDuration = audioRef.current?.duration;
-          setCurrentTimeSeconds(
-            sessionDuration ?? (Number.isFinite(audioDuration) && audioDuration != null ? audioDuration : 0),
-          );
-          setPlaybackState("ended");
+          dispatch({
+            type: "ended",
+            currentTimeSeconds:
+              sessionDuration ?? (Number.isFinite(audioDuration) && audioDuration != null ? audioDuration : 0),
+          });
         };
-        audioRef.current.onerror = () => setPlaybackState("error");
-        audioRef.current.onstalled = () => setPlaybackState("stalled");
+        audio.onerror = () => dispatch({
+          type: "failed",
+          sessionId: currentSessionRef.current?.id ?? null,
+          message: "The audio stream could not be played.",
+        });
+        audio.onstalled = () => dispatch({ type: "stalled" });
         scheduleGrantRefresh(session, nextGrant);
-        await audioRef.current.play();
+        await audio.play();
         updatePlaybackProgress();
         if (requestId === grantRequestRef.current && currentSessionRef.current?.id === session.id) {
-          setPlaybackState("playing");
+          dispatch({ type: "playing" });
         }
-      } catch (err) {
+      } catch (error) {
         if (controller.signal.aborted) {
           return;
         }
         if (requestId === grantRequestRef.current) {
-          setError(err instanceof Error ? err.message : "Playback failed");
-          setPlaybackState("error");
+          dispatch({
+            type: "failed",
+            sessionId: session.id,
+            message: apiErrorMessage(error, "Playback failed"),
+          });
         }
       }
     },
-    [clearRefreshTimer, grant, scheduleGrantRefresh, updatePlaybackProgress],
+    [clearRefreshTimer, player.grant, scheduleGrantRefresh, updatePlaybackProgress],
   );
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
     updatePlaybackProgress();
-    setPlaybackState("paused");
+    dispatch({ type: "paused" });
   }, [updatePlaybackProgress]);
 
   const seek = useCallback((seconds: number) => {
@@ -237,26 +254,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    setCurrentTimeSeconds(nextTime);
-    setDurationSeconds(resolvedDuration);
-    setPlaybackState((state) => (state === "ended" ? "paused" : state));
+    dispatch({ type: "seek", currentTimeSeconds: nextTime, durationSeconds: resolvedDuration });
   }, []);
 
   useEffect(() => () => {
-    clearRefreshTimer();
-    grantAbortRef.current?.abort();
+    disposePlayerResources({
+      audio: audioRef.current,
+      abortController: grantAbortRef.current,
+      refreshTimerId: refreshTimerRef.current,
+      clearTimer: window.clearTimeout,
+    });
+    refreshTimerRef.current = null;
     grantRequestRef.current += 1;
-    const audio = audioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
-    }
-  }, [clearRefreshTimer]);
+  }, []);
 
   const value = useMemo(
-    () => ({ currentSession, playbackState, grant, currentTimeSeconds, durationSeconds, error, play, pause, seek }),
-    [currentSession, playbackState, grant, currentTimeSeconds, durationSeconds, error, play, pause, seek],
+    () => ({ ...player, play, pause, seek }),
+    [pause, play, player, seek],
   );
 
   return (
@@ -307,7 +321,7 @@ function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
         <small>{playbackState}</small>
       </div>
       {grant ? <small>Grant expires {formatClockTime(grant.expires_at)}</small> : null}
-      {error ? <small className="error-text">{error}</small> : null}
+      {error ? <small className="error-text" role="alert">{error}</small> : null}
       <button type="button" onClick={pause}>Pause</button>
     </aside>
   );

@@ -10,7 +10,11 @@ from orna_atlas.app.modules.admin.schemas import AuditEventRead
 from orna_atlas.app.modules.collections import service as collections_service
 from orna_atlas.app.modules.collections.schemas import CollectionAdminRead, CollectionCreate, CollectionUpdate
 from orna_atlas.app.modules.locations import service as locations_service
-from orna_atlas.app.modules.locations.schemas import LocationCreate, LocationRead, LocationUpdate
+from orna_atlas.app.modules.locations.schemas import (
+    AdminLocationRead,
+    LocationCreate,
+    LocationUpdate,
+)
 from orna_atlas.app.modules.memberships import service as memberships_service
 from orna_atlas.app.modules.memberships.schemas import MembershipRead, MembershipUpdate
 from orna_atlas.app.modules.media import service as media_service
@@ -34,7 +38,9 @@ async def read_admin(current_user: CurrentUser = admin_dependency) -> dict[str, 
     return {"id": current_user.id, "is_admin": current_user.is_admin, "mode": mode}
 
 
-@router.post("/locations", response_model=LocationRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/locations", response_model=AdminLocationRead, status_code=status.HTTP_201_CREATED
+)
 async def create_location(
     data: LocationCreate,
     session: AsyncSession = Depends(get_db_session),
@@ -43,7 +49,7 @@ async def create_location(
     return await locations_service.create_location(session, data)
 
 
-@router.patch("/locations/{location_id}", response_model=LocationRead)
+@router.patch("/locations/{location_id}", response_model=AdminLocationRead)
 async def update_location(
     location_id: UUID,
     data: LocationUpdate,

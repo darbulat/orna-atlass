@@ -1,7 +1,18 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,6 +66,7 @@ class MediaAsset(Base):
     revision: Mapped[int] = mapped_column(Integer, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    storage_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source_asset_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("media_assets.id", ondelete="SET NULL"), index=True
     )
@@ -90,9 +102,13 @@ class ProcessingJob(Base):
     job_type: Mapped[str] = mapped_column(String(80), index=True)
     status: Mapped[str] = mapped_column(String(40), default="queued", index=True)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    stage_states: Mapped[dict] = mapped_column(JSONB, default=dict)
+    request_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    queue_job_id: Mapped[str | None] = mapped_column(String(255), index=True)
     error_code: Mapped[str | None] = mapped_column(String(80))
     error_message: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
@@ -100,3 +116,41 @@ class ProcessingJob(Base):
     )
 
     asset = relationship("MediaAsset", back_populates="processing_jobs")
+
+
+class StorageCleanupJob(Base):
+    """Durable, retry-safe deletion request for an archived object-storage key."""
+
+    __tablename__ = "storage_cleanup_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','running','succeeded','failed')",
+            name="ck_storage_cleanup_jobs_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_storage_cleanup_jobs_attempt_count"),
+        UniqueConstraint("asset_id", name="uq_storage_cleanup_jobs_asset_id"),
+        UniqueConstraint("storage_key", name="uq_storage_cleanup_jobs_storage_key"),
+        Index("ix_storage_cleanup_jobs_due", "status", "next_attempt_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    asset_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("media_assets.id", ondelete="SET NULL"),
+        index=True,
+    )
+    storage_key: Mapped[str] = mapped_column(String(512))
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    retain_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
+
+    asset = relationship("MediaAsset")

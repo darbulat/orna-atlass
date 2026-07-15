@@ -50,6 +50,7 @@ class CollectionLocation(Base):
         PG_UUID(as_uuid=True), ForeignKey("locations.id", ondelete="CASCADE"), index=True
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    seed_owner: Mapped[str | None] = mapped_column(String(80))
 
     collection = relationship("Collection", back_populates="location_links")
     location = relationship("Location")
@@ -67,6 +68,7 @@ class CollectionSession(Base):
         PG_UUID(as_uuid=True), ForeignKey("recording_sessions.id", ondelete="CASCADE"), index=True
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    seed_owner: Mapped[str | None] = mapped_column(String(80))
 
     collection = relationship("Collection", back_populates="session_links")
     session = relationship("RecordingSession")

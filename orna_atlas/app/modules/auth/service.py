@@ -1,10 +1,10 @@
 from datetime import UTC, datetime, timedelta
 
-from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.core.config import get_settings
+from orna_atlas.app.core.domain_errors import AuthenticationError, ConflictError
 from orna_atlas.app.core.security import (
     create_access_token,
     hash_password,
@@ -22,7 +22,7 @@ from orna_atlas.app.modules.users.schemas import UserRead
 
 async def register(session: AsyncSession, data: RegisterRequest) -> User:
     if await users_repository.get_by_email(session, str(data.email)):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        raise ConflictError("Email already registered")
     try:
         user = await users_repository.create(
             session, email=str(data.email), password_hash=hash_password(data.password)
@@ -39,13 +39,13 @@ async def register(session: AsyncSession, data: RegisterRequest) -> User:
         return user
     except IntegrityError as exc:
         await session.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered") from exc
+        raise ConflictError("Email already registered") from exc
 
 
 async def authenticate(session: AsyncSession, data: LoginRequest) -> User:
     user = await users_repository.get_by_email(session, str(data.email))
     if user is None or not user.is_active or not verify_password(data.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise AuthenticationError("Invalid credentials")
     return user
 
 
@@ -72,10 +72,10 @@ async def rotate_refresh_token(
 ) -> tuple[TokenResponse, str]:
     stored = await repository.get_refresh_token(session, hash_token(raw_token))
     if stored is None or not stored.is_valid:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+        raise AuthenticationError("Invalid refresh token")
     user = stored.user
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is unavailable")
+        raise AuthenticationError("User is unavailable")
     await repository.revoke(session, stored)
     return await issue_token_pair(session, user)
 

@@ -1,7 +1,8 @@
 import type { SessionAnnotation, Waveform } from "../../lib/api/sessions";
 
 export function AnnotationTimeline({ annotations, waveform }: { annotations: SessionAnnotation[]; waveform: Waveform }) {
-  const peaks = waveform.peaks.length > 0 ? waveform.peaks.slice(0, 64) : [0.2, 0.45, 0.3, 0.6, 0.4];
+  const waveformPeaks = waveform.peaks ?? [];
+  const peaks = waveformPeaks.length > 0 ? waveformPeaks.slice(0, 64) : [0.2, 0.45, 0.3, 0.6, 0.4];
 
   return (
     <section className="timeline-card" aria-label="Annotation timeline">

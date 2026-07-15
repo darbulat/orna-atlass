@@ -1,3 +1,5 @@
+import pytest
+
 from orna_atlas.app.integrations.bird_analysis import (
     ANALYSIS_MODEL_VERSION,
     BIRDNET_ANALYZER_VERSION,
@@ -43,3 +45,25 @@ def test_normalize_birdnet_detections_filters_low_confidence() -> None:
     assert detections[0].species_common_name == "Common blackbird"
     assert detections[0].starts_at_seconds == 10.0
     assert detections[0].ends_at_seconds == 13.0
+
+
+def test_normalize_birdnet_detections_rejects_non_finite_and_invalid_ranges() -> None:
+    detections = normalize_birdnet_detections(
+        [
+            {"confidence": float("nan"), "start_time": 0, "end_time": 1},
+            {"confidence": float("inf"), "start_time": 0, "end_time": 1},
+            {"confidence": 1.1, "start_time": 0, "end_time": 1},
+            {"confidence": 0.9, "start_time": -1, "end_time": 1},
+            {"confidence": 0.9, "start_time": 5, "end_time": 4},
+            {"confidence": 0.9, "start_time": 5, "end_time": 0},
+            {"confidence": 0.9, "start_time": "invalid", "end_time": 1},
+        ]
+    )
+
+    assert detections == []
+
+
+@pytest.mark.parametrize("threshold", [float("nan"), float("inf"), -0.1, 1.1])
+def test_normalize_birdnet_detections_rejects_invalid_threshold(threshold: float) -> None:
+    with pytest.raises(ValueError, match="min_confidence"):
+        normalize_birdnet_detections([], min_confidence=threshold)

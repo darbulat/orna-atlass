@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
+import { ApiError, apiErrorMessage } from "../../lib/api/client";
 import {
   fetchCurrentUser,
   fetchMembership,
@@ -19,18 +20,33 @@ export default function MembershipPage() {
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"login" | "register">("login");
   const [message, setMessage] = useState<string | null>(null);
+  const [accountLoadError, setAccountLoadError] = useState<string | null>(null);
+  const [isLoadingAccount, setIsLoadingAccount] = useState(true);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
-    Promise.all([fetchCurrentUser(), fetchMembership()])
-      .then(([currentUser, currentMembership]) => {
-        if (active) {
-          setUser(currentUser);
-          setMembership(currentMembership);
+    void (async () => {
+      try {
+        const currentUser = await fetchCurrentUser();
+        const currentMembership = await fetchMembership();
+        if (!active) return;
+        setUser(currentUser);
+        setMembership(currentMembership);
+        setAccountLoadError(null);
+      } catch (error) {
+        if (!active) return;
+        if (error instanceof ApiError && error.status === 401) {
+          setUser(null);
+          setMembership(null);
+          setAccountLoadError(null);
+        } else {
+          setAccountLoadError(apiErrorMessage(error, "Unable to load your account."));
         }
-      })
-      .catch(() => undefined);
+      } finally {
+        if (active) setIsLoadingAccount(false);
+      }
+    })();
     return () => {
       active = false;
     };
@@ -45,12 +61,13 @@ export default function MembershipPage() {
         await register(email, password);
       }
       const token = await login(email, password);
-      const entitlement = await fetchMembership();
       setUser(token.user);
+      const entitlement = await fetchMembership();
       setMembership(entitlement);
+      setAccountLoadError(null);
       setPassword("");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Authentication failed");
+      setMessage(apiErrorMessage(error, "Authentication failed"));
     } finally {
       setBusy(false);
     }
@@ -64,7 +81,7 @@ export default function MembershipPage() {
       setUser(null);
       setMembership(null);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Logout failed");
+      setMessage(apiErrorMessage(error, "Logout failed"));
     } finally {
       setBusy(false);
     }
@@ -74,6 +91,8 @@ export default function MembershipPage() {
     <main className="shell membership-page" id="main-content">
       <p className="eyebrow">ORNA Atlas</p>
       <h1>Membership</h1>
+      {isLoadingAccount ? <p role="status">Loading account…</p> : null}
+      {accountLoadError ? <p className="form-message" role="alert">{accountLoadError}</p> : null}
       {user ? (
         <section className="panel membership-card" aria-live="polite">
           <p className="eyebrow">Signed in</p>

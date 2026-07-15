@@ -1,8 +1,8 @@
 from uuid import UUID
 
-from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orna_atlas.app.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from orna_atlas.app.modules.collections import repository
 from orna_atlas.app.modules.collections.models import Collection
 from orna_atlas.app.modules.collections.schemas import (
@@ -95,25 +95,25 @@ async def list_public_collections(session: AsyncSession, *, limit: int = 50, off
 async def require_public_collection_by_slug(session: AsyncSession, slug: str) -> CollectionDetailRead:
     collection = await repository.get_collection_by_slug(session, slug)
     if collection is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+        raise NotFoundError("Collection not found")
     return detail_from_collection(collection)
 
 
 async def require_collection(session: AsyncSession, collection_id: UUID) -> Collection:
     collection = await repository.get_collection(session, collection_id)
     if collection is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+        raise NotFoundError("Collection not found")
     return collection
 
 
 async def create_collection(session: AsyncSession, data: CollectionCreate) -> CollectionAdminRead:
     if await repository.get_collection_by_slug_for_admin(session, data.slug):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Collection slug exists")
+        raise ConflictError("Collection slug exists")
     try:
         await repository.validate_location_ids(session, data.location_ids)
         await repository.validate_session_ids(session, data.session_ids)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise ValidationError(str(exc)) from exc
     collection = await repository.create_collection(session, data)
     await session.commit()
     return admin_read_from_collection(collection)
@@ -128,7 +128,7 @@ async def update_collection(
         and data.slug != collection.slug
         and await repository.get_collection_by_slug_for_admin(session, data.slug)
     ):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Collection slug exists")
+        raise ConflictError("Collection slug exists")
     if data.location_ids is not None or data.session_ids is not None:
         try:
             if data.location_ids is not None:
@@ -136,7 +136,7 @@ async def update_collection(
             if data.session_ids is not None:
                 await repository.validate_session_ids(session, data.session_ids)
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
     collection = await repository.update_collection(session, collection, data)
     await session.commit()
     return admin_read_from_collection(collection)

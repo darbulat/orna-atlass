@@ -28,7 +28,14 @@ async def _cached_response(cache_key: str, response_model, producer, *, ttl: int
         except Exception:
             cached = None
         if cached:
-            return response_model.model_validate_json(cached)
+            try:
+                return response_model.model_validate_json(cached)
+            except Exception:
+                # A stale schema or interrupted write must be a cache miss, not a public 500.
+                try:
+                    await redis.delete(cache_key)
+                except Exception:
+                    pass
         response = await producer()
         try:
             await redis.set(cache_key, response.model_dump_json(), ex=ttl)

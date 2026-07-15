@@ -50,9 +50,10 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
   const playbackProgressStyle = {
     "--playback-angle": `${playbackProgressPercent * 3.6}deg`,
   } as CSSProperties;
-  const waveformPeaks =
-    session.waveform.peaks.length > 0
-      ? session.waveform.peaks.slice(0, 52)
+  const waveformPeaks = session.waveform?.peaks ?? [];
+  const displayedWaveformPeaks =
+    waveformPeaks.length > 0
+      ? waveformPeaks.slice(0, 52)
       : [0.12, 0.22, 0.18, 0.36, 0.2, 0.48, 0.26, 0.16, 0.3, 0.2, 0.42, 0.24];
   const weatherItems = useMemo(() => buildWeatherItems(session), [session]);
 
@@ -188,7 +189,7 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
         >
           <span aria-hidden="true" />
           <strong>{isPlaying ? "Listening" : displayedState === "requesting_grant" ? "Connecting" : "Listen"}</strong>
-          <time>{formatDurationClock(session.duration_seconds)}</time>
+          <time>{formatDurationClock(session.duration_seconds ?? null)}</time>
         </button>
       </div>
 
@@ -247,7 +248,12 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
         <div className="session-timeline-footer">
           <span>{formatOffset(timelinePlayheadSeconds)}</span>
           <strong>{birdTracks.length > 0 ? `${birdTracks.length} detected species` : "Awaiting analysis"}</strong>
-          <button type="button" aria-label="Timeline help">
+          <button
+            type="button"
+            aria-label="Timeline help"
+            disabled
+            title="Timeline help is not available yet"
+          >
             ?
           </button>
         </div>
@@ -258,7 +264,7 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
           ‹
         </button>
         <div className="session-soundline" aria-hidden="true">
-          {waveformPeaks.map((peak, index) => (
+          {displayedWaveformPeaks.map((peak, index) => (
             <span key={`${peak}-${index}`} style={{ height: `${Math.max(4, peak * 28)}px` }} />
           ))}
         </div>
@@ -283,7 +289,7 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
           </button>
         </div>
         <div className="session-soundline mirrored" aria-hidden="true">
-          {waveformPeaks.map((peak, index) => (
+          {displayedWaveformPeaks.map((peak, index) => (
             <span key={`${peak}-${index}`} style={{ height: `${Math.max(4, peak * 28)}px` }} />
           ))}
         </div>
@@ -296,7 +302,7 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
             {formatLocalTime(session.recorded_at, session.location.timezone)} · {isPlaying ? "Playing" : displayedState}
           </span>
           {grant && isCurrent ? <small>Grant expires {formatClockTime(grant.expires_at)}</small> : null}
-          {error && isCurrent ? <small className="error-text">{error}</small> : null}
+          {error && isCurrent ? <small className="error-text" role="alert">{error}</small> : null}
         </div>
       </div>
     </section>

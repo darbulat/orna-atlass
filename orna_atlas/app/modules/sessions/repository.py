@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -35,6 +36,7 @@ async def list_featured_sessions(session: AsyncSession, *, limit: int = 12) -> l
         .where(
             RecordingSession.access_level == "public",
             RecordingSession.publication_status == "published",
+            RecordingSession.archived_at.is_(None),
             RecordingSession.is_featured.is_(True),
             publicly_discoverable_clause(),
             RecordingSession.media_assets.any(
@@ -73,6 +75,7 @@ async def list_sessions(
         .where(
             RecordingSession.access_level.in_(access_levels),
             RecordingSession.publication_status == "published",
+            RecordingSession.archived_at.is_(None),
             publicly_discoverable_clause(),
         )
         .order_by(RecordingSession.recorded_at.desc())
@@ -100,6 +103,7 @@ async def get_visible_session(
             RecordingSession.id == session_id,
             RecordingSession.access_level.in_(access_levels),
             RecordingSession.publication_status == "published",
+            RecordingSession.archived_at.is_(None),
             publicly_discoverable_clause(),
         )
     )
@@ -133,6 +137,7 @@ async def get_visible_session_by_slug(
             RecordingSession.slug == slug,
             RecordingSession.access_level.in_(access_levels),
             RecordingSession.publication_status == "published",
+            RecordingSession.archived_at.is_(None),
             publicly_discoverable_clause(),
         )
     )
@@ -158,8 +163,12 @@ async def update_session(session: AsyncSession, recording: RecordingSession, dat
     return recording
 
 
-async def delete_session(session: AsyncSession, recording: RecordingSession) -> None:
-    await session.delete(recording)
+async def archive_session(session: AsyncSession, recording: RecordingSession) -> None:
+    if recording.archived_at is None:
+        recording.archived_at = datetime.now(UTC)
+    recording.publication_status = "archived"
+    recording.is_featured = False
+    recording.featured_sort_order = None
     await session.flush()
 
 

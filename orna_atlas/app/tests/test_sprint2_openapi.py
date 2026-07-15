@@ -52,12 +52,20 @@ def test_public_schemas_do_not_expose_exact_coordinates_or_storage_keys() -> Non
     schema = TestClient(app).get("/openapi.json").json()
 
     location_fields = schema["components"]["schemas"]["LocationRead"]["properties"]
+    admin_location_fields = schema["components"]["schemas"]["AdminLocationRead"]["properties"]
     media_fields = schema["components"]["schemas"]["MediaAssetRead"]["properties"]
 
     assert "exact_latitude" not in location_fields
     assert "exact_longitude" not in location_fields
     assert "latitude" in location_fields
     assert "longitude" in location_fields
+    assert "public_latitude" not in location_fields
+    assert "public_longitude" not in location_fields
+    assert "metadata" not in location_fields
+    assert "archived_at" not in location_fields
+    assert {"exact_latitude", "exact_longitude", "metadata", "archived_at"} <= set(
+        admin_location_fields
+    )
     assert "storage_key" not in media_fields
 
 

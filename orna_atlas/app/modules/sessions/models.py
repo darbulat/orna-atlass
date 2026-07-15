@@ -43,6 +43,7 @@ class RecordingSession(Base):
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     featured_sort_order: Mapped[int | None] = mapped_column(Integer)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)

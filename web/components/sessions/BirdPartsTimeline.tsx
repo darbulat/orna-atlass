@@ -28,9 +28,8 @@ export function BirdPartsTimeline({ birdParts, durationSeconds }: BirdPartsTimel
               const left = (part.starts_at_seconds / total) * 100;
               const width = Math.max(((part.ends_at_seconds - part.starts_at_seconds) / total) * 100, 1.5);
               return (
-                <button
+                <span
                   key={part.id}
-                  type="button"
                   className="bird-part-marker"
                   role="listitem"
                   style={{ left: `${left}%`, width: `${width}%` }}
@@ -38,7 +37,7 @@ export function BirdPartsTimeline({ birdParts, durationSeconds }: BirdPartsTimel
                   aria-label={`${part.species_common_name}, ${part.call_type}, ${formatOffset(part.starts_at_seconds)} to ${formatOffset(part.ends_at_seconds)}`}
                 >
                   <span>{part.species_common_name}</span>
-                </button>
+                </span>
               );
             })}
           </div>

@@ -1,227 +1,26 @@
-export type LocationRead = {
-  id: string;
-  slug: string;
-  name: string;
-  description: string | null;
-  country_code: string | null;
-  region: string | null;
-  habitat: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  coordinate_visibility: string;
-  sensitivity_level: string;
-  coordinates_protected: boolean;
-  timezone: string;
-};
+import type { components } from "./generated";
+import { ApiError, fetchJson } from "./client";
 
-export type MediaAssetRead = {
-  id: string;
-  session_id: string;
-  kind: string;
-  mime_type: string;
-  processing_status: string;
-  duration_seconds: number | null;
-  size_bytes: number | null;
-  checksum: string | null;
-  revision: number;
-  is_active: boolean;
-  archived_at: string | null;
-  source_asset_id: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  processing_jobs?: ProcessingJobRead[];
-};
-
-export type ProcessingJobRead = {
-  id: string;
-  asset_id: string;
-  job_type: string;
-  status: string;
-  attempt_count: number;
-  error_code: string | null;
-  error_message: string | null;
-  started_at: string | null;
-  finished_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type RecordingIntegrity = {
-  human_noise_level: string;
-  post_processing: string;
-  microphone_setup: string | null;
-  recordist_notes: string | null;
-};
-
-export type Waveform = {
-  session_id: string | null;
-  duration_seconds: number | null;
-  peaks: number[];
-  sample_rate: number;
-  status: string;
-};
-
-export type SessionAnnotation = {
-  offset_seconds: number;
-  duration_seconds: number | null;
-  label: string;
-  annotation_type: string;
-  confidence: number | null;
-  metadata: Record<string, unknown>;
-};
-
-export type BirdVocalPart = {
-  id: string;
-  species_code: string;
-  species_common_name: string;
-  species_scientific_name: string | null;
-  starts_at_seconds: number;
-  ends_at_seconds: number;
-  confidence: number | null;
-  channel: string | null;
-  call_type: string;
-  metadata: Record<string, unknown>;
-};
-
-export type BirdPartsResponse = {
-  session_id: string;
-  analysis_provider: string | null;
-  analysis_model_version: string | null;
-  parts: BirdVocalPart[];
-};
-
-export type FeaturedSession = {
-  id: string;
-  slug: string;
-  title: string;
-  description: string | null;
-  recorded_at: string;
-  duration_seconds: number | null;
-  featured_sort_order: number | null;
-  location: LocationRead;
-};
-
-export type SessionDetail = {
-  id: string;
-  location_id: string;
-  slug: string;
-  title: string;
-  description: string | null;
-  recorded_at: string;
-  duration_seconds: number | null;
-  recorder: string | null;
-  weather: string | null;
-  access_level: string;
-  publication_status: "draft" | "published" | "archived";
-  processing_status: string;
-  media_assets: MediaAssetRead[];
-  location: LocationRead;
-  recording_integrity: RecordingIntegrity;
-  waveform: Waveform;
-  annotations: SessionAnnotation[];
-  bird_parts: BirdPartsResponse | null;
-  is_featured: boolean;
-};
-
-export type PlaybackGrant = {
-  session_id: string;
-  status: string;
-  stream_url: string;
-  expires_at: string;
-  refresh_after_seconds: number;
-};
-
-export type AtlasSessionSummary = {
-  id: string;
-  slug: string;
-  title: string;
-  recorded_at: string;
-  duration_seconds: number | null;
-};
-
-export type AtlasPoint = {
-  type: "point";
-  id: string;
-  slug: string;
-  name: string;
-  description: string | null;
-  country_code: string | null;
-  region: string | null;
-  habitat: string | null;
-  latitude: number;
-  longitude: number;
-  timezone: string;
-  coordinate_visibility: string;
-  sensitivity_level: string;
-  session_count: number;
-  latest_session: AtlasSessionSummary | null;
-};
-
-export type AtlasCluster = {
-  type: "cluster";
-  id: string;
-  latitude: number;
-  longitude: number;
-  count: number;
-  habitats: string[];
-};
-
-export type AtlasPointsResponse = {
-  bbox: [number, number, number, number] | null;
-  zoom: number;
-  mode: "points" | "clusters";
-  points: Array<AtlasPoint | AtlasCluster>;
-  cache_key: string;
-};
-
-export type DawnWindowConfig = {
-  before_minutes: number;
-  after_minutes: number;
-  refresh_seconds: number;
-};
-
-export type DawnLocation = {
-  location: AtlasPoint;
-  local_date: string;
-  local_time: string;
-  civil_dawn_at: string | null;
-  sunrise_at: string | null;
-  sunset_at: string | null;
-  civil_dusk_at: string | null;
-  window_starts_at: string | null;
-  window_ends_at: string | null;
-  minutes_until_sunrise: number | null;
-  state: "active" | "upcoming" | "past" | "polar";
-  solar_phase: "night" | "civil_dawn" | "daylight" | "civil_dusk" | "polar_day" | "polar_night";
-};
-
-export type DawnCurrentResponse = {
-  generated_at: string;
-  window: DawnWindowConfig;
-  active_locations: DawnLocation[];
-  next_locations: DawnLocation[];
-  cache_key: string;
-};
-
-export type DawnFollowResponse = {
-  generated_at: string;
-  window: DawnWindowConfig;
-  locations: DawnLocation[];
-  cache_key: string;
-};
-
-export type SearchResult = {
-  type: "location" | "session";
-  id: string;
-  slug: string;
-  title: string;
-  subtitle: string | null;
-  habitat: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  session_slug: string | null;
-  atlas_point: AtlasPoint | null;
-};
+export type LocationRead = components["schemas"]["LocationRead"];
+export type MediaAssetRead = components["schemas"]["MediaAssetRead"];
+export type ProcessingJobRead = components["schemas"]["ProcessingJobRead"];
+export type RecordingIntegrity = components["schemas"]["RecordingIntegrityRead"];
+export type Waveform = components["schemas"]["WaveformRead"];
+export type SessionAnnotation = components["schemas"]["SessionAnnotationRead"];
+export type BirdVocalPart = components["schemas"]["BirdVocalPartRead"];
+export type BirdPartsResponse = components["schemas"]["BirdPartsResponse"];
+export type FeaturedSession = components["schemas"]["FeaturedSessionRead"];
+export type SessionDetail = components["schemas"]["SessionDetailRead"];
+export type PlaybackGrant = components["schemas"]["PlaybackGrantRead"];
+export type AtlasSessionSummary = components["schemas"]["AtlasSessionSummary"];
+export type AtlasPoint = components["schemas"]["AtlasPoint"];
+export type AtlasCluster = components["schemas"]["AtlasCluster"];
+export type AtlasPointsResponse = components["schemas"]["AtlasPointsResponse"];
+export type DawnWindowConfig = components["schemas"]["DawnWindowConfig"];
+export type DawnLocation = components["schemas"]["DawnLocation"];
+export type DawnCurrentResponse = components["schemas"]["DawnCurrentResponse"];
+export type DawnFollowResponse = components["schemas"]["DawnFollowResponse"];
+export type SearchResult = components["schemas"]["SearchResult"];
 
 const browserApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const serverApiBaseUrl = process.env.API_SERVER_URL ?? browserApiBaseUrl;
@@ -231,55 +30,31 @@ export function apiUrl(path: string): string {
   return `${baseUrl}${path}`;
 }
 
-export async function fetchFeaturedSessions(limit = 6): Promise<FeaturedSession[]> {
-  try {
-    const response = await fetch(apiUrl(`/api/v1/sessions/featured?limit=${limit}`), {
-      next: { revalidate: 120 },
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) {
-      return [];
-    }
-    return (await response.json()) as FeaturedSession[];
-  } catch {
-    return [];
-  }
+export function fetchFeaturedSessions(limit = 6): Promise<FeaturedSession[]> {
+  return fetchJson<FeaturedSession[]>(apiUrl(`/api/v1/sessions/featured?limit=${limit}`), {
+    next: { revalidate: 120 },
+    headers: { Accept: "application/json" },
+  });
 }
 
-export async function fetchBirdParts(sessionId: string): Promise<BirdPartsResponse | null> {
-  try {
-    const response = await fetch(apiUrl(`/api/v1/sessions/${sessionId}/bird-parts`), {
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) {
-      return null;
-    }
-    return (await response.json()) as BirdPartsResponse;
-  } catch {
-    return null;
-  }
+export function fetchBirdParts(sessionId: string): Promise<BirdPartsResponse> {
+  return fetchJson<BirdPartsResponse>(apiUrl(`/api/v1/sessions/${sessionId}/bird-parts`), {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
 }
 
-export async function fetchSessionDetail(
+export function fetchSessionDetail(
   slug: string,
   forwardedHeaders: HeadersInit = {},
-): Promise<SessionDetail | null> {
-  try {
-    const response = await fetch(apiUrl(`/api/v1/sessions/${slug}`), {
-      cache: "no-store",
-      headers: { Accept: "application/json", ...forwardedHeaders },
-    });
-    if (!response.ok) {
-      return null;
-    }
-    return (await response.json()) as SessionDetail;
-  } catch {
-    return null;
-  }
+): Promise<SessionDetail> {
+  return fetchJson<SessionDetail>(apiUrl(`/api/v1/sessions/${slug}`), {
+    cache: "no-store",
+    headers: { Accept: "application/json", ...forwardedHeaders },
+  });
 }
 
-export async function fetchAtlasPoints(
+export function fetchAtlasPoints(
   _view: string | undefined,
   habitats: string[] = [],
 ): Promise<AtlasPointsResponse> {
@@ -287,107 +62,63 @@ export async function fetchAtlasPoints(
   const params = new URLSearchParams({ zoom: String(zoom), limit: "250" });
   habitats.forEach((habitat) => params.append("habitat", habitat));
 
-  try {
-    const response = await fetch(apiUrl(`/api/v1/atlas/points?${params.toString()}`), {
-      next: { revalidate: 60 },
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) {
-      return { bbox: null, zoom, mode: "points", points: [], cache_key: "atlas:points:empty" };
-    }
-    return (await response.json()) as AtlasPointsResponse;
-  } catch {
-    return { bbox: null, zoom, mode: "points", points: [], cache_key: "atlas:points:empty" };
-  }
+  return fetchJson<AtlasPointsResponse>(apiUrl(`/api/v1/atlas/points?${params.toString()}`), {
+    next: { revalidate: 60 },
+    headers: { Accept: "application/json" },
+  });
 }
 
-export async function searchAtlas(query: string, limit = 8): Promise<SearchResult[]> {
+export function searchAtlas(query: string, limit = 8): Promise<SearchResult[]> {
   const trimmed = query.trim();
   if (trimmed.length < 2) {
-    return [];
+    return Promise.resolve([]);
   }
   const params = new URLSearchParams({ q: trimmed, limit: String(limit) });
 
-  try {
-    const response = await fetch(apiUrl(`/api/v1/search?${params.toString()}`), {
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) {
-      return [];
-    }
-    return (await response.json()) as SearchResult[];
-  } catch {
-    return [];
-  }
+  return fetchJson<SearchResult[]>(apiUrl(`/api/v1/search?${params.toString()}`), {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
 }
 
-export async function fetchCurrentDawn(limit = 250): Promise<DawnCurrentResponse> {
+export function fetchCurrentDawn(limit = 250): Promise<DawnCurrentResponse> {
   const normalizedLimit = Math.max(1, Math.min(Math.ceil(limit), 1000));
   const params = new URLSearchParams({ limit: String(normalizedLimit) });
 
-  try {
-    const response = await fetch(apiUrl(`/api/v1/atlas/dawn/current?${params.toString()}`), {
-      next: { revalidate: 60 },
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) {
-      throw new Error("Unable to load dawn");
-    }
-    return (await response.json()) as DawnCurrentResponse;
-  } catch {
-    return {
-      generated_at: new Date().toISOString(),
-      window: { before_minutes: 45, after_minutes: 30, refresh_seconds: 60 },
-      active_locations: [],
-      next_locations: [],
-      cache_key: "atlas:dawn:current:empty",
-    };
-  }
+  return fetchJson<DawnCurrentResponse>(apiUrl(`/api/v1/atlas/dawn/current?${params.toString()}`), {
+    next: { revalidate: 60 },
+    headers: { Accept: "application/json" },
+  });
 }
 
-export async function fetchFollowDawn(): Promise<DawnFollowResponse> {
-  try {
-    const response = await fetch(apiUrl("/api/v1/atlas/dawn/follow"), {
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) {
-      throw new Error("Unable to load follow dawn");
-    }
-    return (await response.json()) as DawnFollowResponse;
-  } catch {
-    return {
-      generated_at: new Date().toISOString(),
-      window: { before_minutes: 45, after_minutes: 30, refresh_seconds: 60 },
-      locations: [],
-      cache_key: "atlas:dawn:follow:empty",
-    };
-  }
+export function fetchFollowDawn(): Promise<DawnFollowResponse> {
+  return fetchJson<DawnFollowResponse>(apiUrl("/api/v1/atlas/dawn/follow"), {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
 }
 
 export async function requestPlaybackGrant(sessionId: string, signal?: AbortSignal): Promise<PlaybackGrant> {
-  const requestGrant = () => fetch(apiUrl(`/api/v1/sessions/${sessionId}/playback-grants`), {
+  const requestGrant = () => fetchJson<PlaybackGrant>(apiUrl(`/api/v1/sessions/${sessionId}/playback-grants`), {
     method: "POST",
     credentials: "include",
     signal,
     headers: { Accept: "application/json" },
   });
-  let response = await requestGrant();
-  if (response.status === 401) {
-    const refreshResponse = await fetch(apiUrl("/api/v1/auth/refresh"), {
-      method: "POST",
-      credentials: "include",
-      signal,
-      headers: { Accept: "application/json" },
-    });
-    if (refreshResponse.ok) {
-      response = await requestGrant();
+
+  try {
+    return await requestGrant();
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) {
+      throw error;
     }
   }
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(payload?.detail ?? "Unable to create playback grant");
-  }
-  return (await response.json()) as PlaybackGrant;
+
+  await fetchJson<components["schemas"]["TokenResponse"]>(apiUrl("/api/v1/auth/refresh"), {
+    method: "POST",
+    credentials: "include",
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  return requestGrant();
 }

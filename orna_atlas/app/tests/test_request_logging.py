@@ -1,10 +1,16 @@
 import json
 import logging
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from orna_atlas.app.core.logging import JsonFormatter, RequestLoggingMiddleware
+from orna_atlas.app.core.metrics import metrics_response
+from orna_atlas.app.main import app as atlas_app
 
 
 def test_json_formatter_includes_structured_fields() -> None:
@@ -33,3 +39,60 @@ def test_request_middleware_preserves_valid_correlation_id(caplog) -> None:
     assert record.request_id == "trace-123"
     assert record.status_code == 200
     assert record.duration_ms >= 0
+
+
+def test_metrics_endpoint_exposes_prometheus_payload() -> None:
+    response = TestClient(atlas_app).get("/metrics")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert "orna_http_requests_total" in response.text
+
+
+def test_unmatched_paths_share_one_bounded_metrics_label() -> None:
+    app = FastAPI()
+    app.add_middleware(RequestLoggingMiddleware)
+    client = TestClient(app)
+
+    assert client.get("/missing-one-unique").status_code == 404
+    assert client.get("/missing-two-unique").status_code == 404
+
+    payload = metrics_response().body.decode()
+    assert 'route="__unmatched__"' in payload
+    assert "missing-one-unique" not in payload
+    assert "missing-two-unique" not in payload
+
+
+def test_worker_metrics_aggregate_forked_processes(tmp_path: Path) -> None:
+    environment = {
+        **os.environ,
+        "PROMETHEUS_MULTIPROC_DIR": str(tmp_path),
+    }
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from orna_atlas.app.core.metrics import PIPELINE_JOBS; "
+                "PIPELINE_JOBS.labels('succeeded').inc()"
+            ),
+        ],
+        check=True,
+        env=environment,
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from orna_atlas.app.core.metrics import metrics_response; "
+                "print(metrics_response().body.decode())"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        env=environment,
+        text=True,
+    )
+
+    assert 'orna_pipeline_jobs_total{status="succeeded"} 1.0' in result.stdout

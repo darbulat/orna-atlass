@@ -1,4 +1,14 @@
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: alembic upgrade head
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -8,7 +18,10 @@ services:
       S3_PUBLIC_ENDPOINT_URL: http://localhost:9000
     ports:
       - "8000:8000"
+    restart: unless-stopped
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -21,10 +34,50 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.api
-    command: python -m orna_atlas.app.workers.audio_pipeline worker
+      dockerfile: Dockerfile.worker
     env_file: .env
+    ports:
+      - "9101:9101"
+    restart: unless-stopped
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  storage-cleanup-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: python -m orna_atlas.app.workers.storage_cleanup worker
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  pipeline-recovery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: python -m orna_atlas.app.workers.pipeline_recovery worker
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:

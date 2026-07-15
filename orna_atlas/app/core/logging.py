@@ -4,6 +4,7 @@ import json
 import logging
 import time
 import uuid
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,8 +12,11 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
+from orna_atlas.app.core.metrics import HTTP_DURATION, HTTP_REQUESTS
+
 REQUEST_ID_HEADER = "X-Request-ID"
 request_logger = logging.getLogger("orna_atlas.request")
+request_id_context: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 
 class JsonFormatter(logging.Formatter):
@@ -49,6 +53,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         request_id = _request_id(request.headers.get(REQUEST_ID_HEADER))
+        context_token = request_id_context.set(request_id)
         started = time.perf_counter()
         status_code = 500
         response: Response | None = None
@@ -58,6 +63,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             return response
         finally:
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
+            # Raw 404 paths are attacker-controlled and would create an
+            # unbounded number of Prometheus label values.
+            route = getattr(request.scope.get("route"), "path", "__unmatched__")
+            HTTP_REQUESTS.labels(request.method, route, str(status_code)).inc()
+            HTTP_DURATION.labels(request.method, route).observe(duration_ms / 1000)
             request_logger.info(
                 "request_complete",
                 extra={
@@ -71,9 +81,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             )
             if response is not None:
                 response.headers[REQUEST_ID_HEADER] = request_id
+            request_id_context.reset(context_token)
 
 
 def _request_id(candidate: str | None) -> str:
     if candidate and 0 < len(candidate) <= 128 and candidate.isascii():
         return candidate
     return str(uuid.uuid4())
+
+
+def current_request_id() -> str | None:
+    return request_id_context.get()

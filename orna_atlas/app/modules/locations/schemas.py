@@ -5,14 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validat
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from orna_atlas.app.core.domain_types import CoordinateVisibility, SensitivityLevel
-
-
-def _reject_required_nulls(data: dict, fields: set[str]) -> dict:
-    null_fields = sorted(field for field in fields if field in data and data[field] is None)
-    if null_fields:
-        joined = ", ".join(null_fields)
-        raise ValueError(f"Fields may be omitted but cannot be null: {joined}")
-    return data
+from orna_atlas.app.core.schema_validation import reject_required_nulls
 
 
 class LocationBase(BaseModel):
@@ -96,7 +89,7 @@ class LocationUpdate(BaseModel):
     @classmethod
     def reject_required_nulls(cls, data: object) -> object:
         if isinstance(data, dict):
-            return _reject_required_nulls(
+            return reject_required_nulls(
                 data,
                 {
                     "slug",
@@ -113,6 +106,8 @@ class LocationUpdate(BaseModel):
 
 
 class LocationRead(BaseModel):
+    """Explicit public projection; never expose exact coordinates or internal metadata."""
+
     id: UUID
     slug: str
     name: str
@@ -122,14 +117,9 @@ class LocationRead(BaseModel):
     habitat: str | None
     latitude: float | None = Field(ge=-90, le=90)
     longitude: float | None = Field(ge=-180, le=180)
-    public_latitude: float | None = Field(default=None, ge=-90, le=90)
-    public_longitude: float | None = Field(default=None, ge=-180, le=180)
     coordinate_visibility: CoordinateVisibility
     sensitivity_level: SensitivityLevel
     timezone: str
-    metadata: dict = Field(validation_alias="metadata_")
-    created_at: datetime
-    updated_at: datetime
 
     @field_validator("coordinate_visibility", mode="before")
     @classmethod
@@ -143,3 +133,33 @@ class LocationRead(BaseModel):
     def coordinates_protected(self) -> bool:
         sensitive_levels = {"protected", "high", "medium"}
         return self.coordinate_visibility != "exact_public" or self.sensitivity_level in sensitive_levels
+
+
+class AdminLocationRead(BaseModel):
+    """Authorized editorial projection containing exact and operational fields."""
+
+    id: UUID
+    slug: str
+    name: str
+    description: str | None
+    country_code: str | None
+    region: str | None
+    habitat: str | None
+    exact_latitude: float = Field(ge=-90, le=90)
+    exact_longitude: float = Field(ge=-180, le=180)
+    public_latitude: float | None = Field(default=None, ge=-90, le=90)
+    public_longitude: float | None = Field(default=None, ge=-180, le=180)
+    coordinate_visibility: CoordinateVisibility
+    sensitivity_level: SensitivityLevel
+    timezone: str
+    metadata: dict = Field(validation_alias="metadata_")
+    archived_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("coordinate_visibility", mode="before")
+    @classmethod
+    def map_legacy_visibility(cls, value: object) -> object:
+        return CoordinateVisibility.APPROXIMATE_PUBLIC if value == "public_only" else value
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)

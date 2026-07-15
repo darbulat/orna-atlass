@@ -2,11 +2,11 @@ from uuid import UUID
 
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from orna_atlas.app.modules.media.models import MediaAsset, ProcessingJob
+from orna_atlas.app.modules.media.models import MediaAsset, ProcessingJob, StorageCleanupJob
 from orna_atlas.app.modules.media.schemas import MediaAssetCreate, MediaAssetUpdate
 from orna_atlas.app.modules.sessions.models import RecordingSession
 
@@ -123,7 +123,10 @@ async def active_processing_job(
     return result.scalar_one_or_none()
 
 
-async def activate_rendition(session: AsyncSession, rendition: MediaAsset) -> None:
+async def activate_rendition(
+    session: AsyncSession,
+    rendition: MediaAsset,
+) -> list[MediaAsset]:
     result = await session.execute(
         select(MediaAsset)
         .where(
@@ -135,16 +138,117 @@ async def activate_rendition(session: AsyncSession, rendition: MediaAsset) -> No
         )
         .with_for_update()
     )
-    await archive_assets(session, list(result.scalars()))
+    archived = list(result.scalars())
+    await archive_assets(session, archived)
     rendition.processing_status = "ready"
     rendition.is_active = True
     rendition.archived_at = None
     await session.flush()
+    return archived
+
+
+async def incomplete_streaming_renditions_for_recovery(
+    session: AsyncSession,
+    asset: MediaAsset,
+) -> list[MediaAsset]:
+    """Find unactivated rendition attempts left behind by a timed-out pipeline."""
+    result = await session.execute(
+        select(MediaAsset)
+        .where(
+            MediaAsset.session_id == asset.session_id,
+            MediaAsset.kind == "streaming_rendition",
+            MediaAsset.is_active.is_(False),
+            MediaAsset.archived_at.is_(None),
+        )
+        .with_for_update()
+    )
+    return list(result.scalars())
 
 
 async def delete_asset(session: AsyncSession, asset: MediaAsset) -> None:
     await session.execute(delete(MediaAsset).where(MediaAsset.id == asset.id))
     await session.flush()
+
+
+async def schedule_storage_cleanup(
+    session: AsyncSession,
+    assets: list[MediaAsset],
+    *,
+    retain_until: datetime,
+) -> list[StorageCleanupJob]:
+    """Create one durable cleanup request per storage key without duplicating retries."""
+    candidates = [
+        asset for asset in assets if getattr(asset, "storage_deleted_at", None) is None
+    ]
+    if not candidates:
+        return []
+    # Serialize query-then-create on the canonical asset rows so concurrent
+    # archive requests cannot race into the cleanup-job unique constraints.
+    await session.execute(
+        select(MediaAsset.id)
+        .where(MediaAsset.id.in_([asset.id for asset in candidates]))
+        .order_by(MediaAsset.id)
+        .with_for_update()
+    )
+    keys = [asset.storage_key for asset in candidates]
+    result = await session.execute(
+        select(StorageCleanupJob).where(StorageCleanupJob.storage_key.in_(keys))
+    )
+    existing = {job.storage_key: job for job in result.scalars()}
+    jobs: list[StorageCleanupJob] = []
+    for asset in candidates:
+        job = existing.get(asset.storage_key)
+        if job is None:
+            job = StorageCleanupJob(
+                asset=asset,
+                storage_key=asset.storage_key,
+                retain_until=retain_until,
+                next_attempt_at=retain_until,
+            )
+            session.add(job)
+        elif job.status != "succeeded" and retain_until < job.retain_until:
+            job.retain_until = retain_until
+            job.next_attempt_at = min(job.next_attempt_at, retain_until)
+        jobs.append(job)
+    await session.flush()
+    return jobs
+
+
+async def get_storage_cleanup_job_for_update(
+    session: AsyncSession, job_id: UUID
+) -> StorageCleanupJob | None:
+    result = await session.execute(
+        select(StorageCleanupJob)
+        .options(selectinload(StorageCleanupJob.asset))
+        .where(StorageCleanupJob.id == job_id)
+        .with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
+async def due_storage_cleanup_job_ids(
+    session: AsyncSession,
+    *,
+    now: datetime,
+    stale_before: datetime,
+    limit: int = 50,
+) -> list[UUID]:
+    result = await session.execute(
+        select(StorageCleanupJob.id)
+        .where(
+            StorageCleanupJob.next_attempt_at <= now,
+            or_(
+                StorageCleanupJob.status.in_(("pending", "failed")),
+                and_(
+                    StorageCleanupJob.status == "running",
+                    StorageCleanupJob.locked_at < stale_before,
+                ),
+            ),
+        )
+        .order_by(StorageCleanupJob.next_attempt_at, StorageCleanupJob.created_at)
+        .limit(limit)
+    )
+    return list(result.scalars())
 
 
 async def update_media_asset(
@@ -157,9 +261,19 @@ async def update_media_asset(
 
 
 async def create_processing_job(
-    session: AsyncSession, asset: MediaAsset, *, job_type: str, status: str = "queued"
+    session: AsyncSession,
+    asset: MediaAsset,
+    *,
+    job_type: str,
+    status: str = "queued",
+    request_id: str | None = None,
 ) -> ProcessingJob:
-    job = ProcessingJob(asset=asset, job_type=job_type, status=status)
+    job = ProcessingJob(
+        asset=asset,
+        job_type=job_type,
+        status=status,
+        request_id=request_id,
+    )
     session.add(job)
     await session.flush()
     return job
@@ -173,3 +287,41 @@ async def latest_processing_job(
         statement = statement.where(ProcessingJob.job_type == job_type)
     result = await session.execute(statement.order_by(ProcessingJob.created_at.desc()).limit(1))
     return result.scalar_one_or_none()
+
+
+async def stale_processing_asset_ids(
+    session: AsyncSession,
+    *,
+    stale_before: datetime,
+    limit: int = 25,
+) -> list[UUID]:
+    result = await session.execute(
+        select(ProcessingJob.asset_id)
+        .where(
+            or_(
+                and_(
+                    ProcessingJob.status == "running",
+                    ProcessingJob.heartbeat_at.is_not(None),
+                    ProcessingJob.heartbeat_at < stale_before,
+                ),
+                and_(
+                    ProcessingJob.status == "queued",
+                    func.coalesce(
+                        ProcessingJob.updated_at,
+                        ProcessingJob.created_at,
+                    )
+                    < stale_before,
+                ),
+            )
+        )
+        .order_by(
+            func.coalesce(
+                ProcessingJob.heartbeat_at,
+                ProcessingJob.updated_at,
+                ProcessingJob.created_at,
+            ),
+            ProcessingJob.created_at,
+        )
+        .limit(limit)
+    )
+    return list(result.scalars())

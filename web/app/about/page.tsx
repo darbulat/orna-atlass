@@ -1,3 +1,21 @@
-export default function Page() {
-  return <main className="shell"><p className="eyebrow">ORNA Atlas</p><h1>About</h1><p>This route is ready for Sprint 1 and will be expanded in later phases.</p></main>;
+import Link from "next/link";
+
+export default function AboutPage() {
+  return (
+    <main className="shell" id="main-content">
+      <p className="eyebrow">About ORNA Atlas</p>
+      <h1>Listen to places, not playlists.</h1>
+      <p>
+        ORNA Atlas is a map-first archive of long-form natural soundscapes. Public
+        coordinates follow the visibility policy of each recording site, and
+        sensitive locations are generalized or hidden.
+      </p>
+      <p>
+        Sessions preserve continuous field recordings, contextual notes, dawn
+        timing, and reviewed bird-vocal activity without presenting generated
+        fallback audio as a real recording.
+      </p>
+      <Link href="/atlas">Explore the atlas</Link>
+    </main>
+  );
 }

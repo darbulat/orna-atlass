@@ -50,7 +50,10 @@ async def test_current_dawn_returns_active_locations(monkeypatch) -> None:
     now = datetime(2026, 3, 20, 6, 4, tzinfo=UTC)
     sunrise_at = now + timedelta(minutes=5)
 
-    async def fake_locations(session, *, bbox, habitats, limit):
+    requested: dict[str, float | int] = {}
+
+    async def fake_locations(session, *, target_longitude, limit):
+        requested.update(target_longitude=target_longitude, limit=limit)
         return [location]
 
     def fake_window(**kwargs):
@@ -63,7 +66,11 @@ async def test_current_dawn_returns_active_locations(monkeypatch) -> None:
             window_ends_at=sunrise_at + timedelta(minutes=30),
         )
 
-    monkeypatch.setattr(service.repository, "list_atlas_locations", fake_locations)
+    monkeypatch.setattr(
+        service.repository,
+        "list_dawn_candidate_locations",
+        fake_locations,
+    )
     monkeypatch.setattr(service, "dawn_window", fake_window)
 
     payload = await service.get_current_dawn(SimpleNamespace(), now=now, limit=5)
@@ -74,6 +81,7 @@ async def test_current_dawn_returns_active_locations(monkeypatch) -> None:
     assert payload.active_locations[0].state == "active"
     assert payload.active_locations[0].minutes_until_sunrise == 5
     assert payload.cache_key == service.stable_dawn_cache_key(kind="current", now=now, limit=5)
+    assert requested == {"target_longitude": -1.0, "limit": 128}
 
 
 def test_dawn_cache_key_uses_minute_bucket() -> None:
@@ -96,7 +104,7 @@ async def test_current_dawn_rolls_past_windows_into_next_locations(monkeypatch) 
     location = public_location(latitude=57.0, longitude=24.0)
     now = datetime(2026, 7, 6, 14, 0, tzinfo=UTC)
 
-    async def fake_locations(session, *, bbox, habitats, limit):
+    async def fake_locations(session, *, target_longitude, limit):
         return [location]
 
     def fake_window(**kwargs):
@@ -114,7 +122,11 @@ async def test_current_dawn_rolls_past_windows_into_next_locations(monkeypatch) 
             window_ends_at=sunrise_at + timedelta(minutes=30),
         )
 
-    monkeypatch.setattr(service.repository, "list_atlas_locations", fake_locations)
+    monkeypatch.setattr(
+        service.repository,
+        "list_dawn_candidate_locations",
+        fake_locations,
+    )
     monkeypatch.setattr(service, "dawn_window", fake_window)
 
     payload = await service.get_current_dawn(SimpleNamespace(), now=now, limit=5)
