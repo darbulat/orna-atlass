@@ -2567,6 +2567,105 @@
         "title": "RecordingIntegrityRead",
         "type": "object"
       },
+      "RecordingSegmentBatchCreate": {
+        "properties": {
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/RecordingSegmentCreate"
+            },
+            "minItems": 1,
+            "title": "Segments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "segments"
+        ],
+        "title": "RecordingSegmentBatchCreate",
+        "type": "object"
+      },
+      "RecordingSegmentCreate": {
+        "properties": {
+          "checksum": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checksum"
+          },
+          "sequence_number": {
+            "minimum": 1.0,
+            "title": "Sequence Number",
+            "type": "integer"
+          },
+          "storage_key": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Storage Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence_number",
+          "storage_key"
+        ],
+        "title": "RecordingSegmentCreate",
+        "type": "object"
+      },
+      "RecordingSegmentRead": {
+        "properties": {
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "sequence_number": {
+            "title": "Sequence Number",
+            "type": "integer"
+          },
+          "source_asset_id": {
+            "format": "uuid",
+            "title": "Source Asset Id",
+            "type": "string"
+          },
+          "start_offset_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Offset Ms"
+          }
+        },
+        "required": [
+          "id",
+          "sequence_number",
+          "start_offset_ms",
+          "duration_ms",
+          "source_asset_id"
+        ],
+        "title": "RecordingSegmentRead",
+        "type": "object"
+      },
       "RegisterRequest": {
         "properties": {
           "email": {
@@ -5032,6 +5131,200 @@
         ]
       }
     },
+    "/api/v1/admin/sessions/{session_id}/segments": {
+      "post": {
+        "operationId": "register_session_segments_api_v1_admin_sessions__session_id__segments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordingSegmentBatchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecordingSegmentRead"
+                  },
+                  "title": "Response Register Session Segments Api V1 Admin Sessions  Session Id  Segments Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Session Segments",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/sessions/{session_id}/segments/process": {
+      "post": {
+        "operationId": "retry_session_segments_api_v1_admin_sessions__session_id__segments_process_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Session Segments",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/users/{user_id}/role": {
       "patch": {
         "operationId": "update_user_role_api_v1_admin_users__user_id__role_patch",
@@ -5711,6 +6004,65 @@
         "summary": "Get Location",
         "tags": [
           "locations"
+        ]
+      }
+    },
+    "/api/v1/media/hls/{asset_id}/{token}/{object_name}": {
+      "get": {
+        "operationId": "get_hls_object_api_v1_media_hls__asset_id___token___object_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "object_name",
+            "required": true,
+            "schema": {
+              "title": "Object Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Hls Object",
+        "tags": [
+          "media"
         ]
       }
     },

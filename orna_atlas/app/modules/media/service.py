@@ -47,6 +47,7 @@ from orna_atlas.app.modules.media.models import (
     MediaAsset,
     ProcessingJob,
     RecordingSegment,
+    StorageCleanupJob,
 )
 from orna_atlas.app.modules.media.schemas import (
     MediaAssetCreate,
@@ -174,7 +175,7 @@ async def register_recording_segments(
     try:
         from orna_atlas.app.workers.audio_pipeline import enqueue_hls_processing
 
-        job.rq_job_id = await asyncio.to_thread(
+        job.queue_job_id = await asyncio.to_thread(
             enqueue_hls_processing, job.id, request_id=current_request_id()
         )
         await session.commit()
@@ -187,6 +188,37 @@ async def register_recording_segments(
         await session.commit()
         raise ServiceUnavailableError("Unable to enqueue HLS processing") from exc
     return segments, job
+
+
+async def retry_hls_processing(session: AsyncSession, session_id: UUID) -> HlsProcessingJob:
+    recording = await sessions_service.require_session_for_admin(session, session_id)
+    job = await repository.latest_hls_processing_job(session, session_id, for_update=True)
+    if job is None:
+        raise NotFoundError("HLS processing job not found")
+    if job.status in {"queued", "running", "succeeded"}:
+        return job
+    from orna_atlas.app.workers.audio_pipeline import enqueue_hls_processing
+
+    job.status = "queued"
+    job.error_code = None
+    job.error_message = None
+    job.finished_at = None
+    recording.processing_status = "queued"
+    await session.commit()
+    try:
+        job.queue_job_id = await asyncio.to_thread(
+            enqueue_hls_processing, job.id, request_id=current_request_id()
+        )
+        await session.commit()
+    except Exception as exc:
+        job.status = "failed"
+        job.error_code = "queue_unavailable"
+        job.error_message = str(exc)[:2000]
+        job.finished_at = datetime.now(UTC)
+        recording.processing_status = "failed"
+        await session.commit()
+        raise ServiceUnavailableError("Unable to enqueue HLS processing") from exc
+    return job
 
 
 async def process_hls_job(session: AsyncSession, job_id: UUID) -> None:
@@ -209,14 +241,24 @@ async def process_hls_job(session: AsyncSession, job_id: UUID) -> None:
     generation_id = uuid4()
     prefix = f"sessions/{job.session_id}/hls/{generation_id}"
     storage = get_object_storage_client()
+    partial_inventory: list[str] = []
     try:
         packaged = await asyncio.to_thread(
             package_segmented_hls,
             storage,
             [segment.source_asset.storage_key for segment in segments],
             prefix,
+            partial_inventory,
         )
     except Exception as exc:
+        if partial_inventory:
+            session.add(
+                StorageCleanupJob(
+                    storage_key=f"{prefix}/index.m3u8",
+                    object_keys=list(partial_inventory),
+                    retain_until=datetime.now(UTC),
+                )
+            )
         failed = await repository.get_hls_processing_job(session, job_id, for_update=True)
         if failed is not None:
             failed.status = "failed"
@@ -224,6 +266,8 @@ async def process_hls_job(session: AsyncSession, job_id: UUID) -> None:
             failed.error_message = str(exc)[:2000]
             failed.finished_at = datetime.now(UTC)
             failed.stage_states = {**failed.stage_states, "packaging": "failed"}
+            recording = await sessions_service.require_session_for_admin(session, failed.session_id)
+            recording.processing_status = "failed"
             await session.commit()
         raise
 
@@ -236,6 +280,7 @@ async def process_hls_job(session: AsyncSession, job_id: UUID) -> None:
         segment.start_offset_ms = offset
         segment.duration_ms = duration_ms
         segment.processing_status = "ready"
+        segment.source_asset.processing_status = "ready"
         offset += duration_ms
 
     recording = await sessions_service.require_session_for_admin(session, job.session_id)
@@ -258,7 +303,11 @@ async def process_hls_job(session: AsyncSession, job_id: UUID) -> None:
     )
     session.add(rendition)
     await session.flush()
-    await repository.activate_rendition(session, rendition)
+    replaced = await repository.activate_rendition(session, rendition)
+    if replaced:
+        await repository.schedule_storage_cleanup(
+            session, replaced, retain_until=_retention_deadline()
+        )
     job.status = "succeeded"
     job.finished_at = datetime.now(UTC)
     job.heartbeat_at = datetime.now(UTC)
@@ -271,6 +320,7 @@ async def process_hls_job(session: AsyncSession, job_id: UUID) -> None:
         "activation": "succeeded",
     }
     recording.processing_status = "ready"
+    recording.duration_seconds = max(1, round(offset / 1000))
     await session.commit()
 
 
@@ -420,6 +470,8 @@ async def retry_asset_processing(session: AsyncSession, asset_id: UUID) -> Proce
         raise NotFoundError("Media asset not found")
     if asset.kind not in SOURCE_AUDIO_KINDS:
         raise ValidationError("Audio processing can only be queued for source audio assets")
+    if (getattr(asset, "metadata_", None) or {}).get("recording_segment") is True:
+        raise ConflictError("Segment sources must be processed through the session HLS pipeline")
     active_job = await repository.active_processing_job(
         session, asset.id, job_type=PIPELINE_JOB_TYPE
     )

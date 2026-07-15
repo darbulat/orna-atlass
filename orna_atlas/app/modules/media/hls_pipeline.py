@@ -58,6 +58,7 @@ def package_segmented_hls(
     storage: HlsStorage,
     source_keys: list[str],
     generation_prefix: str,
+    uploaded_keys: list[str] | None = None,
 ) -> PackagedHls:
     """Package sources sequentially, publishing the final manifest last."""
     if not source_keys:
@@ -91,6 +92,8 @@ def package_segmented_hls(
                 key = f"{prefix}/{object_name}"
                 content_type = "video/mp4" if object_name.endswith(".mp4") else "video/iso.segment"
                 storage.upload_file(local_path, key, content_type=content_type)
+                if uploaded_keys is not None:
+                    uploaded_keys.append(key)
                 if not storage.object_exists(key):
                     raise RuntimeError(f"Uploaded HLS object cannot be verified: {key}")
                 object_keys.append(key)
@@ -114,6 +117,8 @@ def package_segmented_hls(
         ("\n".join(manifest_lines) + "\n").encode(),
         content_type="application/vnd.apple.mpegurl",
     )
+    if uploaded_keys is not None:
+        uploaded_keys.append(manifest_key)
     if not storage.object_exists(manifest_key):
         raise RuntimeError("Published HLS manifest cannot be verified")
     object_keys.append(manifest_key)

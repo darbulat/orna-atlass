@@ -119,6 +119,16 @@ async def register_session_segments(
     return segments
 
 
+@router.post("/sessions/{session_id}/segments/process", status_code=status.HTTP_202_ACCEPTED)
+async def retry_session_segments(
+    session_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+):
+    job = await media_service.retry_hls_processing(session, session_id)
+    return {"job_id": str(job.id), "status": job.status}
+
+
 @router.get("/sessions/{session_id}/processing", response_model=ProcessingStatusRead)
 async def read_session_processing(
     session_id: UUID,

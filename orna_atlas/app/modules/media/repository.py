@@ -110,6 +110,20 @@ async def get_hls_processing_job(
     return result.scalar_one_or_none()
 
 
+async def latest_hls_processing_job(
+    session: AsyncSession, session_id: UUID, *, for_update: bool = False
+) -> HlsProcessingJob | None:
+    query = (
+        select(HlsProcessingJob)
+        .where(HlsProcessingJob.session_id == session_id)
+        .order_by(HlsProcessingJob.created_at.desc())
+        .limit(1)
+    )
+    if for_update:
+        query = query.with_for_update()
+    return (await session.execute(query)).scalar_one_or_none()
+
+
 async def list_assets_for_session(session: AsyncSession, session_id: UUID) -> list[MediaAsset]:
     result = await session.execute(
         select(MediaAsset)

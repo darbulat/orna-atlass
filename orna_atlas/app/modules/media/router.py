@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from pathlib import PurePosixPath
 from uuid import UUID
 
@@ -58,7 +60,7 @@ async def get_hls_object(
     except HlsObjectNotFound:
         raise HTTPException(status_code=404, detail="HLS object not found")
     try:
-        body = get_object_storage_client().get_object_stream(key)
+        body = await asyncio.to_thread(get_object_storage_client().get_object_stream, key)
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Unable to read HLS object") from exc
     return StreamingResponse(
