@@ -69,21 +69,33 @@ function useLocationCardCount() {
   return cardCount;
 }
 
-function useMobileGlobeFallback() {
-  const [useFallback, setUseFallback] = useState(true);
-
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 720px)");
-    const sync = () => setUseFallback(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-
-  return useFallback;
-}
-
 type CesiumModule = typeof import("cesium");
+
+let cesiumScriptPromise: Promise<CesiumModule> | undefined;
+
+function loadCesiumScript() {
+  const cesiumWindow = window as typeof window & {
+    CESIUM_BASE_URL?: string;
+    Cesium?: CesiumModule;
+  };
+  if (cesiumWindow.Cesium) return Promise.resolve(cesiumWindow.Cesium);
+  if (cesiumScriptPromise) return cesiumScriptPromise;
+
+  cesiumWindow.CESIUM_BASE_URL = "/cesium/";
+  cesiumScriptPromise = new Promise<CesiumModule>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "/cesium/Cesium.js";
+    script.async = true;
+    script.dataset.cesiumRuntime = "true";
+    script.addEventListener("load", () => {
+      if (cesiumWindow.Cesium) resolve(cesiumWindow.Cesium);
+      else reject(new Error("Cesium runtime loaded without exposing window.Cesium"));
+    });
+    script.addEventListener("error", () => reject(new Error("Failed to load Cesium runtime")));
+    document.head.append(script);
+  });
+  return cesiumScriptPromise;
+}
 
 function configureCesiumBaseUrl({ buildModuleUrl }: CesiumModule) {
   const urlBuilder = buildModuleUrl as typeof buildModuleUrl & { setBaseUrl?: (value: string) => void };
@@ -116,7 +128,7 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
 
     async function createViewer() {
       try {
-        const cesium = await import("cesium");
+        const cesium = await loadCesiumScript();
         if (isDisposed) return;
         cesiumRef.current = cesium;
         const {
@@ -333,7 +345,6 @@ function StaticGlobeFallback({
 
 export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: Props) {
   const locationCardCount = useLocationCardCount();
-  const useMobileFallback = useMobileGlobeFallback();
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [currentDawn, setCurrentDawn] = useState(dawn);
   const [view] = useState<AtlasView>(initialView);
@@ -597,14 +608,14 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     >
       <div className="atlas-main-panel">
         <div className="atlas-globe-panel">
-          {view === "globe" && !useMobileFallback ? (
+          {view === "globe" ? (
             <CesiumGlobe
               points={locations}
               selectedSlug={selectedSlug}
               activeDawnSlugs={activeDawnSlugs}
               onSelectPoint={(point) => selectLocation(point, { revealInCarousel: true })}
             />
-          ) : view === "globe" || view === "map" ? (
+          ) : view === "map" ? (
             <div className="globe-stage" aria-label="Static atlas map">
               <StaticGlobeFallback points={locations} selectedSlug={selectedSlug} />
               <div className="globe-hint">Map view (static) · select a marker</div>

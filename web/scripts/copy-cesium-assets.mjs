@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,3 +14,5 @@ for (const dir of assetDirs) {
   rmSync(target, { recursive: true, force: true });
   cpSync(join(cesiumBuild, dir), target, { recursive: true });
 }
+
+copyFileSync(join(cesiumBuild, "Cesium.js"), join(output, "Cesium.js"));
