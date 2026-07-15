@@ -39,6 +39,18 @@ add `--adopt-legacy-seed`; collection/session links are still left untouched.
 
 4. Open the frontend at <http://localhost:3000> and the API at <http://localhost:8000>.
 
+For a shared development server backed by external S3-compatible storage, set
+the public API and `S3_*` values in `.env`, then layer the server override over
+the local compose file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
+```
+
+The override disables MinIO, keeps PostgreSQL, Redis, and worker metrics bound
+to loopback, and requires `NEXT_PUBLIC_API_URL` and `S3_PUBLIC_ENDPOINT_URL` to
+be supplied explicitly.
+
 ## Backend checks
 
 ```bash

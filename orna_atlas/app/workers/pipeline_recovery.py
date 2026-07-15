@@ -6,6 +6,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from orna_atlas.app.core.config import get_settings
+from orna_atlas.app.db import models as _models  # noqa: F401
 from orna_atlas.app.db.session import AsyncSessionLocal, engine
 from orna_atlas.app.modules.media import repository
 from orna_atlas.app.modules.media.service import recover_stale_asset_processing

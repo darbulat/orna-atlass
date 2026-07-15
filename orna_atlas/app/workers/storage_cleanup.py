@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import logging
 
+from orna_atlas.app.db import models as _models  # noqa: F401
 from orna_atlas.app.db.session import AsyncSessionLocal, engine
 from orna_atlas.app.modules.media.service import process_due_storage_cleanup_jobs
 

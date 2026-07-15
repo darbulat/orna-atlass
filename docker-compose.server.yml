@@ -1,0 +1,60 @@
+services:
+  api:
+    environment:
+      S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:?set S3_PUBLIC_ENDPOINT_URL in .env}
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    ports: !override
+      - "127.0.0.1:9101:9101"
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  storage-cleanup-worker:
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  pipeline-recovery-worker:
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL in .env}
+      API_SERVER_URL: http://api:8000
+
+  postgres:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports: !override
+      - "127.0.0.1:6379:6379"
+
+  minio:
+    profiles: ["local-minio"]
+
+  minio-init:
+    profiles: ["local-minio"]
+
+volumes:
+  postgres-data:
