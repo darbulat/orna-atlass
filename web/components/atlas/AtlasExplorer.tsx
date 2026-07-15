@@ -2,22 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArcGisMapServerImageryProvider,
-  Cartesian3,
-  Color,
-  EllipsoidTerrainProvider,
-  Entity,
-  HorizontalOrigin,
-  ImageryLayer,
-  LabelStyle,
-  ScreenSpaceEventHandler,
-  ScreenSpaceEventType,
-  TileMapServiceImageryProvider,
-  VerticalOrigin,
-  Viewer,
-  buildModuleUrl,
-} from "cesium";
+import type { Entity, ScreenSpaceEventHandler, Viewer as CesiumViewer } from "cesium";
 import type {
   AtlasCluster,
   AtlasPoint,
@@ -84,14 +69,31 @@ function useLocationCardCount() {
   return cardCount;
 }
 
-function configureCesiumBaseUrl() {
+function useMobileGlobeFallback() {
+  const [useFallback, setUseFallback] = useState(true);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 720px)");
+    const sync = () => setUseFallback(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  return useFallback;
+}
+
+type CesiumModule = typeof import("cesium");
+
+function configureCesiumBaseUrl({ buildModuleUrl }: CesiumModule) {
   const urlBuilder = buildModuleUrl as typeof buildModuleUrl & { setBaseUrl?: (value: string) => void };
   urlBuilder.setBaseUrl?.("/cesium/");
 }
 
 function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: CesiumGlobeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const viewerRef = useRef<Viewer | null>(null);
+  const viewerRef = useRef<CesiumViewer | null>(null);
+  const cesiumRef = useRef<CesiumModule | null>(null);
   const pointByEntityIdRef = useRef(new Map<string, AtlasPoint>());
   const onSelectRef = useRef(onSelectPoint);
   const [isWebglUnavailable, setIsWebglUnavailable] = useState(false);
@@ -108,13 +110,27 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
 
     let isDisposed = false;
     let clickHandler: ScreenSpaceEventHandler | null = null;
-    let viewer: Viewer | null = null;
+    let viewer: CesiumViewer | null = null;
     setIsViewerReady(false);
     const pointByEntityId = pointByEntityIdRef.current;
 
     async function createViewer() {
       try {
-        configureCesiumBaseUrl();
+        const cesium = await import("cesium");
+        if (isDisposed) return;
+        cesiumRef.current = cesium;
+        const {
+          ArcGisMapServerImageryProvider,
+          Cartesian3,
+          EllipsoidTerrainProvider,
+          ImageryLayer,
+          ScreenSpaceEventHandler,
+          ScreenSpaceEventType,
+          TileMapServiceImageryProvider,
+          Viewer,
+          buildModuleUrl,
+        } = cesium;
+        configureCesiumBaseUrl(cesium);
         viewer = new Viewer(host, {
           animation: false,
           baseLayer: false,
@@ -205,13 +221,16 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
         viewerRef.current.destroy();
       }
       viewerRef.current = null;
+      cesiumRef.current = null;
       pointByEntityId.clear();
     };
   }, []);
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!isViewerReady || !viewer || viewer.isDestroyed()) return;
+    const cesium = cesiumRef.current;
+    if (!isViewerReady || !viewer || viewer.isDestroyed() || !cesium) return;
+    const { Cartesian3, Color, HorizontalOrigin, LabelStyle, VerticalOrigin } = cesium;
 
     viewer.entities.removeAll();
     pointByEntityIdRef.current.clear();
@@ -259,7 +278,9 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!isViewerReady || !viewer || viewer.isDestroyed() || !selectedSlug) return;
+    const cesium = cesiumRef.current;
+    if (!isViewerReady || !viewer || viewer.isDestroyed() || !selectedSlug || !cesium) return;
+    const { Cartesian3 } = cesium;
 
     const selected = points.find((item) => isPoint(item) && item.slug === selectedSlug);
     if (!selected || !isPoint(selected)) return;
@@ -312,6 +333,7 @@ function StaticGlobeFallback({
 
 export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: Props) {
   const locationCardCount = useLocationCardCount();
+  const useMobileFallback = useMobileGlobeFallback();
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [currentDawn, setCurrentDawn] = useState(dawn);
   const [view] = useState<AtlasView>(initialView);
@@ -575,14 +597,14 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     >
       <div className="atlas-main-panel">
         <div className="atlas-globe-panel">
-          {view === "globe" ? (
+          {view === "globe" && !useMobileFallback ? (
             <CesiumGlobe
               points={locations}
               selectedSlug={selectedSlug}
               activeDawnSlugs={activeDawnSlugs}
               onSelectPoint={(point) => selectLocation(point, { revealInCarousel: true })}
             />
-          ) : view === "map" ? (
+          ) : view === "globe" || view === "map" ? (
             <div className="globe-stage" aria-label="Static atlas map">
               <StaticGlobeFallback points={locations} selectedSlug={selectedSlug} />
               <div className="globe-hint">Map view (static) · select a marker</div>

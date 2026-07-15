@@ -19,6 +19,19 @@ test("atlas route renders without a browser error", async ({ page }) => {
   await expect(page.getByLabel("Atlas list view")).toBeVisible();
 });
 
+test("atlas renders a globe on a mobile viewport without loading Cesium", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/atlas");
+
+  const globe = page.getByLabel("Static globe fallback");
+  await expect(globe).toBeVisible();
+  await expect(page.locator(".cesium-stage canvas")).toHaveCount(0);
+
+  const box = await globe.boundingBox();
+  expect(box?.width).toBeGreaterThan(200);
+  expect(box?.height).toBeGreaterThan(200);
+});
+
 test("membership route exposes login and registration controls", async ({ page }) => {
   await page.goto("/membership");
   await expect(page.getByRole("heading", { level: 1, name: "Membership" })).toBeVisible();
