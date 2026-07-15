@@ -75,6 +75,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!audio) {
       return;
     }
+    if (!audio.paused && audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      dispatch({ type: "playing" });
+    }
     dispatch({
       type: "progress",
       currentTimeSeconds: Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
@@ -231,6 +234,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           message: "The audio stream could not be played.",
         });
         audio.onstalled = () => dispatch({ type: "stalled" });
+        audio.onplaying = () => dispatch({ type: "playing" });
         scheduleGrantRefresh(session, nextGrant);
         await audio.play();
         updatePlaybackProgress();

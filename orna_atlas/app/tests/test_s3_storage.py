@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 
 from orna_atlas.app.core.domain_errors import ConflictError
+from orna_atlas.app.db import models as _models  # noqa: F401 - initialize the complete ORM registry
 from orna_atlas.app.integrations.s3 import ObjectStorageClient, ObjectStorageConfig, parse_storage_reference
 from orna_atlas.app.modules.media.models import MediaAsset
 from orna_atlas.app.modules.media.service import (
@@ -30,6 +31,26 @@ def test_parse_storage_reference_supports_s3_uri_and_relative_keys() -> None:
     assert relative_ref.kind == "s3"
     assert relative_ref.bucket == "orna-audio-private"
     assert relative_ref.key == "sessions/abc/master.wav"
+
+
+def test_external_s3_client_only_sends_checksums_when_required(monkeypatch) -> None:
+    session = MagicMock()
+    import orna_atlas.app.integrations.s3 as s3_integration
+
+    monkeypatch.setattr(s3_integration.boto3.session, "Session", MagicMock(return_value=session))
+    client = ObjectStorageClient(
+        ObjectStorageConfig(
+            endpoint_url="https://s3.example.test",
+            access_key_id="test",
+            secret_access_key="test",
+        )
+    )
+
+    client._build_client(client.config.endpoint_url)
+
+    config = session.client.call_args.kwargs["config"]
+    assert config.request_checksum_calculation == "when_required"
+    assert config.response_checksum_validation == "when_required"
 
 
 def test_materialize_storage_reads_local_file(tmp_path: Path) -> None:

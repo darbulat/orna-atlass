@@ -942,9 +942,13 @@ a:focus-visible {
   display: grid;
   gap: 8px;
   left: 32px;
+  pointer-events: none;
   position: absolute;
   width: min(320px, calc(100% - 64px));
   z-index: 4;
+}
+.dawn-copy .listen-pill {
+  pointer-events: auto;
 }
 .dawn-copy span,
 .dawn-copy small {

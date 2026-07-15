@@ -20,6 +20,7 @@ async function installFakeAudio(page: Page) {
       ondurationchange: ((event: Event) => void) | null = null;
       onended: ((event: Event) => void) | null = null;
       onerror: ((event: Event) => void) | null = null;
+      onplaying: ((event: Event) => void) | null = null;
       onstalled: ((event: Event) => void) | null = null;
 
       constructor() {
@@ -155,4 +156,29 @@ test("the playback slider supports keyboard seeking with accessible values", asy
   await expect(slider).toHaveAttribute("aria-valuemax", "3600");
   await expect(slider).toHaveAttribute("aria-valuenow", "3600");
   await expect(slider).toHaveAttribute("aria-valuetext", "01:00:00");
+});
+
+test("playback returns from stalled to playing when media resumes", async ({ page }) => {
+  await installFakeAudio(page);
+  await page.route("**/playback-grants", async (route) => {
+    await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(grant(firstSessionId, 1)) });
+  });
+
+  await page.goto("/sessions/first-session");
+  await page.getByRole("button", { name: "Play session" }).click();
+  await page.evaluate(() => {
+    const audio = (window as typeof window & {
+      __lastAudio?: { onstalled: ((event: Event) => void) | null };
+    }).__lastAudio;
+    audio?.onstalled?.(new Event("stalled"));
+  });
+  await expect(page.locator(".session-player-caption")).toContainText("stalled");
+
+  await page.evaluate(() => {
+    const audio = (window as typeof window & {
+      __lastAudio?: { onplaying: ((event: Event) => void) | null };
+    }).__lastAudio;
+    audio?.onplaying?.(new Event("playing"));
+  });
+  await expect(page.getByRole("button", { name: "Pause playback" })).toBeVisible();
 });

@@ -7,6 +7,7 @@ type PlayerAudioResource = Pick<
   | "onended"
   | "onerror"
   | "onloadedmetadata"
+  | "onplaying"
   | "onstalled"
   | "ontimeupdate"
 >;
@@ -25,6 +26,7 @@ export function detachAudio(audio: PlayerAudioResource) {
   audio.ondurationchange = null;
   audio.onended = null;
   audio.onerror = null;
+  audio.onplaying = null;
   audio.onstalled = null;
   audio.pause();
   audio.removeAttribute("src");

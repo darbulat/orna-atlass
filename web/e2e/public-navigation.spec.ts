@@ -17,6 +17,8 @@ test("atlas route renders without a browser error", async ({ page }) => {
   await page.goto("/atlas?view=list");
   await expect(page.locator("main#main-content")).toBeVisible();
   await expect(page.getByLabel("Atlas list view")).toBeVisible();
+  await expect(page.locator(".dawn-copy")).toHaveCSS("pointer-events", "none");
+  await expect(page.locator(".dawn-copy .listen-pill")).toHaveCSS("pointer-events", "auto");
 });
 
 test("atlas loads the interactive Cesium globe on a mobile viewport", async ({ page }) => {
