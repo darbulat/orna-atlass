@@ -638,6 +638,9 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
   left: 8px;
   right: 8px;
 }
+.cesium-stage .cesium-credit-logoContainer {
+  display: none !important;
+}
 .cesium-stage .cesium-credit-text,
 .cesium-stage .cesium-credit-lightbox-trigger {
   color: rgba(237,247,242,0.72);

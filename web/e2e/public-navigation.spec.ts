@@ -33,6 +33,7 @@ test("atlas loads the interactive Cesium globe on a mobile viewport", async ({ p
   const canvas = page.locator(".cesium-widget canvas");
   await expect(canvas).toHaveCount(1);
   await expect(canvas).toBeVisible();
+  await expect(page.locator(".cesium-credit-logoContainer")).toBeHidden();
 
   const box = await canvas.boundingBox();
   expect(box?.width).toBeGreaterThan(200);
