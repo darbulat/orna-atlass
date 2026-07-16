@@ -28,6 +28,22 @@ test("membership reports an account API outage instead of treating it as signed 
   await expect(page.locator("form").getByRole("button", { name: "Sign in" })).toBeVisible();
 });
 
+test("atlas search results open inside the visible viewport", async ({ page }) => {
+  await page.goto("/atlas?view=list");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByLabel("Search location").fill("pine");
+
+  const results = page.locator(".search-results");
+  await expect(results.getByText("Pine Marsh", { exact: true })).toBeVisible();
+  const box = await results.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(box!.height).toBeGreaterThan(40);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
+});
+
 test("atlas search exposes an unavailable state instead of an empty result", async ({ page }) => {
   await page.route("**/api/v1/search?**", async (route) => {
     await route.fulfill({
