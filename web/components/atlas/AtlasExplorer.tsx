@@ -34,6 +34,7 @@ type Props = {
 type CesiumGlobeProps = {
   points: Array<AtlasPoint | AtlasCluster>;
   selectedSlug: string | null;
+  focusRequest: number;
   activeDawnSlugs: Set<string>;
   onSelectPoint: (point: AtlasPoint) => void;
 };
@@ -41,6 +42,7 @@ type CesiumGlobeProps = {
 const satelliteImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
 const desktopLocationCardCount = 5;
 const mobileLocationCardCount = 2;
+const focusedLocationHeight = 1500000;
 
 function isPoint(item: AtlasPoint | AtlasCluster): item is AtlasPoint {
   return item.type === "point";
@@ -116,7 +118,7 @@ function configureCesiumBaseUrl({ buildModuleUrl }: CesiumModule) {
   urlBuilder.setBaseUrl?.("/cesium/");
 }
 
-function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: CesiumGlobeProps) {
+function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSelectPoint }: CesiumGlobeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<CesiumViewer | null>(null);
   const cesiumRef = useRef<CesiumModule | null>(null);
@@ -311,14 +313,25 @@ function CesiumGlobe({ points, selectedSlug, activeDawnSlugs, onSelectPoint }: C
     const selected = points.find((item) => isPoint(item) && item.slug === selectedSlug);
     if (!selected || !isPoint(selected)) return;
 
-    viewer.camera.flyTo({
-      destination: Cartesian3.fromDegrees(selected.longitude, selected.latitude, 2100000),
-      duration: 0.85,
+    const animationFrame = window.requestAnimationFrame(() => {
+      if (viewer.isDestroyed()) return;
+      viewer.resize();
+      viewer.camera.flyTo({
+        destination: Cartesian3.fromDegrees(selected.longitude, selected.latitude, focusedLocationHeight),
+        duration: 0.85,
+      });
     });
-  }, [isViewerReady, points, selectedSlug]);
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [focusRequest, isViewerReady, points, selectedSlug]);
 
   return (
-    <div className="globe-stage cesium-stage" aria-label="Interactive Cesium globe">
+    <div
+      className="globe-stage cesium-stage"
+      aria-label="Interactive Cesium globe"
+      data-focus-request={focusRequest}
+      data-focus-height={focusedLocationHeight}
+    >
       <div ref={containerRef} className="cesium-host" />
       {isWebglUnavailable ? <StaticGlobeFallback points={points} selectedSlug={selectedSlug} /> : null}
       <div className="globe-hint">Drag to rotate / scroll to zoom / click a marker</div>
@@ -370,6 +383,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
   const [dawnRefreshError, setDawnRefreshError] = useState<string | null>(null);
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
+  const [globeFocusRequest, setGlobeFocusRequest] = useState(0);
   const [carouselStart, setCarouselStart] = useState(0);
   const allLocations = useMemo(() => atlasPoints.filter(isPoint), [atlasPoints]);
   const activeDawnSlugs = useMemo(
@@ -661,6 +675,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     if (!selectedSessionSlug) {
       return;
     }
+    setGlobeFocusRequest((current) => current + 1);
     setSidePanelSessionSlug(selectedSessionSlug);
     setIsSidePanelOpen(true);
   }
@@ -678,6 +693,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
             <CesiumGlobe
               points={locations}
               selectedSlug={selectedSlug}
+              focusRequest={globeFocusRequest}
               activeDawnSlugs={activeDawnSlugs}
               onSelectPoint={(point) => selectLocation(point, { revealInCarousel: true })}
             />
