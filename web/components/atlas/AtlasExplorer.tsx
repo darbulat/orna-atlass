@@ -604,7 +604,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
       className={["atlas-workspace atlas-reference-ui", isSidePanelOpen ? "atlas-reference-ui--player-open" : ""]
         .filter(Boolean)
         .join(" ")}
-      aria-label="Birdsong atlas"
+      aria-label="ORNA Atlas"
     >
       <div className="atlas-main-panel">
         <div className="atlas-globe-panel">
@@ -639,8 +639,8 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
             </div>
           )}
           <div className="atlas-brand">
-            <span>Birdsong</span>
-            <span>Earth</span>
+            <span>ORNA</span>
+            <span>Atlas</span>
           </div>
           {selectedDawn?.state === "active" ? <DawnNowBadge className="atlas-live-left" /> : null}
           <div className="dawn-copy">
@@ -657,12 +657,12 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
                 aria-expanded={isSidePanelOpen}
                 onClick={openSelectedSession}
               >
-                Listen
+                Enter
                 <span aria-hidden="true">›</span>
               </button>
             ) : (
               <button className="listen-pill" type="button" disabled>
-                Listen
+                Enter
                 <span aria-hidden="true">›</span>
               </button>
             )}
