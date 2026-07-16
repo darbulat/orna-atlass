@@ -25,6 +25,35 @@ h2 { font-size: clamp(1.8rem, 4vw, 3rem); margin: 0 0 12px; }
 p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
 .actions { display: flex; gap: 16px; margin-top: 32px; flex-wrap: wrap; }
 .actions a { border: 1px solid #9bd8bd; border-radius: 999px; padding: 12px 18px; text-decoration: none; }
+
+.about-page { background: #e9e5d8; color: #17231d; min-height: 100vh; padding: 0 6vw 7vw; }
+.about-page p { color: #46534b; }
+.about-nav { align-items: center; border-bottom: 1px solid rgba(23,35,29,.22); display: flex; justify-content: space-between; padding: 24px 0; }
+.about-nav a { font-size: .78rem; letter-spacing: .12em; text-decoration: none; text-transform: uppercase; }
+.about-wordmark { font-family: Georgia, "Times New Roman", serif; font-size: 1.05rem !important; font-weight: 700; }
+.about-hero { max-width: 1050px; padding: clamp(90px, 15vw, 200px) 0 clamp(90px, 13vw, 170px); }
+.about-hero .eyebrow, .about-section-number { color: #667268; font-size: .7rem; letter-spacing: .18em; text-transform: uppercase; }
+.about-hero h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(4rem, 10vw, 9rem); font-weight: 400; letter-spacing: -.055em; }
+.about-intro { font-family: Georgia, "Times New Roman", serif; font-size: clamp(1.35rem, 2.5vw, 2.3rem) !important; line-height: 1.35 !important; max-width: 800px; }
+.about-manifesto, .about-principles { border-top: 1px solid rgba(23,35,29,.22); display: grid; gap: 5vw; grid-template-columns: minmax(130px, 1fr) 3fr; padding: 80px 0 120px; }
+.about-manifesto h2, .about-principles h2, .about-closing h2 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(2.5rem, 6vw, 5.5rem); font-weight: 400; letter-spacing: -.04em; line-height: 1; }
+.about-manifesto > div > p { font-size: clamp(1.05rem, 1.7vw, 1.35rem); max-width: 720px; }
+.about-manifesto blockquote { border-left: 1px solid #667268; font-family: Georgia, "Times New Roman", serif; font-size: clamp(1.5rem, 3vw, 2.6rem); margin: 70px 0 0; max-width: 700px; padding-left: 28px; }
+.about-principle-grid { display: grid; gap: 14px; grid-template-columns: repeat(3, 1fr); margin-top: 60px; }
+.about-principle-grid article { background: transparent; border: 1px solid rgba(23,35,29,.22); border-radius: 0; min-height: 260px; padding: 28px; }
+.about-principle-grid article span { color: #667268; }
+.about-principle-grid h3 { font-family: Georgia, "Times New Roman", serif; font-size: 1.6rem; font-weight: 400; }
+.about-principle-grid p { font-size: .98rem; line-height: 1.5; }
+.about-closing { border-top: 1px solid rgba(23,35,29,.22); padding: 100px 0 40px; }
+.about-closing h2 { margin: 70px 0; max-width: 1000px; }
+.about-enter { border-bottom: 1px solid #17231d; display: inline-flex; font-size: .8rem; gap: 50px; letter-spacing: .14em; padding-bottom: 10px; text-decoration: none; text-transform: uppercase; }
+@media (max-width: 760px) {
+  .about-page { padding-inline: 24px; }
+  .about-manifesto, .about-principles { grid-template-columns: 1fr; padding: 55px 0 80px; }
+  .about-principle-grid { grid-template-columns: 1fr; }
+  .about-principle-grid article { min-height: 0; }
+}
+
 .panel, .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 72px; }
 article, .player-card, .timeline-card, .processing-panel { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 24px; padding: 24px; }
 article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.14em; }
