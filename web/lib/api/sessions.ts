@@ -22,8 +22,10 @@ export type DawnCurrentResponse = components["schemas"]["DawnCurrentResponse"];
 export type DawnFollowResponse = components["schemas"]["DawnFollowResponse"];
 export type SearchResult = components["schemas"]["SearchResult"];
 
-const browserApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const serverApiBaseUrl = process.env.API_SERVER_URL ?? browserApiBaseUrl;
+const browserApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+const serverApiBaseUrl = process.env.API_SERVER_URL
+  ?? process.env.NEXT_PUBLIC_API_URL
+  ?? "http://localhost:8000";
 
 export function apiUrl(path: string): string {
   const baseUrl = typeof window === "undefined" ? serverApiBaseUrl : browserApiBaseUrl;
@@ -59,7 +61,9 @@ export function fetchAtlasPoints(
   habitats: string[] = [],
 ): Promise<AtlasPointsResponse> {
   const zoom = 5;
-  const params = new URLSearchParams({ zoom: String(zoom), limit: "250" });
+  // Request the API's complete supported point window so client-side features
+  // such as nearest-location selection do not operate on the smaller display page.
+  const params = new URLSearchParams({ zoom: String(zoom), limit: "1000" });
   habitats.forEach((habitat) => params.append("habitat", habitat));
 
   return fetchJson<AtlasPointsResponse>(apiUrl(`/api/v1/atlas/points?${params.toString()}`), {

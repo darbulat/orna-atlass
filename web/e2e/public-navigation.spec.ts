@@ -21,6 +21,19 @@ test("atlas route renders without a browser error", async ({ page }) => {
   await expect(page.locator(".dawn-copy .listen-pill")).toHaveCSS("pointer-events", "auto");
 });
 
+test("current-location control selects the nearest public listening site", async ({ context, page }) => {
+  await context.grantPermissions(["geolocation"], { origin: "http://127.0.0.1:3100" });
+  await context.setGeolocation({ latitude: 59.43, longitude: 24.72 });
+  await page.goto("/atlas?view=list");
+
+  const locateButton = page.getByRole("button", { name: "Use current location" });
+  await expect(locateButton).toBeEnabled();
+  await locateButton.click();
+
+  await expect(page.getByRole("status")).toHaveText("Nearest listening location: Pine Marsh.");
+  await expect(page.locator(".dawn-copy strong")).toHaveText("Pine Marsh");
+});
+
 test("atlas loads the interactive Cesium globe on a mobile viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const cesiumResponse = page.waitForResponse((response) =>
