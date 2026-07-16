@@ -751,7 +751,6 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
           </div>
           <Link className="about-link" href="/about">
             About
-            <span aria-hidden="true">○</span>
           </Link>
           <div className="globe-tools" aria-label="Globe tools">
             <button
