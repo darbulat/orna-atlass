@@ -19,6 +19,7 @@ test("atlas route renders without a browser error", async ({ page }) => {
   await expect(page.getByLabel("Atlas list view")).toBeVisible();
   await expect(page.locator(".dawn-copy")).toHaveCSS("pointer-events", "none");
   await expect(page.locator(".dawn-copy .listen-pill")).toHaveCSS("pointer-events", "auto");
+  await expect(page.getByRole("button", { name: "Tune filters" })).toHaveCount(0);
 });
 
 test("current-location control selects the nearest public listening site", async ({ context, page }) => {

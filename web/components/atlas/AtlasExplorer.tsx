@@ -766,13 +766,6 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
             </button>
             <button
               type="button"
-              aria-label="Tune filters"
-              onClick={() => document.getElementById("atlas-listening-time")?.focus()}
-            >
-              ≋
-            </button>
-            <button
-              type="button"
               aria-label="Search"
               onClick={() => document.getElementById("atlas-search")?.focus()}
             >
