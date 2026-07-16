@@ -22,8 +22,8 @@ export type DawnCurrentResponse = components["schemas"]["DawnCurrentResponse"];
 export type DawnFollowResponse = components["schemas"]["DawnFollowResponse"];
 export type SearchResult = components["schemas"]["SearchResult"];
 
-const browserApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const serverApiBaseUrl = process.env.API_SERVER_URL ?? browserApiBaseUrl;
+const browserApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+const serverApiBaseUrl = process.env.API_SERVER_URL ?? "http://localhost:8000";
 
 export function apiUrl(path: string): string {
   const baseUrl = typeof window === "undefined" ? serverApiBaseUrl : browserApiBaseUrl;
