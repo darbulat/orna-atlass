@@ -53,6 +53,48 @@ test("atlas loads the interactive Cesium globe on a mobile viewport", async ({ p
   expect(box?.height).toBeGreaterThan(200);
 });
 
+test("enter recenters the resized globe on the selected location at a closer zoom", async ({ page }) => {
+  await page.goto("/atlas");
+
+  const globe = page.getByLabel("Interactive Cesium globe");
+  await expect(page.locator(".cesium-widget canvas")).toBeVisible();
+  await expect(globe).toHaveAttribute("data-focus-height", "1500000");
+
+  await page.evaluate(() => {
+    const cesiumWindow = window as typeof window & {
+      Cesium?: { Camera: { prototype: { flyTo: (options: unknown) => unknown } } };
+      atlasFocusProbe?: Array<{ sidePanelVisible: boolean; canvasMatchesHost: boolean }>;
+    };
+    const cameraPrototype = cesiumWindow.Cesium!.Camera.prototype;
+    const originalFlyTo = cameraPrototype.flyTo;
+    cesiumWindow.atlasFocusProbe = [];
+    cameraPrototype.flyTo = function patchedFlyTo(options: unknown) {
+      const host = document.querySelector<HTMLElement>(".cesium-host");
+      const canvas = host?.querySelector<HTMLCanvasElement>("canvas");
+      const pixelRatio = window.devicePixelRatio || 1;
+      cesiumWindow.atlasFocusProbe!.push({
+        sidePanelVisible: document.querySelector(".atlas-side-panel") !== null,
+        canvasMatchesHost: Boolean(
+          host
+          && canvas
+          && Math.abs(canvas.width - host.clientWidth * pixelRatio) <= 1
+          && Math.abs(canvas.height - host.clientHeight * pixelRatio) <= 1
+        ),
+      });
+      return originalFlyTo.call(this, options);
+    };
+  });
+
+  await page.getByRole("button", { name: "Enter", exact: true }).click();
+
+  await expect.poll(() => page.evaluate(() => {
+    const probe = (window as typeof window & {
+      atlasFocusProbe?: Array<{ sidePanelVisible: boolean; canvasMatchesHost: boolean }>;
+    }).atlasFocusProbe;
+    return probe?.at(-1) ?? null;
+  })).toEqual({ sidePanelVisible: true, canvasMatchesHost: true });
+});
+
 test("membership route exposes login and registration controls", async ({ page }) => {
   await page.goto("/membership");
   await expect(page.getByRole("heading", { level: 1, name: "Membership" })).toBeVisible();
