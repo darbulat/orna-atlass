@@ -1043,6 +1043,21 @@ a:focus-visible {
   right: 26px;
   z-index: 4;
 }
+.globe-location-status {
+  background: rgba(3, 9, 10, 0.82);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 999px;
+  bottom: 42px;
+  color: rgba(244,239,226,0.86);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.72rem;
+  margin: 0;
+  max-width: min(280px, calc(100% - 140px));
+  padding: 7px 12px;
+  position: absolute;
+  right: 72px;
+  z-index: 4;
+}
 .globe-tools button,
 .panel-back,
 .carousel-arrow,

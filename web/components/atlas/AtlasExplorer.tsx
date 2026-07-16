@@ -53,6 +53,20 @@ function markerStyle(point: AtlasPoint | AtlasCluster) {
   };
 }
 
+function distanceSquaredOnSphere(
+  latitude: number,
+  longitude: number,
+  point: Pick<AtlasPoint, "latitude" | "longitude">,
+) {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const latitudeDelta = toRadians(point.latitude - latitude);
+  const longitudeDelta = toRadians(point.longitude - longitude);
+  const startLatitude = toRadians(latitude);
+  const endLatitude = toRadians(point.latitude);
+  return Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(startLatitude) * Math.cos(endLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+}
+
 function useLocationCardCount() {
   const [cardCount, setCardCount] = useState(desktopLocationCardCount);
 
@@ -354,6 +368,8 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [dawnRefreshError, setDawnRefreshError] = useState<string | null>(null);
+  const [locationStatus, setLocationStatus] = useState<string | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
   const [carouselStart, setCarouselStart] = useState(0);
   const allLocations = useMemo(() => atlasPoints.filter(isPoint), [atlasPoints]);
   const activeDawnSlugs = useMemo(
@@ -591,6 +607,56 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     setCarouselStart(0);
   }
 
+  function useCurrentLocation() {
+    if (!window.isSecureContext) {
+      setLocationStatus("Safari requires HTTPS to use your location. Open ORNA Atlas over a secure HTTPS address.");
+      return;
+    }
+    if (!navigator.geolocation) {
+      setLocationStatus("Current location is not supported by this browser.");
+      return;
+    }
+    if (allLocations.length === 0) {
+      setLocationStatus("No public listening locations are available.");
+      return;
+    }
+
+    setIsLocating(true);
+    setLocationStatus("Finding the nearest listening location…");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const nearest = allLocations.reduce((best, candidate) =>
+          distanceSquaredOnSphere(coords.latitude, coords.longitude, candidate)
+            < distanceSquaredOnSphere(coords.latitude, coords.longitude, best)
+            ? candidate
+            : best,
+        );
+        const mode = listeningModeForLocation(nearest, currentDawn.generated_at, activeDawnSlugs);
+        const modeLocations = filterLocationsByMode(
+          allLocations,
+          mode,
+          currentDawn.generated_at,
+          activeDawnSlugs,
+        );
+        setSelectedMode(mode);
+        setCarouselStart(Math.max(0, modeLocations.findIndex((location) => location.slug === nearest.slug)));
+        setSelectedSlug(nearest.slug);
+        setLocationStatus(`Nearest listening location: ${nearest.name}.`);
+        setIsLocating(false);
+      },
+      (error) => {
+        const message = error.code === error.PERMISSION_DENIED
+          ? "Safari denied location access for this website. In Safari Settings → Websites → Location, set this site to Allow, then reload."
+          : error.code === error.TIMEOUT
+            ? "Safari could not determine your location in time. Check Location Services and try again."
+            : "Safari could not determine your current location. Check Location Services and try again.";
+        setLocationStatus(message);
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: false, maximumAge: 300_000, timeout: 10_000 },
+    );
+  }
+
   function openSelectedSession() {
     if (!selectedSessionSlug) {
       return;
@@ -675,8 +741,10 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
             <button
               type="button"
               aria-label="Use current location"
-              title="Current-location matching is not available yet"
-              disabled
+              title="Find the nearest public listening location"
+              aria-busy={isLocating}
+              disabled={isLocating}
+              onClick={useCurrentLocation}
             >
               ⌖
             </button>
@@ -695,6 +763,11 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
               ⌕
             </button>
           </div>
+          {locationStatus ? (
+            <p className="globe-location-status" role="status">
+              {locationStatus}
+            </p>
+          ) : null}
         </div>
 
         <div className="atlas-discovery-panel">
