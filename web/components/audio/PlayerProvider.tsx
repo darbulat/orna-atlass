@@ -17,7 +17,7 @@ type PlayerContextValue = {
   currentTimeSeconds: number;
   durationSeconds: number | null;
   error: string | null;
-  play: (session: SessionDetail) => Promise<void>;
+  play: (session: SessionDetail) => Promise<boolean>;
   pause: () => void;
   seek: (seconds: number) => void;
 };
@@ -208,14 +208,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           await audioRef.current.play();
           updatePlaybackProgress();
           dispatch({ type: "playing" });
+          return true;
         } catch (error) {
           dispatch({
             type: "failed",
             sessionId: session.id,
             message: apiErrorMessage(error, "Playback failed"),
           });
+          return false;
         }
-        return;
       }
 
       const requestId = ++grantRequestRef.current;
@@ -240,7 +241,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       try {
         const nextGrant = await requestPlaybackGrant(session.id, controller.signal);
         if (requestId !== grantRequestRef.current || currentSessionRef.current?.id !== session.id) {
-          return;
+          return false;
         }
 
         dispatch({ type: "grant_ready", sessionId: session.id, grant: nextGrant });
@@ -275,9 +276,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (requestId === grantRequestRef.current && currentSessionRef.current?.id === session.id) {
           dispatch({ type: "playing" });
         }
+        return true;
       } catch (error) {
         if (controller.signal.aborted) {
-          return;
+          return false;
         }
         if (requestId === grantRequestRef.current) {
           dispatch({
@@ -286,6 +288,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             message: apiErrorMessage(error, "Playback failed"),
           });
         }
+        return false;
       }
     },
     [attachStream, clearRefreshTimer, player.grant, scheduleGrantRefresh, updatePlaybackProgress],
@@ -311,6 +314,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // Some streams reject seeking before metadata is ready; keep UI state in sync anyway.
       }
     }
+
+    // Reset the listening baseline explicitly so even a short seek cannot be
+    // mistaken for elapsed playback by the following timeupdate event.
+    engagementRef.current.previousMediaTime = nextTime;
 
     dispatch({ type: "seek", currentTimeSeconds: nextTime, durationSeconds: resolvedDuration });
   }, []);

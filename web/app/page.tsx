@@ -14,6 +14,9 @@ export default async function HomePage() {
   ]);
   const featuredSessions = featuredResult.status === "fulfilled" ? featuredResult.value : null;
   const collections = collectionsResult.status === "fulfilled" ? collectionsResult.value : null;
+  const collectionDestination = (slug: string) => (
+    collections?.some((collection) => collection.slug === slug) ? `/collections/${slug}` : "/atlas"
+  );
 
   return (
     <main className="shell home-shell" id="main-content">
@@ -40,9 +43,9 @@ export default async function HomePage() {
           <p>Every path leads to a real, continuous field recording—not a loop or a generated substitute.</p>
         </div>
         <div className="intent-grid">
-          <AnalyticsLink destination="/collections/no-human-noise" eventName="listening_path_selected" placement="intent_focus"><span>01</span><h3>Focus</h3><p>Low-interruption landscapes selected for long stretches of attention.</p><strong>Find quiet sessions →</strong></AnalyticsLink>
-          <AnalyticsLink destination="/collections/dawn-archive" eventName="listening_path_selected" placement="intent_restore"><span>02</span><h3>Restore</h3><p>Unhurried first-light recordings for a slower, calmer pause.</p><strong>Meet the dawn →</strong></AnalyticsLink>
-          <AnalyticsLink destination="/collections/wetlands" eventName="listening_path_selected" placement="intent_unwind"><span>03</span><h3>Unwind</h3><p>Water, reeds, wind, and long natural rhythms for the end of the day.</p><strong>Enter the wetlands →</strong></AnalyticsLink>
+          <AnalyticsLink destination={collectionDestination("no-human-noise")} eventName="listening_path_selected" placement="intent_focus"><span>01</span><h3>Focus</h3><p>Low-interruption landscapes selected for long stretches of attention.</p><strong>Find quiet sessions →</strong></AnalyticsLink>
+          <AnalyticsLink destination={collectionDestination("dawn-archive")} eventName="listening_path_selected" placement="intent_restore"><span>02</span><h3>Restore</h3><p>Unhurried first-light recordings for a slower, calmer pause.</p><strong>Meet the dawn →</strong></AnalyticsLink>
+          <AnalyticsLink destination={collectionDestination("wetlands")} eventName="listening_path_selected" placement="intent_unwind"><span>03</span><h3>Unwind</h3><p>Water, reeds, wind, and long natural rhythms for the end of the day.</p><strong>Enter the wetlands →</strong></AnalyticsLink>
           <AnalyticsLink destination="/atlas" eventName="listening_path_selected" placement="intent_explore"><span>04</span><h3>Explore</h3><p>Travel by geography, habitat, season, and local time.</p><strong>Open the living map →</strong></AnalyticsLink>
         </div>
       </section>

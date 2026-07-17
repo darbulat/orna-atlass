@@ -20,13 +20,45 @@ test("home page offers immediate free listening before atlas exploration", async
   await expect(page.locator(".hero").getByRole("link", { name: "Explore the atlas" })).toHaveAttribute("href", "/atlas");
 });
 
+test("home sample analytics is emitted only after playback starts", async ({ page }) => {
+  const events: Array<{ name: string }> = [];
+  await page.route("**/playback-grants", async (route) => {
+    await route.fulfill({ status: 503, headers: { "Content-Type": "application/json" }, body: "{}" });
+  });
+  await page.exposeFunction("captureSampleAnalytics", (detail: { name: string }) => events.push(detail));
+  await page.addInitScript(() => {
+    window.addEventListener("orna:analytics", (event) => {
+      void (window as typeof window & {
+        captureSampleAnalytics: (detail: unknown) => Promise<void>;
+      }).captureSampleAnalytics((event as CustomEvent).detail);
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Listen free" }).click();
+  await expect(page.locator(".hero-sample").getByRole("alert")).toBeVisible();
+  expect(events.filter((event) => event.name === "sample_play_started")).toEqual([]);
+});
+
+test("missing curated intent collections fall back to the atlas", async ({ page }) => {
+  await page.route("**/api/v1/collections**", async (route) => {
+    await route.fulfill({ status: 200, headers: { "Content-Type": "application/json" }, body: "[]" });
+  });
+
+  await page.goto("/");
+  const paths = page.getByRole("region", { name: "Choose your listening path" });
+  await expect(paths.getByRole("link", { name: /Focus/ })).toHaveAttribute("href", "/atlas");
+  await expect(paths.getByRole("link", { name: /Restore/ })).toHaveAttribute("href", "/atlas");
+  await expect(paths.getByRole("link", { name: /Unwind/ })).toHaveAttribute("href", "/atlas");
+});
+
 test("home page explains listening paths, proof, membership value, and common questions", async ({ page }) => {
   await page.goto("/");
 
   const listeningPaths = page.getByRole("region", { name: "Choose your listening path" });
   await expect(listeningPaths.getByRole("link", { name: /Focus/ })).toHaveAttribute(
     "href",
-    "/collections/no-human-noise",
+    "/atlas",
   );
   await expect(listeningPaths.getByRole("link", { name: /Explore/ })).toHaveAttribute(
     "href",
@@ -90,7 +122,7 @@ test("home conversion links emit bounded analytics events", async ({ page }) => 
   await expect.poll(() => events).toContainEqual({
     name: "listening_path_selected",
     placement: "intent_focus",
-    destination: "/collections/no-human-noise",
+    destination: "/atlas",
   });
   await expect.poll(() => persistedEvents).toContainEqual({
     name: "listening_path_selected",

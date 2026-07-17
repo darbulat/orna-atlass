@@ -27,10 +27,14 @@ export function HomeListeningSample({ session }: HomeListeningSampleProps) {
     setError(null);
     try {
       const detail = await fetchSessionDetail(session.slug);
-      window.dispatchEvent(new CustomEvent("orna:analytics", {
-        detail: { name: "sample_play_started", placement: "hero_sample", session: session.slug },
-      }));
-      await play(detail);
+      const started = await play(detail);
+      if (started) {
+        window.dispatchEvent(new CustomEvent("orna:analytics", {
+          detail: { name: "sample_play_started", placement: "hero_sample", session: session.slug },
+        }));
+      } else {
+        setError("This recording is temporarily unavailable. Explore the atlas to choose another place.");
+      }
     } catch {
       setError("This recording is temporarily unavailable. Explore the atlas to choose another place.");
     } finally {

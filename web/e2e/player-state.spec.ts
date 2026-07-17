@@ -191,6 +191,36 @@ test("playback emits bounded engagement milestones once per session", async ({ p
   ]);
 });
 
+test("short keyboard seeks do not count toward listening milestones", async ({ page }) => {
+  await installFakeAudio(page);
+  await page.route("**/playback-grants", async (route) => {
+    await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(grant(firstSessionId, 1)) });
+  });
+  await page.addInitScript(() => {
+    (window as typeof window & { __analytics?: unknown[] }).__analytics = [];
+    window.addEventListener("orna:analytics", (event) => {
+      (window as typeof window & { __analytics?: unknown[] }).__analytics?.push((event as CustomEvent).detail);
+    });
+  });
+
+  await page.goto("/sessions/first-session");
+  await page.getByRole("button", { name: "Play session" }).click();
+  const slider = page.getByRole("slider", { name: "Playback position" });
+  for (let index = 0; index < 6; index += 1) {
+    await slider.press("ArrowRight");
+    await page.evaluate(() => {
+      const audio = (window as typeof window & {
+        __lastAudio?: { ontimeupdate: ((event: Event) => void) | null };
+      }).__lastAudio;
+      audio?.ontimeupdate?.(new Event("timeupdate"));
+    });
+  }
+
+  expect(await page.evaluate(() => (
+    window as typeof window & { __analytics?: unknown[] }
+  ).__analytics ?? [])).toEqual([]);
+});
+
 test("playback returns from stalled to playing when media resumes", async ({ page }) => {
   await installFakeAudio(page);
   await page.route("**/playback-grants", async (route) => {
