@@ -19,6 +19,7 @@ type PlayerContextValue = {
   error: string | null;
   play: (session: SessionDetail) => Promise<boolean>;
   pause: () => void;
+  resume: () => Promise<void>;
   seek: (seconds: number) => void;
 };
 
@@ -300,6 +301,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "paused" });
   }, [updatePlaybackProgress]);
 
+  const resume = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    await audio.play();
+    updatePlaybackProgress();
+    dispatch({ type: "playing" });
+  }, [updatePlaybackProgress]);
+
   const seek = useCallback((seconds: number) => {
     const audio = audioRef.current;
     const fallbackDuration = currentSessionRef.current?.duration_seconds ?? null;
@@ -336,8 +347,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ ...player, play, pause, seek }),
-    [pause, play, player, seek],
+    () => ({ ...player, play, pause, resume, seek }),
+    [pause, play, player, resume, seek],
   );
 
   return (
@@ -371,8 +382,9 @@ export function useGlobalPlayerSuppression(isSuppressed: boolean) {
 }
 
 function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
-  const { currentSession, playbackState, grant, error, pause } = usePlayer();
+  const { currentSession, playbackState, grant, error, pause, resume } = usePlayer();
   const pathname = usePathname();
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const isSessionRoute = pathname?.startsWith("/sessions/");
 
@@ -380,16 +392,35 @@ function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
     return null;
   }
 
+  const isPlaying = playbackState === "playing";
+
   return (
-    <aside className="global-player" aria-label="Global audio player">
-      <div>
-        <span className="eyebrow">Global player</span>
+    <aside className={`global-player${isExpanded ? " is-expanded" : ""}`} aria-label="Global audio player">
+      <button
+        className="global-player-toggle"
+        type="button"
+        aria-label={isExpanded ? "Collapse player" : "Expand player"}
+        aria-expanded={isExpanded}
+        onClick={() => setIsExpanded((value) => !value)}
+      >
         <strong>{currentSession.title}</strong>
-        <small>{playbackState}</small>
-      </div>
-      {grant ? <small>Grant expires {formatClockTime(grant.expires_at)}</small> : null}
-      {error ? <small className="error-text" role="alert">{error}</small> : null}
-      <button type="button" onClick={pause}>Pause</button>
+        <span aria-hidden="true">{isExpanded ? "⌄" : "⌃"}</span>
+      </button>
+      <button
+        className="global-player-playback"
+        type="button"
+        aria-label={isPlaying ? "Pause playback" : "Resume playback"}
+        onClick={isPlaying ? pause : () => void resume()}
+      >
+        <span aria-hidden="true">{isPlaying ? "Ⅱ" : "▶"}</span>
+      </button>
+      {isExpanded ? (
+        <div className="global-player-details">
+          <small>{playbackState}</small>
+          {grant ? <small>Grant expires {formatClockTime(grant.expires_at)}</small> : null}
+          {error ? <small className="error-text" role="alert">{error}</small> : null}
+        </div>
+      ) : null}
     </aside>
   );
 }

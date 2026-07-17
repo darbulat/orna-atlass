@@ -478,7 +478,13 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
   grid-template-columns: 46px 1fr 112px 1fr 46px;
   min-height: 230px;
   padding: 34px 48px 52px;
+  position: relative;
 }
+.session-orbital-player > button:first-child { grid-column: 1; grid-row: 1; }
+.session-soundline:not(.mirrored) { grid-column: 2; grid-row: 1; }
+.session-core-shell { grid-column: 3; grid-row: 1; }
+.session-soundline.mirrored { grid-column: 4; grid-row: 1; }
+.session-orbital-player > button:nth-last-of-type(1) { grid-column: 5; grid-row: 1; }
 .session-orbital-player > button {
   height: 34px;
   width: 34px;
@@ -586,21 +592,65 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
 .global-player {
   align-items: center;
   backdrop-filter: blur(18px);
-  background: rgba(7, 17, 15, 0.92);
+  background: rgba(7, 17, 15, 0.94);
   border: 1px solid rgba(155, 216, 189, 0.25);
-  border-radius: 24px;
-  bottom: 24px;
+  border-radius: 18px;
+  bottom: max(16px, env(safe-area-inset-bottom));
   box-shadow: 0 20px 60px rgba(0,0,0,0.35);
-  display: flex;
-  gap: 18px;
-  justify-content: space-between;
-  left: 24px;
-  padding: 16px 18px;
+  box-sizing: border-box;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  left: 50%;
+  max-width: 720px;
+  min-height: 64px;
+  padding: 8px 10px 8px 16px;
   position: fixed;
-  right: 24px;
+  transform: translateX(-50%);
+  width: calc(100% - 48px);
   z-index: 20;
 }
-.global-player div { display: grid; gap: 4px; }
+.global-player button { margin: 0; }
+.global-player-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #f4efe2;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 8px 4px 8px 0;
+  text-align: left;
+}
+.global-player-toggle strong {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.global-player-toggle span { color: #9bd8bd; flex: none; }
+.global-player-playback {
+  align-items: center;
+  background: #9bd8bd;
+  border: 0;
+  border-radius: 999px;
+  color: #07110f;
+  display: inline-flex;
+  height: 44px;
+  justify-content: center;
+  padding: 0;
+  width: 44px;
+}
+.global-player-details {
+  border-top: 1px solid rgba(155, 216, 189, 0.18);
+  display: grid;
+  gap: 5px;
+  grid-column: 1 / -1;
+  padding: 10px 4px 4px;
+}
+.global-player-details small { color: rgba(244,239,226,0.68); }
+.global-player.is-expanded { border-radius: 20px; }
 .error-text { color: #ffb4a8; }
 .waveform { align-items: flex-end; display: flex; gap: 4px; min-height: 96px; overflow: hidden; }
 .waveform span { background: linear-gradient(#9bd8bd, #3f7e6b); border-radius: 999px; flex: 1; min-width: 4px; }
@@ -969,8 +1019,31 @@ a:focus-visible {
 .recording-details dl { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 0; }
 .recording-details dt { color: #9bd8bd; font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; }
 .recording-details dd { margin: 6px 0 0; }
-.session-seek-controls { display: flex; gap: 6px; }
-.session-seek-controls button { min-height: 44px; min-width: 44px; }
+.session-seek-controls {
+  display: flex;
+  grid-column: 2 / 5;
+  grid-row: 1;
+  justify-content: space-between;
+  justify-self: center;
+  pointer-events: none;
+  width: min(260px, 100%);
+  z-index: 2;
+}
+.session-seek-controls button {
+  align-items: center;
+  backdrop-filter: blur(12px);
+  background: rgba(7, 9, 9, 0.78);
+  border: 1px solid rgba(155, 216, 189, 0.62);
+  color: #f4efe2;
+  display: inline-flex;
+  height: 48px;
+  justify-content: center;
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0;
+  pointer-events: auto;
+  width: 48px;
+}
 @media (max-width: 720px) {
   .species-explorer-heading, .species-filters { grid-template-columns: 1fr; }
   .session-listening-console { margin-left: -16px; width: calc(100% + 32px); }
@@ -1669,7 +1742,7 @@ a:focus-visible {
 @media (max-width: 720px) {
   .shell { padding: 32px; }
   .atlas-shell { padding: 0; }
-  .global-player { align-items: flex-start; flex-direction: column; }
+  .global-player { width: calc(100% - 24px); }
   .session-listening-console {
     border-radius: 8px;
     margin-left: -8px;
