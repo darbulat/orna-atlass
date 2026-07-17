@@ -262,8 +262,8 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
           ))}
         </div>
         <div className="session-seek-controls">
-          <button type="button" aria-label="Back 30 seconds" onClick={() => seek(Math.max(playbackCurrentSeconds - 30, 0))}>−30</button>
-          <button type="button" aria-label="Forward 30 seconds" onClick={() => seek(Math.min(playbackCurrentSeconds + 30, playbackDurationSeconds))}>+30</button>
+          <button type="button" aria-label="Back 30 seconds" disabled={!isCurrent} onClick={() => seek(Math.max(playbackCurrentSeconds - 30, 0))}>−30</button>
+          <button type="button" aria-label="Forward 30 seconds" disabled={!isCurrent} onClick={() => seek(Math.min(playbackCurrentSeconds + 30, playbackDurationSeconds))}>+30</button>
         </div>
         <div className="session-core-shell" style={playbackProgressStyle}>
           <div

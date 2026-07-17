@@ -8,7 +8,7 @@ import { formatOffset, groupBirdPartsBySpecies } from "../audio/sessionPlayerUti
 const PAGE_SIZE = 12;
 
 export function BirdPartsTimeline({ session }: { session: SessionDetail }) {
-  const { currentSession, play, seek } = usePlayer();
+  const { play, seek } = usePlayer();
   const [query, setQuery] = useState("");
   const [minimumConfidence, setMinimumConfidence] = useState(0);
   const [expandedSpecies, setExpandedSpecies] = useState<string | null>(null);
@@ -26,8 +26,7 @@ export function BirdPartsTimeline({ session }: { session: SessionDetail }) {
   }, [minimumConfidence, query, tracks]);
 
   async function listenFrom(seconds: number) {
-    if (currentSession?.id !== session.id) await play(session);
-    seek(seconds);
+    if (await play(session)) seek(seconds);
   }
 
   return (

@@ -116,6 +116,9 @@ test("species explorer aggregates detections and seeks from a disclosed episode"
   await explorer.getByRole("button", { name: "Listen from 02:00" }).click();
 
   await expect(page.getByRole("slider", { name: "Playback position" })).toHaveAttribute("aria-valuenow", "120");
+  await page.getByRole("button", { name: "Pause playback" }).click();
+  await explorer.getByRole("button", { name: "Listen from 02:00" }).click();
+  await expect(page.getByRole("button", { name: "Pause playback" })).toBeVisible();
 });
 
 test("session details keep technical assets collapsed and controls use descriptive labels", async ({ page }) => {
@@ -135,6 +138,8 @@ test("recording details omit missing fields and playback offers thirty-second se
 
   const details = page.getByRole("region", { name: "Recording details" });
   await expect(details.getByText("Recordist notes")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Forward 30 seconds" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Back 30 seconds" })).toBeDisabled();
   await page.getByRole("button", { name: "Play session" }).click();
   await page.getByRole("button", { name: "Forward 30 seconds" }).click();
   await expect(page.getByRole("slider", { name: "Playback position" })).toHaveAttribute("aria-valuenow", "30");
