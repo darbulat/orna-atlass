@@ -94,7 +94,16 @@ function session(id, slug, title) {
       status: "ready",
     },
     annotations: [],
-    bird_parts: { session_id: id, analysis_provider: null, analysis_model_version: null, parts: [] },
+    bird_parts: {
+      session_id: id,
+      analysis_provider: "birdnet",
+      analysis_model_version: "test",
+      parts: [
+        { id: `${id}-part-1`, species_code: "erirob", species_common_name: "European Robin", species_scientific_name: "Erithacus rubecula", call_type: "song", confidence: 0.91, starts_at_seconds: 120, ends_at_seconds: 126 },
+        { id: `${id}-part-2`, species_code: "erirob", species_common_name: "European Robin", species_scientific_name: "Erithacus rubecula", call_type: "song", confidence: 0.87, starts_at_seconds: 240, ends_at_seconds: 247 },
+        { id: `${id}-part-3`, species_code: "parmaj", species_common_name: "Great Tit", species_scientific_name: "Parus major", call_type: "call", confidence: 0.78, starts_at_seconds: 360, ends_at_seconds: 364 },
+      ],
+    },
     is_featured: true,
     featured_sort_order: 1,
     metadata: {},

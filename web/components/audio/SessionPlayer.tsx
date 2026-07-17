@@ -165,7 +165,7 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
           </button>
         ) : (
           <Link href="/atlas" className="session-panel-back" aria-label="Back to atlas">
-            ‹
+            Back to atlas
           </Link>
         )}
         <span className="session-live-badge">Recording</span>
@@ -223,7 +223,7 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
           <ol className="session-bird-timeline">
             {birdTracks.map((track) => (
               <li key={track.key}>
-                <span aria-hidden="true">◢</span>
+                <span className="session-species-dot" aria-hidden="true" />
                 <strong>{track.label}</strong>
                 {track.parts.map((part) => (
                   <Fragment key={part.id}>
@@ -248,14 +248,7 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
         <div className="session-timeline-footer">
           <span>{formatOffset(timelinePlayheadSeconds)}</span>
           <strong>{birdTracks.length > 0 ? `${birdTracks.length} detected species` : "Awaiting analysis"}</strong>
-          <button
-            type="button"
-            aria-label="Timeline help"
-            disabled
-            title="Timeline help is not available yet"
-          >
-            ?
-          </button>
+
         </div>
       </div>
 
@@ -267,6 +260,10 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
           {displayedWaveformPeaks.map((peak, index) => (
             <span key={`${peak}-${index}`} style={{ height: `${Math.max(4, peak * 28)}px` }} />
           ))}
+        </div>
+        <div className="session-seek-controls">
+          <button type="button" aria-label="Back 30 seconds" onClick={() => seek(Math.max(playbackCurrentSeconds - 30, 0))}>−30</button>
+          <button type="button" aria-label="Forward 30 seconds" onClick={() => seek(Math.min(playbackCurrentSeconds + 30, playbackDurationSeconds))}>+30</button>
         </div>
         <div className="session-core-shell" style={playbackProgressStyle}>
           <div

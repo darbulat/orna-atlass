@@ -8,14 +8,14 @@ const labels: Record<keyof RecordingIntegrity, string> = {
 };
 
 export function RecordingIntegrityPanel({ integrity }: { integrity: RecordingIntegrity }) {
+  const provided = (Object.keys(labels) as Array<keyof RecordingIntegrity>).filter((key) => {
+    const value = integrity[key]?.trim();
+    return Boolean(value && value.toLowerCase() !== "unknown");
+  });
   return (
-    <section className="detail-grid" aria-label="Recording integrity">
-      {(Object.keys(labels) as Array<keyof RecordingIntegrity>).map((key) => (
-        <article key={key}>
-          <span>{labels[key]}</span>
-          <p>{integrity[key] ?? "Not provided"}</p>
-        </article>
-      ))}
+    <section className="recording-details" aria-label="Recording details">
+      <p className="eyebrow">Recording details</p>
+      {provided.length ? <dl>{provided.map((key) => <div key={key}><dt>{labels[key]}</dt><dd>{integrity[key]}</dd></div>)}</dl> : <p>Additional recording details have not been provided.</p>}
     </section>
   );
 }

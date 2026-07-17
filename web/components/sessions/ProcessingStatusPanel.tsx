@@ -11,11 +11,10 @@ export function ProcessingStatusPanel({
   const renditions = assets.filter((asset) => asset.kind === "streaming_rendition");
 
   return (
-    <section className="processing-panel" aria-label="Processing status">
-      <div>
-        <p className="eyebrow">Audio pipeline</p>
-        <h2>{formatStatus(status)}</h2>
-      </div>
+    <details className="processing-panel processing-details">
+      <summary aria-label="Show technical details">
+        <span><strong>Recording {formatStatus(status)}</strong><small>Technical details</small></span>
+      </summary>
       <dl className="processing-grid">
         <div>
           <dt>Source assets</dt>
@@ -40,7 +39,7 @@ export function ProcessingStatusPanel({
           ))}
         </ol>
       ) : null}
-    </section>
+    </details>
   );
 }
 

@@ -99,6 +99,49 @@ test("grant refresh preserves playback position and resumes audio", async ({ pag
   expect(audioState?.src).toContain(`/test-stream/${firstSessionId}/2.mp3`);
 });
 
+test("species explorer aggregates detections and seeks from a disclosed episode", async ({ page }) => {
+  await installFakeAudio(page);
+  await page.route("**/playback-grants", async (route) => {
+    await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(grant(firstSessionId, 1)) });
+  });
+
+  await page.goto("/sessions/first-session");
+  const explorer = page.getByRole("region", { name: "Detected species" });
+  await expect(explorer.getByText("2 detected species")).toBeVisible();
+  await expect(explorer.getByRole("button", { name: /European Robin.*2 detections/ })).toBeVisible();
+  await expect(explorer.getByText("Erithacus rubecula")).toHaveCount(0);
+
+  await explorer.getByRole("button", { name: /European Robin.*2 detections/ }).click();
+  await expect(explorer.getByText("Erithacus rubecula")).toBeVisible();
+  await explorer.getByRole("button", { name: "Listen from 02:00" }).click();
+
+  await expect(page.getByRole("slider", { name: "Playback position" })).toHaveAttribute("aria-valuenow", "120");
+});
+
+test("session details keep technical assets collapsed and controls use descriptive labels", async ({ page }) => {
+  await page.goto("/sessions/first-session");
+  await expect(page.locator("summary", { hasText: "Technical details" })).toBeVisible();
+  await expect(page.getByText("source_audio", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Back to atlas" })).toHaveText("Back to atlas");
+  await expect(page.getByRole("button", { name: "Timeline help" })).toHaveCount(0);
+});
+
+test("recording details omit missing fields and playback offers thirty-second seeking", async ({ page }) => {
+  await installFakeAudio(page);
+  await page.route("**/playback-grants", async (route) => {
+    await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(grant(firstSessionId, 1)) });
+  });
+  await page.goto("/sessions/first-session");
+
+  const details = page.getByRole("region", { name: "Recording details" });
+  await expect(details.getByText("Recordist notes")).toHaveCount(0);
+  await page.getByRole("button", { name: "Play session" }).click();
+  await page.getByRole("button", { name: "Forward 30 seconds" }).click();
+  await expect(page.getByRole("slider", { name: "Playback position" })).toHaveAttribute("aria-valuenow", "30");
+  await page.getByRole("button", { name: "Back 30 seconds" }).click();
+  await expect(page.getByRole("slider", { name: "Playback position" })).toHaveAttribute("aria-valuenow", "0");
+});
+
 test("switching sessions aborts a stale grant and ignores its late response", async ({ page }) => {
   await installFakeAudio(page);
   let firstRequestStarted = false;
