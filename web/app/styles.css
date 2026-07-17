@@ -141,7 +141,7 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
   font-family: Georgia, "Times New Roman", serif;
   gap: 8px;
   margin-top: 32px;
-  max-width: 560px;
+  width: 100%;
   overflow: hidden;
 }
 .session-scenic-listener,
@@ -943,6 +943,38 @@ a:focus-visible {
   text-overflow: ellipsis;
 }
 .bird-parts-list { margin-top: 8px; }
+.processing-details summary { cursor: pointer; list-style: none; }
+.processing-details summary::-webkit-details-marker { display: none; }
+.processing-details summary > span { align-items: center; display: flex; justify-content: space-between; gap: 16px; }
+.processing-details summary small { color: #9bd8bd; }
+.processing-details[open] summary { border-bottom: 1px solid rgba(255,255,255,.12); padding-bottom: 18px; }
+.session-panel-back { min-width: 44px; width: auto; padding: 0 14px; text-decoration: none; }
+.session-species-dot { background: #9bd8bd; border-radius: 50%; display: inline-block; height: 8px; width: 8px; }
+.species-explorer-heading { align-items: end; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) minmax(300px, 1fr); }
+.species-filters { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+.species-filters label { color: #9bd8bd; display: grid; font-size: .78rem; gap: 6px; letter-spacing: .08em; text-transform: uppercase; }
+.species-filters input, .species-filters select { background: #0b100e; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; color: #edf7f2; min-height: 44px; padding: 10px 12px; }
+.species-summary-list, .species-episodes ol { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.species-summary-list > li { background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.09); border-radius: 14px; overflow: hidden; }
+.species-summary { align-items: center; background: transparent; border: 0; color: #edf7f2; cursor: pointer; display: flex; justify-content: space-between; min-height: 64px; padding: 12px 16px; text-align: left; width: 100%; }
+.species-summary span:first-child { display: grid; gap: 4px; }
+.species-summary small, .species-episodes small { color: #9bd8bd; }
+.species-episodes { border-top: 1px solid rgba(255,255,255,.09); padding: 16px; }
+.species-episodes > p { color: #b7c8c0; margin-top: 0; }
+.species-episodes li { align-items: center; display: flex; justify-content: space-between; min-height: 48px; }
+.species-episodes li > span { display: flex; gap: 12px; }
+.species-episodes button { min-height: 40px; }
+.show-more { margin-top: 12px; width: 100%; }
+.recording-details { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; margin-top: 32px; padding: 20px; }
+.recording-details dl { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 0; }
+.recording-details dt { color: #9bd8bd; font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; }
+.recording-details dd { margin: 6px 0 0; }
+.session-seek-controls { display: flex; gap: 6px; }
+.session-seek-controls button { min-height: 44px; min-width: 44px; }
+@media (max-width: 720px) {
+  .species-explorer-heading, .species-filters { grid-template-columns: 1fr; }
+  .session-listening-console { margin-left: -16px; width: calc(100% + 32px); }
+}
 .collection-shell { padding-bottom: 120px; }
 .atlas-shell {
   background: #020303;

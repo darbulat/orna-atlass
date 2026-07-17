@@ -1,68 +1,69 @@
-import type { BirdPartsResponse } from "../../lib/api/sessions";
+"use client";
 
-type BirdPartsTimelineProps = {
-  birdParts: BirdPartsResponse | null;
-  durationSeconds: number | null;
-};
+import { useMemo, useState } from "react";
+import type { SessionDetail } from "../../lib/api/sessions";
+import { usePlayer } from "../audio/PlayerProvider";
+import { formatOffset, groupBirdPartsBySpecies } from "../audio/sessionPlayerUtils";
 
-export function BirdPartsTimeline({ birdParts, durationSeconds }: BirdPartsTimelineProps) {
-  const parts = birdParts?.parts ?? [];
-  const total = Math.max(durationSeconds ?? parts.at(-1)?.ends_at_seconds ?? 1, 1);
+const PAGE_SIZE = 12;
+
+export function BirdPartsTimeline({ session }: { session: SessionDetail }) {
+  const { play, seek } = usePlayer();
+  const [query, setQuery] = useState("");
+  const [minimumConfidence, setMinimumConfidence] = useState(0);
+  const [expandedSpecies, setExpandedSpecies] = useState<string | null>(null);
+  const [visibleEpisodes, setVisibleEpisodes] = useState(PAGE_SIZE);
+  const tracks = useMemo(() => groupBirdPartsBySpecies(session.bird_parts?.parts ?? []), [session.bird_parts]);
+  const filteredTracks = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    return tracks
+      .map((track) => ({
+        ...track,
+        parts: track.parts.filter((part) => (part.confidence ?? 0) >= minimumConfidence),
+      }))
+      .filter((track) => track.parts.length > 0 && (!normalizedQuery || track.label.toLocaleLowerCase().includes(normalizedQuery)))
+      .sort((left, right) => right.parts.length - left.parts.length || left.label.localeCompare(right.label));
+  }, [minimumConfidence, query, tracks]);
+
+  async function listenFrom(seconds: number) {
+    if (await play(session)) seek(seconds);
+  }
 
   return (
-    <section className="timeline-card bird-parts-card" aria-label="Bird vocal parts timeline">
-      <div>
-        <p className="eyebrow">Species timeline</p>
-        <h2>Bird vocal parts</h2>
-        {birdParts?.analysis_provider ? (
-          <p className="timeline-meta">
-            Analysis by {birdParts.analysis_provider}
-            {birdParts.analysis_model_version ? ` · model ${birdParts.analysis_model_version}` : ""}
-          </p>
-        ) : null}
-      </div>
-      {parts.length > 0 ? (
-        <>
-          <div className="bird-parts-track" role="list" aria-label="Detected bird vocal intervals">
-            {parts.map((part) => {
-              const left = (part.starts_at_seconds / total) * 100;
-              const width = Math.max(((part.ends_at_seconds - part.starts_at_seconds) / total) * 100, 1.5);
-              return (
-                <span
-                  key={part.id}
-                  className="bird-part-marker"
-                  role="listitem"
-                  style={{ left: `${left}%`, width: `${width}%` }}
-                  title={`${part.species_common_name} (${formatOffset(part.starts_at_seconds)})`}
-                  aria-label={`${part.species_common_name}, ${part.call_type}, ${formatOffset(part.starts_at_seconds)} to ${formatOffset(part.ends_at_seconds)}`}
-                >
-                  <span>{part.species_common_name}</span>
-                </span>
-              );
-            })}
-          </div>
-          <ol className="annotations bird-parts-list">
-            {parts.map((part) => (
-              <li key={part.id}>
-                <strong>{formatOffset(part.starts_at_seconds)}</strong>
-                <span>
-                  {part.species_common_name}
-                  {part.species_scientific_name ? ` · ${part.species_scientific_name}` : ""}
-                  {part.confidence != null ? ` · ${Math.round(part.confidence * 100)}%` : ""}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </>
-      ) : (
-        <p>Bird vocal parts will appear here after audio analysis completes.</p>
-      )}
+    <section className="timeline-card species-explorer" aria-label="Detected species">
+      <header className="species-explorer-heading">
+        <div>
+          <p className="eyebrow">Species timeline</p>
+          <h2>{filteredTracks.length} detected species</h2>
+          {session.bird_parts?.analysis_provider ? (
+            <p className="timeline-meta">Analysis by {session.bird_parts.analysis_provider}{session.bird_parts.analysis_model_version ? ` · model ${session.bird_parts.analysis_model_version}` : ""}</p>
+          ) : null}
+        </div>
+        <div className="species-filters">
+          <label>Find a species<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Robin, owl…" /></label>
+          <label>Minimum confidence<select value={minimumConfidence} onChange={(event) => setMinimumConfidence(Number(event.target.value))}><option value={0}>Any confidence</option><option value={0.7}>70% or higher</option><option value={0.85}>85% or higher</option><option value={0.95}>95% or higher</option></select></label>
+        </div>
+      </header>
+      {filteredTracks.length ? (
+        <ol className="species-summary-list">
+          {filteredTracks.map((track) => {
+            const expanded = expandedSpecies === track.key;
+            const maxConfidence = Math.max(...track.parts.map((part) => part.confidence ?? 0));
+            const scientificName = track.parts.find((part) => part.species_scientific_name)?.species_scientific_name;
+            return <li key={track.key}>
+              <button type="button" className="species-summary" aria-expanded={expanded} aria-label={`${track.label}, ${track.parts.length} detections`} onClick={() => { setExpandedSpecies(expanded ? null : track.key); setVisibleEpisodes(PAGE_SIZE); }}>
+                <span><strong>{track.label}</strong><small>{track.parts.length} detections · up to {Math.round(maxConfidence * 100)}%</small></span>
+                <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+              </button>
+              {expanded ? <div className="species-episodes">
+                {scientificName ? <p><em>{scientificName}</em> · first at {formatOffset(track.parts[0].starts_at_seconds)} · last at {formatOffset(track.parts.at(-1)?.starts_at_seconds ?? 0)}</p> : null}
+                <ol>{track.parts.slice(0, visibleEpisodes).map((part) => <li key={part.id}><span><strong>{formatOffset(part.starts_at_seconds)}</strong><small>{part.call_type} · {Math.round((part.confidence ?? 0) * 100)}%</small></span><button type="button" onClick={() => void listenFrom(part.starts_at_seconds)} aria-label={`Listen from ${formatOffset(part.starts_at_seconds)}`}>Listen</button></li>)}</ol>
+                {visibleEpisodes < track.parts.length ? <button type="button" className="show-more" onClick={() => setVisibleEpisodes((count) => count + PAGE_SIZE)}>Show {Math.min(PAGE_SIZE, track.parts.length - visibleEpisodes)} more</button> : null}
+              </div> : null}
+            </li>;
+          })}
+        </ol>
+      ) : <p>No detections match these filters.</p>}
     </section>
   );
-}
-
-function formatOffset(seconds: number) {
-  const minutes = Math.floor(seconds / 60);
-  const remaining = Math.floor(seconds % 60).toString().padStart(2, "0");
-  return `${minutes}:${remaining}`;
 }

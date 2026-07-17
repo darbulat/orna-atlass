@@ -84,18 +84,18 @@ function SessionDetailView({ session }: { session: SessionDetail }) {
       </section>
 
       <SessionPlayer session={session} />
-      <ProcessingStatusPanel status={session.processing_status} assets={session.media_assets ?? []} />
-      {session.recording_integrity ? (
-        <RecordingIntegrityPanel integrity={session.recording_integrity} />
-      ) : (
-        <p className="not-ready-state" role="status">Recording integrity has not been reviewed yet.</p>
-      )}
-      <BirdPartsTimeline birdParts={session.bird_parts ?? null} durationSeconds={session.duration_seconds ?? null} />
+      <BirdPartsTimeline session={session} />
       {session.waveform ? (
         <AnnotationTimeline annotations={session.annotations ?? []} waveform={session.waveform} />
       ) : (
         <p className="not-ready-state" role="status">Waveform data is still being prepared.</p>
       )}
+      {session.recording_integrity ? (
+        <RecordingIntegrityPanel integrity={session.recording_integrity} />
+      ) : (
+        <p className="not-ready-state" role="status">Recording details have not been provided.</p>
+      )}
+      <ProcessingStatusPanel status={session.processing_status} assets={session.media_assets ?? []} />
     </main>
   );
 }
