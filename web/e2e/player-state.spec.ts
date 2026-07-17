@@ -99,6 +99,65 @@ test("grant refresh preserves playback position and resumes audio", async ({ pag
   expect(audioState?.src).toContain(`/test-stream/${firstSessionId}/2.mp3`);
 });
 
+test("mobile global player stays compact and exposes details on demand", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installFakeAudio(page);
+  await page.route("**/playback-grants", async (route) => {
+    await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(grant(firstSessionId, 1)) });
+  });
+
+  await page.goto("/sessions/first-session");
+  await page.getByRole("button", { name: "Play session" }).click();
+  await page.getByRole("link", { name: "Back to atlas" }).click();
+
+  const player = page.getByRole("complementary", { name: "Global audio player" });
+  await expect(player).toBeVisible();
+  const compactBox = await player.boundingBox();
+  expect(compactBox).not.toBeNull();
+  expect(compactBox!.height).toBeLessThanOrEqual(72);
+  await expect(player.getByText("Global player", { exact: true })).toHaveCount(0);
+  await expect(player.getByText(/Grant expires/)).toHaveCount(0);
+
+  await player.getByRole("button", { name: "Pause playback" }).click();
+  await expect(player.getByRole("button", { name: "Resume playback" })).toBeVisible();
+  await player.getByRole("button", { name: "Expand player" }).click();
+  await expect(player.getByText(/Grant expires/)).toBeVisible();
+  await expect(player.getByRole("button", { name: "Collapse player" })).toBeVisible();
+});
+
+test("global player refreshes an expiring grant before resuming and surfaces errors while collapsed", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installFakeAudio(page);
+  let grantRequests = 0;
+  await page.route("**/playback-grants", async (route) => {
+    grantRequests += 1;
+    const nextGrant = grant(firstSessionId, grantRequests);
+    nextGrant.expires_at = new Date(Date.now() + (grantRequests === 1 ? 29_000 : 60_000)).toISOString();
+    await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(nextGrant) });
+  });
+
+  await page.goto("/sessions/first-session");
+  await page.getByRole("button", { name: "Play session" }).click();
+  await page.getByRole("link", { name: "Back to atlas" }).click();
+
+  const player = page.getByRole("complementary", { name: "Global audio player" });
+  await player.getByRole("button", { name: "Pause playback" }).click();
+  await player.getByRole("button", { name: "Resume playback" }).click();
+  await expect.poll(() => grantRequests).toBe(2);
+  await expect.poll(async () => page.evaluate(() => (
+    window as typeof window & { __lastAudio?: { src: string } }
+  ).__lastAudio?.src ?? "")).toContain(`/test-stream/${firstSessionId}/2.mp3`);
+
+  await page.evaluate(() => {
+    const audio = (window as typeof window & {
+      __lastAudio?: { onerror: ((event: Event) => void) | null };
+    }).__lastAudio;
+    audio?.onerror?.(new Event("error"));
+  });
+  await expect(player.getByRole("alert")).toHaveText("The audio stream could not be played.");
+  await expect(player.getByRole("button", { name: "Expand player" })).toBeVisible();
+});
+
 test("species explorer aggregates detections and seeks from a disclosed episode", async ({ page }) => {
   await installFakeAudio(page);
   await page.route("**/playback-grants", async (route) => {
@@ -127,6 +186,28 @@ test("session details keep technical assets collapsed and controls use descripti
   await expect(page.getByText("source_audio", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Back to atlas" })).toHaveText("Back to atlas");
   await expect(page.getByRole("button", { name: "Timeline help" })).toHaveCount(0);
+});
+
+test("mobile seek controls flank the player core without overlapping it", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.goto("/sessions/first-session");
+
+  const back = page.getByRole("button", { name: "Back 30 seconds" });
+  const forward = page.getByRole("button", { name: "Forward 30 seconds" });
+  const core = page.getByRole("button", { name: "Play session" });
+  const [backBox, forwardBox, coreBox] = await Promise.all([
+    back.boundingBox(),
+    forward.boundingBox(),
+    core.boundingBox(),
+  ]);
+
+  expect(backBox).not.toBeNull();
+  expect(forwardBox).not.toBeNull();
+  expect(coreBox).not.toBeNull();
+  expect(backBox!.x + backBox!.width).toBeLessThanOrEqual(coreBox!.x - 8);
+  expect(forwardBox!.x).toBeGreaterThanOrEqual(coreBox!.x + coreBox!.width + 8);
+  expect(Math.abs((backBox!.y + backBox!.height / 2) - (coreBox!.y + coreBox!.height / 2))).toBeLessThan(4);
+  expect(Math.abs((forwardBox!.y + forwardBox!.height / 2) - (coreBox!.y + coreBox!.height / 2))).toBeLessThan(4);
 });
 
 test("recording details omit missing fields and playback offers thirty-second seeking", async ({ page }) => {
