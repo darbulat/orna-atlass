@@ -125,6 +125,39 @@ test("mobile global player stays compact and exposes details on demand", async (
   await expect(player.getByRole("button", { name: "Collapse player" })).toBeVisible();
 });
 
+test("global player refreshes an expiring grant before resuming and surfaces errors while collapsed", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installFakeAudio(page);
+  let grantRequests = 0;
+  await page.route("**/playback-grants", async (route) => {
+    grantRequests += 1;
+    const nextGrant = grant(firstSessionId, grantRequests);
+    nextGrant.expires_at = new Date(Date.now() + (grantRequests === 1 ? 29_000 : 60_000)).toISOString();
+    await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(nextGrant) });
+  });
+
+  await page.goto("/sessions/first-session");
+  await page.getByRole("button", { name: "Play session" }).click();
+  await page.getByRole("link", { name: "Back to atlas" }).click();
+
+  const player = page.getByRole("complementary", { name: "Global audio player" });
+  await player.getByRole("button", { name: "Pause playback" }).click();
+  await player.getByRole("button", { name: "Resume playback" }).click();
+  await expect.poll(() => grantRequests).toBe(2);
+  await expect.poll(async () => page.evaluate(() => (
+    window as typeof window & { __lastAudio?: { src: string } }
+  ).__lastAudio?.src ?? "")).toContain(`/test-stream/${firstSessionId}/2.mp3`);
+
+  await page.evaluate(() => {
+    const audio = (window as typeof window & {
+      __lastAudio?: { onerror: ((event: Event) => void) | null };
+    }).__lastAudio;
+    audio?.onerror?.(new Event("error"));
+  });
+  await expect(player.getByRole("alert")).toHaveText("The audio stream could not be played.");
+  await expect(player.getByRole("button", { name: "Expand player" })).toBeVisible();
+});
+
 test("species explorer aggregates detections and seeks from a disclosed episode", async ({ page }) => {
   await installFakeAudio(page);
   await page.route("**/playback-grants", async (route) => {
@@ -156,7 +189,7 @@ test("session details keep technical assets collapsed and controls use descripti
 });
 
 test("mobile seek controls flank the player core without overlapping it", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 320, height: 844 });
   await page.goto("/sessions/first-session");
 
   const back = page.getByRole("button", { name: "Back 30 seconds" });

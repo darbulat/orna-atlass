@@ -650,6 +650,7 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
   padding: 10px 4px 4px;
 }
 .global-player-details small { color: rgba(244,239,226,0.68); }
+.global-player-error { grid-column: 1 / -1; }
 .global-player.is-expanded { border-radius: 20px; }
 .error-text { color: #ffb4a8; }
 .waveform { align-items: flex-end; display: flex; gap: 4px; min-height: 96px; overflow: hidden; }
@@ -1021,7 +1022,7 @@ a:focus-visible {
 .recording-details dd { margin: 6px 0 0; }
 .session-seek-controls {
   display: flex;
-  grid-column: 2 / 5;
+  grid-column: 1 / -1;
   grid-row: 1;
   justify-content: space-between;
   justify-self: center;

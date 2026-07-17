@@ -19,7 +19,7 @@ type PlayerContextValue = {
   error: string | null;
   play: (session: SessionDetail) => Promise<boolean>;
   pause: () => void;
-  resume: () => Promise<void>;
+  resume: () => Promise<boolean>;
   seek: (seconds: number) => void;
 };
 
@@ -302,14 +302,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [updatePlaybackProgress]);
 
   const resume = useCallback(async () => {
-    const audio = audioRef.current;
-    if (!audio) {
-      return;
+    const session = currentSessionRef.current;
+    if (!session) {
+      return false;
     }
-    await audio.play();
-    updatePlaybackProgress();
-    dispatch({ type: "playing" });
-  }, [updatePlaybackProgress]);
+    return play(session);
+  }, [play]);
 
   const seek = useCallback((seconds: number) => {
     const audio = audioRef.current;
@@ -418,9 +416,9 @@ function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
         <div className="global-player-details">
           <small>{playbackState}</small>
           {grant ? <small>Grant expires {formatClockTime(grant.expires_at)}</small> : null}
-          {error ? <small className="error-text" role="alert">{error}</small> : null}
         </div>
       ) : null}
+      {error ? <small className="global-player-error error-text" role="alert">{error}</small> : null}
     </aside>
   );
 }
