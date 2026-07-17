@@ -23,6 +23,14 @@ export default function MembershipPage() {
   const [accountLoadError, setAccountLoadError] = useState<string | null>(null);
   const [isLoadingAccount, setIsLoadingAccount] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [registrationComplete, setRegistrationComplete] = useState(false);
+
+  useEffect(() => {
+    const requestedMode = new URLSearchParams(window.location.search).get("mode");
+    if (requestedMode === "register" || requestedMode === "login") {
+      setMode(requestedMode);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -59,6 +67,13 @@ export default function MembershipPage() {
     try {
       if (mode === "register") {
         await register(email, password);
+        setRegistrationComplete(true);
+        window.dispatchEvent(new CustomEvent("orna:analytics", {
+          detail: {
+            name: "registration_completed",
+            placement: "membership_form",
+          },
+        }));
       }
       const token = await login(email, password);
       setUser(token.user);
@@ -91,6 +106,10 @@ export default function MembershipPage() {
     <main className="shell membership-page" id="main-content">
       <p className="eyebrow">ORNA Atlas</p>
       <h1>Membership</h1>
+      <p>Listen first, then create a free account to reserve early member access. No payment is taken today.</p>
+      {registrationComplete ? (
+        <p className="form-message" role="status">You’re on the early access list. We’ll show pricing before any payment.</p>
+      ) : null}
       {isLoadingAccount ? <p role="status">Loading account…</p> : null}
       {accountLoadError ? <p className="form-message" role="alert">{accountLoadError}</p> : null}
       {user ? (

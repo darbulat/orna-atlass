@@ -32,6 +32,11 @@ PIPELINE_QUEUE_JOBS = Counter(
     "Audio pipeline enqueue outcomes",
     ("status",),
 )
+CONVERSION_EVENTS = Counter(
+    "orna_conversion_events_total",
+    "Accepted privacy-bounded conversion events",
+    ("name", "placement"),
+)
 PIPELINE_STAGE_DURATION = Histogram(
     "orna_pipeline_stage_duration_seconds",
     "Audio pipeline stage latency",

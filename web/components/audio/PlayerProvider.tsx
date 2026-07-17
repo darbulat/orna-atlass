@@ -44,6 +44,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const grantRequestRef = useRef(0);
   const grantAbortRef = useRef<AbortController | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
+  const engagementRef = useRef({
+    sessionId: null as string | null,
+    previousMediaTime: 0,
+    listenedSeconds: 0,
+    emitted: new Set<number>(),
+  });
   const [player, dispatch] = useReducer(playerReducer, initialPlayerState);
   const [isGlobalPlayerSuppressed, setIsGlobalPlayerSuppressed] = useState(false);
 
@@ -78,9 +84,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!audio.paused && audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
       dispatch({ type: "playing" });
     }
+    const session = currentSessionRef.current;
+    const engagement = engagementRef.current;
+    const mediaTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    if (session && engagement.sessionId === session.id && !audio.paused) {
+      const elapsed = mediaTime - engagement.previousMediaTime;
+      // Normal timeupdate deltas are small; cap them so seeking is not counted as listening.
+      if (elapsed > 0 && elapsed <= 15) {
+        engagement.listenedSeconds += elapsed;
+      }
+      for (const threshold of [30, 300]) {
+        if (engagement.listenedSeconds >= threshold && !engagement.emitted.has(threshold)) {
+          engagement.emitted.add(threshold);
+          window.dispatchEvent(new CustomEvent("orna:analytics", {
+            detail: {
+              name: threshold === 30 ? "listening_30_seconds" : "listening_5_minutes",
+              session_slug: session.slug,
+            },
+          }));
+        }
+      }
+    }
+    engagement.previousMediaTime = mediaTime;
     dispatch({
       type: "progress",
-      currentTimeSeconds: Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
+      currentTimeSeconds: mediaTime,
       durationSeconds:
         Number.isFinite(audio.duration) && audio.duration > 0
           ? audio.duration
@@ -201,6 +229,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         detachAudio(audioRef.current);
       }
       currentSessionRef.current = session;
+      engagementRef.current = {
+        sessionId: session.id,
+        previousMediaTime: 0,
+        listenedSeconds: 0,
+        emitted: new Set<number>(),
+      };
       dispatch({ type: "request_grant", session });
 
       try {

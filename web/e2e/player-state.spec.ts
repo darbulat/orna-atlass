@@ -158,6 +158,39 @@ test("the playback slider supports keyboard seeking with accessible values", asy
   await expect(slider).toHaveAttribute("aria-valuetext", "01:00:00");
 });
 
+test("playback emits bounded engagement milestones once per session", async ({ page }) => {
+  await installFakeAudio(page);
+  await page.route("**/playback-grants", async (route) => {
+    await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(grant(firstSessionId, 1)) });
+  });
+  await page.addInitScript(() => {
+    (window as typeof window & { __analytics?: unknown[] }).__analytics = [];
+    window.addEventListener("orna:analytics", (event) => {
+      (window as typeof window & { __analytics?: unknown[] }).__analytics?.push((event as CustomEvent).detail);
+    });
+  });
+
+  await page.goto("/sessions/first-session");
+  await page.getByRole("button", { name: "Play session" }).click();
+  await page.evaluate(() => {
+    const audio = (window as typeof window & {
+      __lastAudio?: { currentTime: number; ontimeupdate: ((event: Event) => void) | null };
+    }).__lastAudio;
+    if (!audio) return;
+    for (const currentTime of Array.from({ length: 32 }, (_, index) => (index + 1) * 10)) {
+      audio.currentTime = currentTime;
+      audio.ontimeupdate?.(new Event("timeupdate"));
+    }
+  });
+
+  await expect.poll(() => page.evaluate(() => (
+    window as typeof window & { __analytics?: Array<{ name: string }> }
+  ).__analytics?.map((event) => event.name) ?? [])).toEqual([
+    "listening_30_seconds",
+    "listening_5_minutes",
+  ]);
+});
+
 test("playback returns from stalled to playing when media resumes", async ({ page }) => {
   await installFakeAudio(page);
   await page.route("**/playback-grants", async (route) => {

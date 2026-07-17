@@ -295,6 +295,23 @@ export interface paths {
         patch: operations["update_user_role_api_v1_admin_users__user_id__role_patch"];
         trace?: never;
     };
+    "/api/v1/analytics/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Conversion Event */
+        post: operations["accept_conversion_event_api_v1_analytics_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/atlas/dawn/current": {
         parameters: {
             query?: never;
@@ -1118,6 +1135,26 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** ConversionEventAccepted */
+        ConversionEventAccepted: {
+            /** Accepted */
+            accepted: boolean;
+        };
+        /** ConversionEventCreate */
+        ConversionEventCreate: {
+            name: components["schemas"]["ConversionEventName"];
+            placement: components["schemas"]["ConversionPlacement"];
+        };
+        /**
+         * ConversionEventName
+         * @enum {string}
+         */
+        ConversionEventName: "sample_play_started" | "listening_30_seconds" | "listening_5_minutes" | "registration_completed" | "hero_cta_clicked" | "listening_path_selected" | "membership_cta_clicked" | "final_cta_clicked";
+        /**
+         * ConversionPlacement
+         * @enum {string}
+         */
+        ConversionPlacement: "global_player" | "hero_sample" | "hero_primary" | "hero_secondary" | "intent_focus" | "intent_restore" | "intent_unwind" | "intent_explore" | "pricing_card" | "footer_atlas" | "footer_membership" | "membership_form";
         /**
          * CoordinateVisibility
          * @enum {string}
@@ -2682,6 +2719,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_conversion_event_api_v1_analytics_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversionEventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionEventAccepted"];
                 };
             };
             /** @description Validation Error */
