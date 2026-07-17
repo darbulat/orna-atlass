@@ -13,6 +13,7 @@ from orna_atlas.app.core.security import public_jwks
 from orna_atlas.app.db.session import engine
 from orna_atlas.app.integrations.redis import get_redis_client
 from orna_atlas.app.modules.admin.router import router as admin_router
+from orna_atlas.app.modules.analytics.router import router as analytics_router
 from orna_atlas.app.modules.auth.router import router as auth_router
 from orna_atlas.app.modules.atlas.router import router as atlas_router
 from orna_atlas.app.modules.collections.router import router as collections_router
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     register_error_handlers(app)
+    app.include_router(analytics_router, prefix=settings.api_prefix)
     app.include_router(auth_router, prefix=settings.api_prefix)
     app.include_router(memberships_router, prefix=settings.api_prefix)
     app.include_router(users_router, prefix=settings.api_prefix)

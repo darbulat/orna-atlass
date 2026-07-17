@@ -1157,6 +1157,68 @@
         "title": "CollectionUpdate",
         "type": "object"
       },
+      "ConversionEventAccepted": {
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "title": "ConversionEventAccepted",
+        "type": "object"
+      },
+      "ConversionEventCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/ConversionEventName"
+          },
+          "placement": {
+            "$ref": "#/components/schemas/ConversionPlacement"
+          }
+        },
+        "required": [
+          "name",
+          "placement"
+        ],
+        "title": "ConversionEventCreate",
+        "type": "object"
+      },
+      "ConversionEventName": {
+        "enum": [
+          "sample_play_started",
+          "listening_30_seconds",
+          "listening_5_minutes",
+          "registration_completed",
+          "hero_cta_clicked",
+          "listening_path_selected",
+          "membership_cta_clicked",
+          "final_cta_clicked"
+        ],
+        "title": "ConversionEventName",
+        "type": "string"
+      },
+      "ConversionPlacement": {
+        "enum": [
+          "global_player",
+          "hero_sample",
+          "hero_primary",
+          "hero_secondary",
+          "intent_focus",
+          "intent_restore",
+          "intent_unwind",
+          "intent_explore",
+          "pricing_card",
+          "footer_atlas",
+          "footer_membership",
+          "membership_form"
+        ],
+        "title": "ConversionPlacement",
+        "type": "string"
+      },
       "CoordinateVisibility": {
         "enum": [
           "exact_public",
@@ -5423,6 +5485,47 @@
         "summary": "Update User Role",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/api/v1/analytics/events": {
+      "post": {
+        "operationId": "accept_conversion_event_api_v1_analytics_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversionEventCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversionEventAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Conversion Event",
+        "tags": [
+          "analytics"
         ]
       }
     },
