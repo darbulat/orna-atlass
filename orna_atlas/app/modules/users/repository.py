@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select, text
@@ -28,8 +29,18 @@ async def get_admin(session: AsyncSession) -> User | None:
     return result.scalar_one_or_none()
 
 
-async def create(session: AsyncSession, *, email: str, password_hash: str) -> User:
-    user = User(email=email.lower(), password_hash=password_hash)
+async def create(
+    session: AsyncSession,
+    *,
+    email: str,
+    password_hash: str | None,
+    email_verified: bool = False,
+) -> User:
+    user = User(
+        email=email.lower(),
+        password_hash=password_hash,
+        email_verified_at=datetime.now(UTC) if email_verified else None,
+    )
     session.add(user)
     await session.flush()
     return user

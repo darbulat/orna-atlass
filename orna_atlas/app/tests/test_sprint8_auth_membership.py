@@ -20,7 +20,7 @@ from orna_atlas.app.core.domain_errors import (
     ForbiddenError,
     NotFoundError,
 )
-from orna_atlas.app.core.rate_limit import rate_limit
+from orna_atlas.app.core.rate_limit import _request_identity, rate_limit
 from orna_atlas.app.core.security import (
     CurrentUser,
     _resolve_active_user,
@@ -513,6 +513,28 @@ class FakeRedis:
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+def test_rate_limit_identity_uses_real_ip_only_from_trusted_proxy() -> None:
+    trusted = SimpleNamespace(
+        client=SimpleNamespace(host="172.20.0.10"),
+        headers={"x-real-ip": "203.0.113.24"},
+    )
+    untrusted = SimpleNamespace(
+        client=SimpleNamespace(host="198.51.100.7"),
+        headers={"x-real-ip": "203.0.113.24"},
+    )
+
+    assert _request_identity(trusted, ["172.16.0.0/12"]) == "203.0.113.24"
+    assert _request_identity(untrusted, ["172.16.0.0/12"]) == "198.51.100.7"
+
+
+def test_rate_limit_identity_rejects_malformed_forwarded_ip() -> None:
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="172.20.0.10"),
+        headers={"x-real-ip": "attacker-controlled"},
+    )
+    assert _request_identity(request, ["172.16.0.0/12"]) == "172.20.0.10"
 
 
 @pytest.mark.asyncio

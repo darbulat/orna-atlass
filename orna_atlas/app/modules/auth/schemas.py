@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -20,6 +21,10 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_at: datetime
     user: UserRead
+
+
+class OAuthProvidersResponse(BaseModel):
+    providers: list[Literal["google", "apple", "facebook"]]
 
 
 class LogoutResponse(BaseModel):

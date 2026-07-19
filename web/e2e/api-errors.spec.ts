@@ -25,7 +25,7 @@ test("membership reports an account API outage instead of treating it as signed 
   await page.goto("/membership");
 
   await expect(page.getByText(/ORNA Atlas is temporarily unavailable/)).toBeVisible();
-  await expect(page.locator("form").getByRole("button", { name: "Sign in" })).toBeVisible();
+  await expect(page.locator("form").getByRole("button", { name: "Continue" })).toBeVisible();
 });
 
 test("atlas search results open inside the visible viewport", async ({ page }) => {

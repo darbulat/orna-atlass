@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from orna_atlas.app.modules.auth.models import RefreshToken
+from orna_atlas.app.modules.auth.models import OAuthIdentity, RefreshToken
 
 
 async def create_refresh_token(
@@ -42,3 +42,33 @@ async def revoke_all_for_user(session: AsyncSession, user_id: UUID) -> None:
     for token in result.scalars():
         token.revoked_at = now
     await session.flush()
+
+
+async def get_oauth_identity(
+    session: AsyncSession, provider: str, subject: str
+) -> OAuthIdentity | None:
+    result = await session.execute(
+        select(OAuthIdentity)
+        .options(selectinload(OAuthIdentity.user))
+        .where(OAuthIdentity.provider == provider, OAuthIdentity.subject == subject)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_oauth_identity(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    provider: str,
+    subject: str,
+    email: str,
+) -> OAuthIdentity:
+    identity = OAuthIdentity(
+        user_id=user_id,
+        provider=provider,
+        subject=subject,
+        email=email.lower(),
+    )
+    session.add(identity)
+    await session.flush()
+    return identity

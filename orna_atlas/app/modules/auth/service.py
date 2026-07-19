@@ -14,10 +14,14 @@ from orna_atlas.app.core.security import (
 )
 from orna_atlas.app.modules.admin.repository import add_audit_event
 from orna_atlas.app.modules.auth import repository
+from orna_atlas.app.modules.auth.oauth import VerifiedIdentity
 from orna_atlas.app.modules.auth.schemas import LoginRequest, RegisterRequest, TokenResponse
 from orna_atlas.app.modules.users import repository as users_repository
 from orna_atlas.app.modules.users.models import User
 from orna_atlas.app.modules.users.schemas import UserRead
+
+
+_DUMMY_PASSWORD_HASH = hash_password("orna-invalid-credential-canary")
 
 
 async def register(session: AsyncSession, data: RegisterRequest) -> User:
@@ -44,9 +48,69 @@ async def register(session: AsyncSession, data: RegisterRequest) -> User:
 
 async def authenticate(session: AsyncSession, data: LoginRequest) -> User:
     user = await users_repository.get_by_email(session, str(data.email))
-    if user is None or not user.is_active or not verify_password(data.password, user.password_hash):
+    encoded = user.password_hash if user is not None and user.password_hash else _DUMMY_PASSWORD_HASH
+    password_valid = verify_password(data.password, encoded)
+    if user is None or not user.is_active or not user.password_hash or not password_valid:
         raise AuthenticationError("Invalid credentials")
     return user
+
+
+async def authenticate_oauth_identity(
+    session: AsyncSession, identity: VerifiedIdentity
+) -> tuple[TokenResponse, str]:
+    if not identity.email_verified:
+        raise AuthenticationError("OAuth provider must supply a verified email address")
+    stored_identity = await repository.get_oauth_identity(
+        session, identity.provider, identity.subject
+    )
+    if stored_identity is not None:
+        user = stored_identity.user
+        if not user.is_active:
+            raise AuthenticationError("User is unavailable")
+        event_type = "auth.oauth_login_succeeded"
+    else:
+        user = await users_repository.get_by_email(session, identity.email)
+        if user is not None:
+            raise ConflictError(
+                "An account with this email uses a different sign-in method"
+            )
+        try:
+            user = await users_repository.create(
+                session,
+                email=identity.email,
+                password_hash=None,
+                email_verified=True,
+            )
+            event_type = "auth.oauth_user_registered"
+            await repository.create_oauth_identity(
+                session,
+                user_id=user.id,
+                provider=identity.provider,
+                subject=identity.subject,
+                email=identity.email,
+            )
+        except IntegrityError as exc:
+            await session.rollback()
+            raced_identity = await repository.get_oauth_identity(
+                session, identity.provider, identity.subject
+            )
+            if raced_identity is None:
+                raise ConflictError(
+                    "An account with this email uses a different sign-in method"
+                ) from exc
+            user = raced_identity.user
+            if not user.is_active:
+                raise AuthenticationError("User is unavailable") from exc
+            event_type = "auth.oauth_login_succeeded"
+    await add_audit_event(
+        session,
+        event_type=event_type,
+        subject_type="user",
+        subject_id=str(user.id),
+        actor_user_id=user.id,
+        metadata={"provider": identity.provider},
+    )
+    return await issue_token_pair(session, user)
 
 
 async def issue_token_pair(session: AsyncSession, user: User) -> tuple[TokenResponse, str]:

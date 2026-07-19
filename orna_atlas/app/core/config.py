@@ -1,8 +1,11 @@
 import re
 from functools import lru_cache
+from ipaddress import ip_address, ip_network
+from urllib.parse import unquote, urlsplit
 
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +18,53 @@ def _private_key_identity(value: str) -> bytes | None:
     return private_key.public_key().public_bytes(
         encoding=serialization.Encoding.DER,
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+
+def _is_p256_private_key(value: str) -> bool:
+    try:
+        key = serialization.load_pem_private_key(
+            value.replace("\\n", "\n").encode(), password=None
+        )
+    except (TypeError, UnsupportedAlgorithm, ValueError):
+        return False
+    return isinstance(key, ec.EllipticCurvePrivateKey) and isinstance(
+        key.curve, ec.SECP256R1
+    )
+
+
+_HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+
+
+def _is_valid_hostname(value: str) -> bool:
+    try:
+        ip_address(value)
+        return True
+    except ValueError:
+        pass
+    if len(value) > 253:
+        return False
+    labels = value.split(".")
+    return bool(labels) and all(_HOST_LABEL.fullmatch(label) for label in labels)
+
+
+def _is_valid_production_oauth_url(value: str) -> bool:
+    decoded = unquote(value)
+    if any(character.isspace() or ord(character) < 32 or ord(character) == 127 or character == "\\" for character in decoded):
+        return False
+    try:
+        parsed = urlsplit(value)
+        parsed.port
+    except ValueError:
+        return False
+    return bool(
+        parsed.scheme == "https"
+        and parsed.hostname
+        and _is_valid_hostname(parsed.hostname)
+        and not parsed.username
+        and not parsed.password
+        and not parsed.query
+        and not parsed.fragment
     )
 
 
@@ -97,6 +147,27 @@ class Settings(BaseSettings):
     )
     refresh_token_ttl_days: int = Field(default=30, ge=1, validation_alias="REFRESH_TOKEN_TTL_DAYS")
     auth_cookie_secure: bool = Field(default=False, validation_alias="AUTH_COOKIE_SECURE")
+    trusted_proxy_cidrs: list[str] = Field(
+        default_factory=list, validation_alias="TRUSTED_PROXY_CIDRS"
+    )
+    oauth_callback_base_url: str = Field(
+        default="http://localhost:8000/api/v1/auth/oauth",
+        validation_alias="OAUTH_CALLBACK_BASE_URL",
+    )
+    oauth_frontend_url: str = Field(
+        default="http://localhost:3000/membership",
+        validation_alias="OAUTH_FRONTEND_URL",
+    )
+    google_client_id: str | None = Field(default=None, validation_alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str | None = Field(default=None, validation_alias="GOOGLE_CLIENT_SECRET")
+    apple_client_id: str | None = Field(default=None, validation_alias="APPLE_CLIENT_ID")
+    apple_team_id: str | None = Field(default=None, validation_alias="APPLE_TEAM_ID")
+    apple_key_id: str | None = Field(default=None, validation_alias="APPLE_KEY_ID")
+    apple_private_key: str | None = Field(default=None, validation_alias="APPLE_PRIVATE_KEY")
+    facebook_client_id: str | None = Field(default=None, validation_alias="FACEBOOK_CLIENT_ID")
+    facebook_client_secret: str | None = Field(
+        default=None, validation_alias="FACEBOOK_CLIENT_SECRET"
+    )
     local_admin_enabled: bool = Field(default=False, validation_alias="LOCAL_ADMIN_ENABLED")
     auth_rate_limit: int = Field(default=10, ge=1, validation_alias="AUTH_RATE_LIMIT")
     search_rate_limit: int = Field(default=60, ge=1, validation_alias="SEARCH_RATE_LIMIT")
@@ -108,6 +179,42 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def reject_insecure_production_auth(self) -> "Settings":
         normalized_environment = self.environment.lower()
+        try:
+            for cidr in self.trusted_proxy_cidrs:
+                ip_network(cidr, strict=False)
+        except ValueError as exc:
+            raise ValueError("TRUSTED_PROXY_CIDRS must contain valid IP networks") from exc
+        provider_fields = {
+            "google": (self.google_client_id, self.google_client_secret),
+            "apple": (
+                self.apple_client_id,
+                self.apple_team_id,
+                self.apple_key_id,
+                self.apple_private_key,
+            ),
+            "facebook": (self.facebook_client_id, self.facebook_client_secret),
+        }
+        provider_names = {
+            "google": ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"),
+            "apple": (
+                "APPLE_CLIENT_ID",
+                "APPLE_TEAM_ID",
+                "APPLE_KEY_ID",
+                "APPLE_PRIVATE_KEY",
+            ),
+            "facebook": ("FACEBOOK_CLIENT_ID", "FACEBOOK_CLIENT_SECRET"),
+        }
+        for provider, values in provider_fields.items():
+            if any(values) and not all(values):
+                missing = [
+                    name for name, value in zip(provider_names[provider], values, strict=True) if not value
+                ]
+                raise ValueError(f"{', '.join(missing)} required when {provider} OAuth is configured")
+        oauth_enabled = any(all(values) for values in provider_fields.values())
+        if all(provider_fields["apple"]) and not _is_p256_private_key(
+            self.apple_private_key or ""
+        ):
+            raise ValueError("APPLE_PRIVATE_KEY must be a valid P-256 EC private key")
         if self.auth_signing_algorithm not in {"HS256", "RS256"}:
             raise ValueError("AUTH_SIGNING_ALGORITHM must be HS256 or RS256")
         if self.auth_signing_algorithm == "RS256" and not self.auth_private_key:
@@ -138,6 +245,15 @@ class Settings(BaseSettings):
                 "LOCAL_ADMIN_ENABLED may only be true in development or local environments"
             )
         if normalized_environment == "production":
+            if oauth_enabled:
+                if not _is_valid_production_oauth_url(self.oauth_callback_base_url):
+                    raise ValueError(
+                        "OAUTH_CALLBACK_BASE_URL must be an absolute HTTPS URL without credentials, query, or fragment"
+                    )
+                if not _is_valid_production_oauth_url(self.oauth_frontend_url):
+                    raise ValueError(
+                        "OAUTH_FRONTEND_URL must be an absolute HTTPS URL without credentials, query, or fragment"
+                    )
             if self.auth_signing_algorithm == "RS256" and self.auth_private_key:
                 hls_secrets = [
                     self.hls_token_secret,
