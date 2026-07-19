@@ -1,8 +1,20 @@
 import re
 from functools import lru_cache
 
+from cryptography.hazmat.primitives import serialization
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _private_key_identity(value: str) -> bytes | None:
+    try:
+        private_key = serialization.load_pem_private_key(value.encode(), password=None)
+    except (TypeError, ValueError):
+        return None
+    return private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
 
 
 class Settings(BaseSettings):
@@ -125,13 +137,22 @@ class Settings(BaseSettings):
                 "LOCAL_ADMIN_ENABLED may only be true in development or local environments"
             )
         if normalized_environment == "production":
-            if self.auth_signing_algorithm == "RS256" and self.auth_private_key and (
-                self.hls_token_secret == self.auth_private_key
-                or self.auth_private_key in self.hls_token_previous_secrets.values()
-            ):
-                raise ValueError(
-                    "HLS token secrets must be independent from the RS256 private key"
-                )
+            if self.auth_signing_algorithm == "RS256" and self.auth_private_key:
+                hls_secrets = [
+                    self.hls_token_secret,
+                    *self.hls_token_previous_secrets.values(),
+                ]
+                private_key_identity = _private_key_identity(self.auth_private_key)
+                if self.auth_private_key in hls_secrets or (
+                    private_key_identity is not None
+                    and any(
+                        _private_key_identity(secret) == private_key_identity
+                        for secret in hls_secrets
+                    )
+                ):
+                    raise ValueError(
+                        "HLS token secrets must be independent from the RS256 private key"
+                    )
             if self.hls_token_secret == self.auth_secret_key:
                 raise ValueError("HLS_TOKEN_SECRET must be independent from AUTH_SECRET_KEY")
             if (

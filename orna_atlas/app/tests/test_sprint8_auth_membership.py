@@ -302,10 +302,14 @@ def test_production_rejects_development_secret_as_previous_hls_key() -> None:
 
 
 @pytest.mark.parametrize("reuse_as_previous", [False, True])
-def test_production_rs256_rejects_private_key_reuse_for_hls(reuse_as_previous: bool) -> None:
-    private_key = "p" * 64
-    hls_secret = "h" * 32 if reuse_as_previous else private_key
-    previous = {"old": private_key} if reuse_as_previous else {}
+def test_production_rs256_rejects_equivalent_private_key_reuse_for_hls(
+    reuse_as_previous: bool,
+) -> None:
+    _, private_key = _rsa_private_key_and_pem()
+    equivalent_key = private_key.rstrip("\n")
+    assert equivalent_key != private_key
+    hls_secret = "h" * 32 if reuse_as_previous else equivalent_key
+    previous = {"old": equivalent_key} if reuse_as_previous else {}
 
     with pytest.raises(ValidationError, match="RS256 private key"):
         Settings(
