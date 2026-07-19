@@ -41,6 +41,52 @@ def test_request_middleware_preserves_valid_correlation_id(caplog) -> None:
     assert record.duration_ms >= 0
 
 
+def test_request_middleware_logs_route_template_without_hls_token(caplog) -> None:
+    app = FastAPI()
+    app.add_middleware(RequestLoggingMiddleware)
+
+    @app.get("/media/hls/{asset_id}/{token}/{object_name:path}")
+    async def hls_probe(asset_id: str, token: str, object_name: str) -> dict[str, str]:
+        return {"asset_id": asset_id, "token": token, "object_name": object_name}
+
+    canary = "canary-secret-playback-token"
+    with caplog.at_level(logging.INFO, logger="orna_atlas.request"):
+        response = TestClient(app).get(
+            f"/media/hls/asset-1/{canary}/segments/segment-1.m4s"
+        )
+
+    assert response.status_code == 200
+    record = next(item for item in caplog.records if item.message == "request_complete")
+    assert record.path == "/media/hls/{asset_id}/{token}/{object_name:path}"
+    assert canary not in record.getMessage()
+    assert canary not in json.dumps(record.__dict__, default=str)
+
+
+def test_nginx_access_log_redacts_hls_token_paths() -> None:
+    config = Path("deploy/nginx.conf.template").read_text()
+    log_format = config.split("log_format orna_access", 1)[1].split(";", 1)[0]
+
+    assert "~^/api/v1/media/hls/ /api/v1/media/hls/[REDACTED]" in config
+    assert config.count("access_log /var/log/nginx/access.log orna_access;") == 2
+    assert "$orna_log_path" in log_format
+    assert "$request " not in log_format
+    assert "$request_uri" not in log_format
+    assert "$http_" not in log_format
+
+
+def test_api_image_disables_uvicorn_access_log() -> None:
+    dockerfile = Path("Dockerfile.api").read_text()
+
+    assert '"--no-access-log"' in dockerfile
+
+
+def test_https_compose_mounts_token_safe_nginx_config() -> None:
+    compose = Path("docker-compose.https.yml").read_text()
+
+    assert "ports: !override []" in compose
+    assert "./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro" in compose
+
+
 def test_metrics_endpoint_exposes_prometheus_payload() -> None:
     response = TestClient(atlas_app).get("/metrics")
 

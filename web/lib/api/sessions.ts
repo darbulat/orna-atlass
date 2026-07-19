@@ -2,12 +2,12 @@ import type { components } from "./generated";
 import { ApiError, fetchJson } from "./client";
 
 export type LocationRead = components["schemas"]["LocationRead"];
-export type MediaAssetRead = components["schemas"]["MediaAssetRead"];
+export type MediaAssetRead = components["schemas"]["PublicMediaAssetRead"];
 export type ProcessingJobRead = components["schemas"]["ProcessingJobRead"];
 export type RecordingIntegrity = components["schemas"]["RecordingIntegrityRead"];
 export type Waveform = components["schemas"]["WaveformRead"];
-export type SessionAnnotation = components["schemas"]["SessionAnnotationRead"];
-export type BirdVocalPart = components["schemas"]["BirdVocalPartRead"];
+export type SessionAnnotation = components["schemas"]["PublicSessionAnnotationRead"];
+export type BirdVocalPart = components["schemas"]["PublicBirdVocalPartRead"];
 export type BirdPartsResponse = components["schemas"]["BirdPartsResponse"];
 export type FeaturedSession = components["schemas"]["FeaturedSessionRead"];
 export type SessionDetail = components["schemas"]["SessionDetailRead"];

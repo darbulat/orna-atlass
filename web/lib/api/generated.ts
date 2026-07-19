@@ -943,43 +943,12 @@ export interface components {
             /** Analysis Provider */
             analysis_provider?: string | null;
             /** Parts */
-            parts?: components["schemas"]["BirdVocalPartRead"][];
+            parts?: components["schemas"]["PublicBirdVocalPartRead"][];
             /**
              * Session Id
              * Format: uuid
              */
             session_id: string;
-        };
-        /** BirdVocalPartRead */
-        BirdVocalPartRead: {
-            /**
-             * Call Type
-             * @default unknown
-             */
-            call_type: string;
-            /** Channel */
-            channel?: string | null;
-            /** Confidence */
-            confidence?: number | null;
-            /** Ends At Seconds */
-            ends_at_seconds: number;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
-            /** Species Code */
-            species_code: string;
-            /** Species Common Name */
-            species_common_name: string;
-            /** Species Scientific Name */
-            species_scientific_name?: string | null;
-            /** Starts At Seconds */
-            starts_at_seconds: number;
         };
         /** CollectionAdminRead */
         CollectionAdminRead: {
@@ -1046,11 +1015,6 @@ export interface components {
         };
         /** CollectionDetailRead */
         CollectionDetailRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
             /** Description */
             description: string | null;
             /**
@@ -1065,28 +1029,19 @@ export interface components {
             location_count: number;
             /** Locations */
             locations?: components["schemas"]["LocationRead"][];
-            /** Metadata */
-            metadata: {
-                [key: string]: unknown;
-            };
             /**
              * Session Count
              * @default 0
              */
             session_count: number;
             /** Sessions */
-            sessions?: components["schemas"]["SessionRead"][];
+            sessions?: components["schemas"]["PublicSessionRead"][];
             /** Slug */
             slug: string;
             /** Sort Order */
             sort_order: number;
             /** Title */
             title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /** CollectionSummaryRead */
         CollectionSummaryRead: {
@@ -1612,6 +1567,135 @@ export interface components {
             session_id: string;
         };
         /**
+         * PublicBirdVocalPartRead
+         * @description Public BirdNET projection without provider payloads or worker errors.
+         */
+        PublicBirdVocalPartRead: {
+            /**
+             * Call Type
+             * @default unknown
+             */
+            call_type: string;
+            /** Channel */
+            channel?: string | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Ends At Seconds */
+            ends_at_seconds: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Species Code */
+            species_code: string;
+            /** Species Common Name */
+            species_common_name: string;
+            /** Species Scientific Name */
+            species_scientific_name?: string | null;
+            /** Starts At Seconds */
+            starts_at_seconds: number;
+        };
+        /**
+         * PublicMediaAssetRead
+         * @description Public playback projection without storage or pipeline internals.
+         */
+        PublicMediaAssetRead: {
+            /** Duration Seconds */
+            duration_seconds: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            kind: components["schemas"]["MediaKind"];
+            /** Mime Type */
+            mime_type: string;
+            /** @default uploaded */
+            processing_status: components["schemas"]["ProcessingStatus"];
+            /**
+             * Revision
+             * @default 1
+             */
+            revision: number;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+        };
+        /**
+         * PublicSessionAnnotationRead
+         * @description Public annotation projection without arbitrary metadata.
+         */
+        PublicSessionAnnotationRead: {
+            /**
+             * Annotation Type
+             * @default editorial_note
+             */
+            annotation_type: string;
+            /** Confidence */
+            confidence?: number | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Label */
+            label: string;
+            /** Offset Seconds */
+            offset_seconds: number;
+        };
+        /**
+         * PublicSessionRead
+         * @description Explicit public session projection; raw metadata and timestamps stay private.
+         */
+        PublicSessionRead: {
+            access_level: components["schemas"]["SessionAccess"];
+            /** Description */
+            description: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Featured Sort Order */
+            featured_sort_order?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Featured
+             * @default false
+             */
+            is_featured: boolean;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Media Assets */
+            media_assets?: components["schemas"]["PublicMediaAssetRead"][];
+            /** @default pending */
+            processing_status: components["schemas"]["ProcessingStatus"];
+            /** @default published */
+            publication_status: components["schemas"]["PublicationStatus"];
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Recorder */
+            recorder?: string | null;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /** Weather */
+            weather?: string | null;
+        };
+        /**
          * PublicationStatus
          * @enum {string}
          */
@@ -1714,26 +1798,6 @@ export interface components {
          * @enum {string}
          */
         SessionAccess: "public" | "members_only" | "private";
-        /** SessionAnnotationRead */
-        SessionAnnotationRead: {
-            /**
-             * Annotation Type
-             * @default editorial_note
-             */
-            annotation_type: string;
-            /** Confidence */
-            confidence?: number | null;
-            /** Duration Seconds */
-            duration_seconds?: number | null;
-            /** Label */
-            label: string;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
-            /** Offset Seconds */
-            offset_seconds: number;
-        };
         /** SessionCreate */
         SessionCreate: {
             /** @default public */
@@ -1778,18 +1842,12 @@ export interface components {
         };
         /** SessionDetailRead */
         SessionDetailRead: {
-            /** @default public */
             access_level: components["schemas"]["SessionAccess"];
             /** Annotations */
-            annotations?: components["schemas"]["SessionAnnotationRead"][];
+            annotations?: components["schemas"]["PublicSessionAnnotationRead"][];
             bird_parts?: components["schemas"]["BirdPartsResponse"] | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
             /** Description */
-            description?: string | null;
+            description: string | null;
             /** Duration Seconds */
             duration_seconds?: number | null;
             /** Featured Sort Order */
@@ -1811,14 +1869,10 @@ export interface components {
              */
             location_id: string;
             /** Media Assets */
-            media_assets?: components["schemas"]["MediaAssetRead"][];
-            /** Metadata */
-            metadata: {
-                [key: string]: unknown;
-            };
+            media_assets?: components["schemas"]["PublicMediaAssetRead"][];
             /** @default pending */
             processing_status: components["schemas"]["ProcessingStatus"];
-            /** @default draft */
+            /** @default published */
             publication_status: components["schemas"]["PublicationStatus"];
             /**
              * Recorded At
@@ -1832,11 +1886,6 @@ export interface components {
             slug: string;
             /** Title */
             title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
             waveform?: components["schemas"]["WaveformRead"];
             /** Weather */
             weather?: string | null;
@@ -3237,7 +3286,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionRead"][];
+                    "application/json": components["schemas"]["PublicSessionRead"][];
                 };
             };
             /** @description Validation Error */
@@ -3334,7 +3383,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionAnnotationRead"][];
+                    "application/json": components["schemas"]["PublicSessionAnnotationRead"][];
                 };
             };
             /** @description Validation Error */

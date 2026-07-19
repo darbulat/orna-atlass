@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from orna_atlas.app.core.domain_types import ProcessingStatus, PublicationStatus, SessionAccess
 from orna_atlas.app.core.schema_validation import reject_required_nulls
 from orna_atlas.app.modules.locations.schemas import LocationRead
-from orna_atlas.app.modules.media.schemas import MediaAssetRead
+from orna_atlas.app.modules.media.schemas import MediaAssetRead, PublicMediaAssetRead
 
 
 def _metadata_from_obj(obj: object) -> dict:
@@ -51,6 +51,18 @@ class SessionAnnotationRead(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
 
 
+class PublicSessionAnnotationRead(BaseModel):
+    """Public annotation projection without arbitrary metadata."""
+
+    offset_seconds: float = Field(ge=0)
+    duration_seconds: float | None = Field(default=None, ge=0)
+    label: str = Field(min_length=1, max_length=220)
+    annotation_type: str = Field(default="editorial_note", min_length=1, max_length=80)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+
 def validate_session_metadata(metadata: dict) -> dict:
     """Validate structured metadata written by admin/API flows."""
     waveform = metadata.get("waveform")
@@ -85,13 +97,13 @@ def safe_waveform_projection(
         return WaveformRead(session_id=session_id, duration_seconds=duration_seconds)
 
 
-def safe_annotations_projection(value: object) -> list[SessionAnnotationRead]:
+def safe_annotations_projection(value: object) -> list[PublicSessionAnnotationRead]:
     if not isinstance(value, list):
         return []
-    projected: list[SessionAnnotationRead] = []
+    projected: list[PublicSessionAnnotationRead] = []
     for annotation in value:
         try:
-            projected.append(SessionAnnotationRead.model_validate(annotation))
+            projected.append(PublicSessionAnnotationRead.model_validate(annotation))
         except (TypeError, ValidationError, ValueError):
             continue
     return projected
@@ -112,11 +124,27 @@ class BirdVocalPartRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class PublicBirdVocalPartRead(BaseModel):
+    """Public BirdNET projection without provider payloads or worker errors."""
+
+    id: UUID
+    species_code: str
+    species_common_name: str
+    species_scientific_name: str | None = None
+    starts_at_seconds: float = Field(ge=0)
+    ends_at_seconds: float = Field(ge=0)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    channel: str | None = None
+    call_type: str = "unknown"
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BirdPartsResponse(BaseModel):
     session_id: UUID
     analysis_provider: str | None = None
     analysis_model_version: str | None = None
-    parts: list[BirdVocalPartRead] = Field(default_factory=list)
+    parts: list[PublicBirdVocalPartRead] = Field(default_factory=list)
 
 
 class FeaturedSessionRead(BaseModel):
@@ -219,11 +247,33 @@ class SessionRead(SessionBase):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
-class SessionDetailRead(SessionRead):
+class PublicSessionRead(BaseModel):
+    """Explicit public session projection; raw metadata and timestamps stay private."""
+
+    id: UUID
+    location_id: UUID
+    slug: str
+    title: str
+    description: str | None
+    recorded_at: datetime
+    duration_seconds: int | None = Field(default=None, ge=0)
+    recorder: str | None = None
+    weather: str | None = None
+    access_level: SessionAccess
+    publication_status: PublicationStatus = PublicationStatus.PUBLISHED
+    processing_status: ProcessingStatus = ProcessingStatus.PENDING
+    is_featured: bool = False
+    featured_sort_order: int | None = None
+    media_assets: list[PublicMediaAssetRead] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SessionDetailRead(PublicSessionRead):
     location: LocationRead
     recording_integrity: RecordingIntegrityRead = Field(default_factory=RecordingIntegrityRead)
     waveform: WaveformRead = Field(default_factory=WaveformRead)
-    annotations: list[SessionAnnotationRead] = Field(default_factory=list)
+    annotations: list[PublicSessionAnnotationRead] = Field(default_factory=list)
     bird_parts: BirdPartsResponse | None = None
 
     @model_validator(mode="before")

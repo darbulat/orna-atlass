@@ -674,7 +674,7 @@
           },
           "parts": {
             "items": {
-              "$ref": "#/components/schemas/BirdVocalPartRead"
+              "$ref": "#/components/schemas/PublicBirdVocalPartRead"
             },
             "title": "Parts",
             "type": "array"
@@ -689,87 +689,6 @@
           "session_id"
         ],
         "title": "BirdPartsResponse",
-        "type": "object"
-      },
-      "BirdVocalPartRead": {
-        "properties": {
-          "call_type": {
-            "default": "unknown",
-            "title": "Call Type",
-            "type": "string"
-          },
-          "channel": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Channel"
-          },
-          "confidence": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confidence"
-          },
-          "ends_at_seconds": {
-            "minimum": 0.0,
-            "title": "Ends At Seconds",
-            "type": "number"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
-          "species_code": {
-            "title": "Species Code",
-            "type": "string"
-          },
-          "species_common_name": {
-            "title": "Species Common Name",
-            "type": "string"
-          },
-          "species_scientific_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Species Scientific Name"
-          },
-          "starts_at_seconds": {
-            "minimum": 0.0,
-            "title": "Starts At Seconds",
-            "type": "number"
-          }
-        },
-        "required": [
-          "id",
-          "species_code",
-          "species_common_name",
-          "starts_at_seconds",
-          "ends_at_seconds"
-        ],
-        "title": "BirdVocalPartRead",
         "type": "object"
       },
       "CollectionAdminRead": {
@@ -918,11 +837,6 @@
       },
       "CollectionDetailRead": {
         "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
           "description": {
             "anyOf": [
               {
@@ -951,11 +865,6 @@
             "title": "Locations",
             "type": "array"
           },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
           "session_count": {
             "default": 0,
             "title": "Session Count",
@@ -963,7 +872,7 @@
           },
           "sessions": {
             "items": {
-              "$ref": "#/components/schemas/SessionRead"
+              "$ref": "#/components/schemas/PublicSessionRead"
             },
             "title": "Sessions",
             "type": "array"
@@ -979,11 +888,6 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
           }
         },
         "required": [
@@ -991,10 +895,7 @@
           "slug",
           "title",
           "description",
-          "sort_order",
-          "metadata",
-          "created_at",
-          "updated_at"
+          "sort_order"
         ],
         "title": "CollectionDetailRead",
         "type": "object"
@@ -2582,6 +2483,312 @@
         "title": "ProcessingStatusRead",
         "type": "object"
       },
+      "PublicBirdVocalPartRead": {
+        "description": "Public BirdNET projection without provider payloads or worker errors.",
+        "properties": {
+          "call_type": {
+            "default": "unknown",
+            "title": "Call Type",
+            "type": "string"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "ends_at_seconds": {
+            "minimum": 0.0,
+            "title": "Ends At Seconds",
+            "type": "number"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "species_code": {
+            "title": "Species Code",
+            "type": "string"
+          },
+          "species_common_name": {
+            "title": "Species Common Name",
+            "type": "string"
+          },
+          "species_scientific_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Species Scientific Name"
+          },
+          "starts_at_seconds": {
+            "minimum": 0.0,
+            "title": "Starts At Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "species_code",
+          "species_common_name",
+          "starts_at_seconds",
+          "ends_at_seconds"
+        ],
+        "title": "PublicBirdVocalPartRead",
+        "type": "object"
+      },
+      "PublicMediaAssetRead": {
+        "description": "Public playback projection without storage or pipeline internals.",
+        "properties": {
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MediaKind"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "processing_status": {
+            "$ref": "#/components/schemas/ProcessingStatus",
+            "default": "uploaded"
+          },
+          "revision": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "kind",
+          "mime_type",
+          "duration_seconds"
+        ],
+        "title": "PublicMediaAssetRead",
+        "type": "object"
+      },
+      "PublicSessionAnnotationRead": {
+        "description": "Public annotation projection without arbitrary metadata.",
+        "properties": {
+          "annotation_type": {
+            "default": "editorial_note",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Annotation Type",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "label": {
+            "maxLength": 220,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "offset_seconds": {
+            "minimum": 0.0,
+            "title": "Offset Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "offset_seconds",
+          "label"
+        ],
+        "title": "PublicSessionAnnotationRead",
+        "type": "object"
+      },
+      "PublicSessionRead": {
+        "description": "Explicit public session projection; raw metadata and timestamps stay private.",
+        "properties": {
+          "access_level": {
+            "$ref": "#/components/schemas/SessionAccess"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "featured_sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Sort Order"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_featured": {
+            "default": false,
+            "title": "Is Featured",
+            "type": "boolean"
+          },
+          "location_id": {
+            "format": "uuid",
+            "title": "Location Id",
+            "type": "string"
+          },
+          "media_assets": {
+            "items": {
+              "$ref": "#/components/schemas/PublicMediaAssetRead"
+            },
+            "title": "Media Assets",
+            "type": "array"
+          },
+          "processing_status": {
+            "$ref": "#/components/schemas/ProcessingStatus",
+            "default": "pending"
+          },
+          "publication_status": {
+            "$ref": "#/components/schemas/PublicationStatus",
+            "default": "published"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "recorder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorder"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "weather": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weather"
+          }
+        },
+        "required": [
+          "id",
+          "location_id",
+          "slug",
+          "title",
+          "description",
+          "recorded_at",
+          "access_level"
+        ],
+        "title": "PublicSessionRead",
+        "type": "object"
+      },
       "PublicationStatus": {
         "enum": [
           "draft",
@@ -2871,64 +3078,6 @@
         "title": "SessionAccess",
         "type": "string"
       },
-      "SessionAnnotationRead": {
-        "properties": {
-          "annotation_type": {
-            "default": "editorial_note",
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Annotation Type",
-            "type": "string"
-          },
-          "confidence": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confidence"
-          },
-          "duration_seconds": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duration Seconds"
-          },
-          "label": {
-            "maxLength": 220,
-            "minLength": 1,
-            "title": "Label",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
-          "offset_seconds": {
-            "minimum": 0.0,
-            "title": "Offset Seconds",
-            "type": "number"
-          }
-        },
-        "required": [
-          "offset_seconds",
-          "label"
-        ],
-        "title": "SessionAnnotationRead",
-        "type": "object"
-      },
       "SessionCreate": {
         "properties": {
           "access_level": {
@@ -3044,12 +3193,11 @@
       "SessionDetailRead": {
         "properties": {
           "access_level": {
-            "$ref": "#/components/schemas/SessionAccess",
-            "default": "public"
+            "$ref": "#/components/schemas/SessionAccess"
           },
           "annotations": {
             "items": {
-              "$ref": "#/components/schemas/SessionAnnotationRead"
+              "$ref": "#/components/schemas/PublicSessionAnnotationRead"
             },
             "title": "Annotations",
             "type": "array"
@@ -3063,11 +3211,6 @@
                 "type": "null"
               }
             ]
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
           },
           "description": {
             "anyOf": [
@@ -3123,15 +3266,10 @@
           },
           "media_assets": {
             "items": {
-              "$ref": "#/components/schemas/MediaAssetRead"
+              "$ref": "#/components/schemas/PublicMediaAssetRead"
             },
             "title": "Media Assets",
             "type": "array"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
           },
           "processing_status": {
             "$ref": "#/components/schemas/ProcessingStatus",
@@ -3139,7 +3277,7 @@
           },
           "publication_status": {
             "$ref": "#/components/schemas/PublicationStatus",
-            "default": "draft"
+            "default": "published"
           },
           "recorded_at": {
             "format": "date-time",
@@ -3161,20 +3299,11 @@
             "$ref": "#/components/schemas/RecordingIntegrityRead"
           },
           "slug": {
-            "maxLength": 140,
-            "minLength": 1,
             "title": "Slug",
             "type": "string"
           },
           "title": {
-            "maxLength": 220,
-            "minLength": 1,
             "title": "Title",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
             "type": "string"
           },
           "waveform": {
@@ -3193,14 +3322,13 @@
           }
         },
         "required": [
+          "id",
           "location_id",
           "slug",
           "title",
+          "description",
           "recorded_at",
-          "metadata",
-          "id",
-          "created_at",
-          "updated_at",
+          "access_level",
           "location"
         ],
         "title": "SessionDetailRead",
@@ -6371,7 +6499,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/SessionRead"
+                    "$ref": "#/components/schemas/PublicSessionRead"
                   },
                   "title": "Response List Sessions Api V1 Sessions Get",
                   "type": "array"
@@ -6541,7 +6669,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/SessionAnnotationRead"
+                    "$ref": "#/components/schemas/PublicSessionAnnotationRead"
                   },
                   "title": "Response Get Annotations Api V1 Sessions  Session Id  Annotations Get",
                   "type": "array"

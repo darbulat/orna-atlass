@@ -216,11 +216,62 @@ def test_production_accepts_hardened_auth_configuration() -> None:
     settings = Settings(
         APP_ENVIRONMENT="production",
         AUTH_SECRET_KEY="x" * 32,
+        HLS_TOKEN_SECRET="h" * 32,
         LOCAL_ADMIN_ENABLED=False,
         AUTH_COOKIE_SECURE=True,
     )
 
     assert settings.environment == "production"
+
+
+def test_production_rs256_requires_independent_hls_secret() -> None:
+    with pytest.raises(ValidationError, match="HLS_TOKEN_SECRET"):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="production",
+            AUTH_SIGNING_ALGORITHM="RS256",
+            AUTH_PRIVATE_KEY="test-private-key",
+            AUTH_COOKIE_SECURE=True,
+        )
+
+    settings = Settings(
+        _env_file=None,
+        APP_ENVIRONMENT="production",
+        AUTH_SIGNING_ALGORITHM="RS256",
+        AUTH_PRIVATE_KEY="test-private-key",
+        AUTH_COOKIE_SECURE=True,
+        HLS_TOKEN_SECRET="h" * 32,
+    )
+
+    assert settings.hls_token_secret == "h" * 32
+    assert settings.hls_token_secret != settings.auth_secret_key
+
+
+def test_production_rejects_reusing_auth_secret_for_hls_tokens() -> None:
+    shared_secret = "s" * 32
+    with pytest.raises(ValidationError, match="independent from AUTH_SECRET_KEY"):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="production",
+            AUTH_SECRET_KEY=shared_secret,
+            AUTH_SIGNING_ALGORITHM="HS256",
+            AUTH_COOKIE_SECURE=True,
+            HLS_TOKEN_SECRET=shared_secret,
+        )
+
+
+def test_production_rejects_reusing_auth_secret_as_previous_hls_key() -> None:
+    shared_secret = "s" * 32
+    with pytest.raises(ValidationError, match="independent from AUTH_SECRET_KEY"):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="production",
+            AUTH_SECRET_KEY=shared_secret,
+            AUTH_SIGNING_ALGORITHM="HS256",
+            AUTH_COOKIE_SECURE=True,
+            HLS_TOKEN_SECRET="h" * 32,
+            HLS_TOKEN_PREVIOUS_SECRETS={"old": shared_secret},
+        )
 
 
 def test_local_admin_is_disabled_by_default_and_rejected_in_staging() -> None:

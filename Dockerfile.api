@@ -6,4 +6,4 @@ COPY pyproject.toml ./
 COPY alembic.ini ./
 COPY orna_atlas ./orna_atlas
 RUN pip install --no-cache-dir .
-CMD ["uvicorn", "orna_atlas.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "orna_atlas.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

@@ -35,7 +35,14 @@ async def get_hls_object(
 ):
     try:
         validate_hls_object_name(object_name)
-        verify_hls_token(token, asset_id, secret=get_settings().auth_secret_key)
+        settings = get_settings()
+        verify_hls_token(
+            token,
+            asset_id,
+            secret=settings.hls_token_secret,
+            key_id=settings.hls_token_key_id,
+            previous_secrets=settings.hls_token_previous_secrets,
+        )
     except (HlsError, HlsTokenError) as exc:
         raise HTTPException(status_code=403, detail="Invalid or expired playback grant") from exc
 
