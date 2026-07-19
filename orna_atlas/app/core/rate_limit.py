@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from ipaddress import ip_address, ip_network
 import time
 
 from fastapi import HTTPException, Request, status
@@ -8,12 +9,31 @@ from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.integrations.redis import get_redis_client
 
 
+def _request_identity(request: Request, trusted_proxy_cidrs: list[str]) -> str:
+    peer = request.client.host if request.client else "unknown"
+    try:
+        peer_address = ip_address(peer)
+        proxy_is_trusted = any(
+            peer_address in ip_network(cidr, strict=False) for cidr in trusted_proxy_cidrs
+        )
+    except ValueError:
+        proxy_is_trusted = False
+    if proxy_is_trusted:
+        forwarded = request.headers.get("x-real-ip")
+        try:
+            if forwarded:
+                return str(ip_address(forwarded.strip()))
+        except ValueError:
+            pass
+    return peer
+
+
 def rate_limit(scope: str, limit_getter: Callable[[], int]):
     """Create a fail-closed, fixed-window Redis rate-limit dependency."""
 
     async def enforce(request: Request) -> None:
         settings = get_settings()
-        identity = request.client.host if request.client else "unknown"
+        identity = _request_identity(request, settings.trusted_proxy_cidrs)
         bucket = int(time.time() // settings.rate_limit_window_seconds)
         key = f"rate-limit:{scope}:{identity}:{bucket}"
         client = get_redis_client()

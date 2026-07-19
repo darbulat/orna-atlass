@@ -6,7 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.db.base import Base
 from orna_atlas.app.modules.admin.models import AuditEvent  # noqa: F401
-from orna_atlas.app.modules.auth.models import RefreshToken  # noqa: F401
+from orna_atlas.app.modules.auth.models import OAuthIdentity, RefreshToken  # noqa: F401
 from orna_atlas.app.modules.memberships.models import Membership  # noqa: F401
 from orna_atlas.app.modules.users.models import User  # noqa: F401
 from orna_atlas.app.modules.locations.models import Location  # noqa: F401

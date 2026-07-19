@@ -226,8 +226,10 @@ test("enter recenters the resized globe on the selected location at a closer zoo
 
 test("membership route exposes login and registration controls", async ({ page }) => {
   await page.goto("/membership");
-  await expect(page.getByRole("heading", { level: 1, name: "Membership" })).toBeVisible();
-  await expect(page.locator("form").getByRole("button", { name: "Sign in" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Sign in or create your account" }),
+  ).toBeVisible();
+  await expect(page.locator("form").getByRole("button", { name: "Continue" })).toBeVisible();
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByLabel("Email")).toBeVisible();
   await expect(page.getByLabel("Password")).toHaveAttribute("minlength", "12");
@@ -237,7 +239,7 @@ test("membership registration link opens the registration form", async ({ page }
   await page.goto("/membership?mode=register");
 
   await expect(page.getByRole("button", { name: "Create account", pressed: true })).toBeVisible();
-  await expect(page.locator("form").getByRole("button", { name: "Create account" })).toBeVisible();
+  await expect(page.locator("form").getByRole("button", { name: "Continue" })).toBeVisible();
   await expect(page.getByLabel("Password")).toHaveAttribute("minlength", "12");
 });
 
@@ -264,7 +266,7 @@ test("membership registration emits a completion event without personal data", a
   await page.goto("/membership?mode=register");
   await page.getByLabel("Email").fill("new-listener@example.com");
   await page.getByLabel("Password").fill("correct horse battery staple");
-  await page.locator("form").getByRole("button", { name: "Create account" }).click();
+  await page.locator("form").getByRole("button", { name: "Continue" }).click();
 
   await expect.poll(() => page.evaluate(() => (
     window as typeof window & { __analytics?: unknown[] }
@@ -299,7 +301,7 @@ test("an authenticated member sees the active entitlement state", async ({ page 
   await page.goto("/membership");
   await page.getByLabel("Email").fill("member@example.com");
   await page.getByLabel("Password").fill("correct horse battery staple");
-  await page.locator("form").getByRole("button", { name: "Sign in" }).click();
+  await page.locator("form").getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "member@example.com" })).toBeVisible();
   await expect(page.getByText("Member sessions unlocked")).toBeVisible();

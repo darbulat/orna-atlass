@@ -158,6 +158,10 @@ const server = createServer((request, response) => {
     send(response, 200, { status: "ok" });
     return;
   }
+  if (request.method === "GET" && path === "/api/v1/auth/oauth/providers") {
+    send(response, 200, { providers: ["google", "apple", "facebook"] });
+    return;
+  }
   if (request.method === "GET" && path === "/api/v1/sessions/featured") {
     const featured = sessions.get("first-session");
     send(response, 200, [{
