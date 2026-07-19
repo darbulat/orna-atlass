@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from cryptography.exceptions import UnsupportedAlgorithm
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -321,6 +322,30 @@ def test_production_rs256_rejects_equivalent_private_key_reuse_for_hls(
             HLS_TOKEN_SECRET=hls_secret,
             HLS_TOKEN_PREVIOUS_SECRETS=previous,
         )
+
+
+def test_production_rs256_tolerates_unsupported_hls_key_material(monkeypatch) -> None:
+    _, private_key = _rsa_private_key_and_pem()
+    unsupported_secret = "u" * 32
+    load_private_key = serialization.load_pem_private_key
+
+    def raise_for_unsupported_secret(data: bytes, password: bytes | None):
+        if data == unsupported_secret.encode():
+            raise UnsupportedAlgorithm("unsupported test key material")
+        return load_private_key(data, password)
+
+    monkeypatch.setattr(serialization, "load_pem_private_key", raise_for_unsupported_secret)
+
+    settings = Settings(
+        _env_file=None,
+        APP_ENVIRONMENT="production",
+        AUTH_SIGNING_ALGORITHM="RS256",
+        AUTH_PRIVATE_KEY=private_key,
+        AUTH_COOKIE_SECURE=True,
+        HLS_TOKEN_SECRET=unsupported_secret,
+    )
+
+    assert settings.hls_token_secret == unsupported_secret
 
 
 def test_local_admin_is_disabled_by_default_and_rejected_in_staging() -> None:

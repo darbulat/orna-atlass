@@ -1,6 +1,7 @@
 import re
 from functools import lru_cache
 
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 def _private_key_identity(value: str) -> bytes | None:
     try:
         private_key = serialization.load_pem_private_key(value.encode(), password=None)
-    except (TypeError, ValueError):
+    except (TypeError, UnsupportedAlgorithm, ValueError):
         return None
     return private_key.public_key().public_bytes(
         encoding=serialization.Encoding.DER,
