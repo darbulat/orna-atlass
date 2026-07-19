@@ -85,6 +85,7 @@ def test_https_compose_mounts_token_safe_nginx_config() -> None:
     base_compose = Path("docker-compose.yml").read_text()
 
     assert "ports: !override []" in compose
+    assert 'NEXT_PUBLIC_API_URL: ""' in compose
     assert "./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro" in compose
     assert "http://127.0.0.1:8000/health" in base_compose
 

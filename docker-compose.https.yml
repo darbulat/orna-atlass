@@ -4,6 +4,10 @@ services:
 
   web:
     ports: !override []
+    environment:
+      # The HTTPS gateway proxies /api on the same origin. Never bake an HTTP host port
+      # into browser bundles, because browsers block playback grants as mixed content.
+      NEXT_PUBLIC_API_URL: ""
 
   gateway:
     image: nginx:1.27-alpine
