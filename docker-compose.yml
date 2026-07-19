@@ -24,7 +24,7 @@ services:
         - CMD
         - python
         - -c
-        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)
+        - import json, urllib.request; payload=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)); assert payload.get("status") == "ok"
       interval: 10s
       timeout: 3s
       retries: 6

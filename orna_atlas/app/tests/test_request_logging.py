@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -66,7 +68,8 @@ def test_nginx_access_log_redacts_hls_token_paths() -> None:
     config = Path("deploy/nginx.conf.template").read_text()
     log_format = config.split("log_format orna_access", 1)[1].split(";", 1)[0]
 
-    assert "~^/api/v1/media/hls/ /api/v1/media/hls/[REDACTED]" in config
+    assert "~^/api/.*/media/hls/ /api/[REDACTED]/media/hls/[REDACTED]" in config
+    assert "~^/api/v1/media/hls/" not in config
     assert config.count("access_log /var/log/nginx/access.log orna_access;") == 2
     assert "$orna_log_path" in log_format
     assert "$request " not in log_format
@@ -88,6 +91,43 @@ def test_https_compose_mounts_token_safe_nginx_config() -> None:
     assert 'NEXT_PUBLIC_API_URL: ""' in compose
     assert "./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro" in compose
     assert "http://127.0.0.1:8000/health" in base_compose
+    healthcheck = base_compose.split("healthcheck:", 1)[1].split("depends_on:", 1)[0]
+    assert "json.load" in healthcheck
+    assert 'payload.get("status") == "ok"' in healthcheck
+
+
+def test_api_healthcheck_rejects_degraded_dependencies() -> None:
+    class DegradedHealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            payload = b'{"status":"degraded"}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    compose = Path("docker-compose.yml").read_text()
+    command = next(
+        line.strip().removeprefix("- ")
+        for line in compose.splitlines()
+        if "payload=json.load" in line
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), DegradedHealthHandler)
+    thread = Thread(target=server.handle_request)
+    thread.start()
+    try:
+        command = command.replace("127.0.0.1:8000", f"127.0.0.1:{server.server_port}")
+        result = subprocess.run(
+            [sys.executable, "-c", command], check=False, capture_output=True, text=True
+        )
+    finally:
+        thread.join(timeout=5)
+        server.server_close()
+
+    assert result.returncode != 0
 
 
 def test_https_gateway_routes_jwks_to_api() -> None:
