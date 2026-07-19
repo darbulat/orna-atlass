@@ -274,6 +274,33 @@ def test_production_rejects_reusing_auth_secret_as_previous_hls_key() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"HLS_TOKEN_KEY_ID": "2026/07"},
+        {"HLS_TOKEN_PREVIOUS_SECRETS": {"retired?key": "r" * 32}},
+    ],
+)
+def test_hls_key_ids_must_be_url_safe(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValidationError, match="URL-safe"):
+        Settings(_env_file=None, **overrides)
+
+
+def test_production_rejects_development_secret_as_previous_hls_key() -> None:
+    with pytest.raises(ValidationError, match="development default"):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="production",
+            AUTH_SECRET_KEY="a" * 32,
+            AUTH_SIGNING_ALGORITHM="HS256",
+            AUTH_COOKIE_SECURE=True,
+            HLS_TOKEN_SECRET="h" * 32,
+            HLS_TOKEN_PREVIOUS_SECRETS={
+                "old": "development-only-hls-token-secret-32-bytes"
+            },
+        )
+
+
 def test_local_admin_is_disabled_by_default_and_rejected_in_staging() -> None:
     assert not Settings(_env_file=None).local_admin_enabled
     with pytest.raises(ValidationError):

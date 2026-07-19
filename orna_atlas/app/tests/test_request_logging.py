@@ -90,6 +90,28 @@ def test_https_compose_mounts_token_safe_nginx_config() -> None:
     assert "http://127.0.0.1:8000/health" in base_compose
 
 
+def test_https_gateway_routes_jwks_to_api() -> None:
+    config = Path("deploy/nginx.conf.template").read_text()
+
+    assert "location = /.well-known/jwks.json" in config
+    jwks_location = config.split("location = /.well-known/jwks.json", 1)[1].split("}", 1)[0]
+    assert "proxy_pass http://api:8000" in jwks_location
+
+
+def test_server_compose_enforces_production_validation() -> None:
+    compose = Path("docker-compose.server.yml").read_text()
+
+    assert "APP_ENVIRONMENT: production" in compose
+    assert 'LOCAL_ADMIN_ENABLED: "false"' in compose
+
+
+def test_https_readme_certificate_path_matches_mount() -> None:
+    readme = Path("README.md").read_text()
+
+    assert ".deploy/certbot/conf/live/$PUBLIC_HOST/" in readme
+    assert ".deploy/certbot/live/$PUBLIC_HOST/" not in readme
+
+
 def test_metrics_endpoint_exposes_prometheus_payload() -> None:
     response = TestClient(atlas_app).get("/metrics")
 

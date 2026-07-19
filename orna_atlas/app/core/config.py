@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 
 from pydantic import Field, model_validator
@@ -98,12 +99,19 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_SIGNING_ALGORITHM must be HS256 or RS256")
         if self.auth_signing_algorithm == "RS256" and not self.auth_private_key:
             raise ValueError("AUTH_PRIVATE_KEY is required for RS256 signing")
-        if not self.hls_token_key_id or "." in self.hls_token_key_id:
-            raise ValueError("HLS_TOKEN_KEY_ID must be non-empty and must not contain dots")
+        if re.fullmatch(r"[A-Za-z0-9_-]+", self.hls_token_key_id) is None:
+            raise ValueError(
+                "HLS_TOKEN_KEY_ID must use only URL-safe letters, digits, underscores, or hyphens"
+            )
         if self.hls_token_key_id in self.hls_token_previous_secrets:
             raise ValueError("HLS_TOKEN_KEY_ID must not also be configured as a previous key")
-        if any(not key_id or "." in key_id for key_id in self.hls_token_previous_secrets):
-            raise ValueError("HLS_TOKEN_PREVIOUS_SECRETS key ids must be non-empty without dots")
+        if any(
+            re.fullmatch(r"[A-Za-z0-9_-]+", key_id) is None
+            for key_id in self.hls_token_previous_secrets
+        ):
+            raise ValueError(
+                "HLS_TOKEN_PREVIOUS_SECRETS key ids must use only URL-safe letters, digits, underscores, or hyphens"
+            )
         if self.audio_job_max_timeout_seconds < self.audio_job_timeout_seconds:
             raise ValueError(
                 "AUDIO_JOB_MAX_TIMEOUT_SECONDS must be at least AUDIO_JOB_TIMEOUT_SECONDS"
@@ -130,6 +138,13 @@ class Settings(BaseSettings):
             ):
                 raise ValueError(
                     "HLS_TOKEN_PREVIOUS_SECRETS must be independent from AUTH_SECRET_KEY"
+                )
+            if (
+                "development-only-hls-token-secret-32-bytes"
+                in self.hls_token_previous_secrets.values()
+            ):
+                raise ValueError(
+                    "HLS_TOKEN_PREVIOUS_SECRETS must not contain the development default"
                 )
             if any(len(secret) < 32 for secret in self.hls_token_previous_secrets.values()):
                 raise ValueError(
