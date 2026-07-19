@@ -4,7 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from orna_atlas.app.modules.locations.schemas import LocationRead
-from orna_atlas.app.modules.sessions.schemas import SessionRead
+from orna_atlas.app.modules.sessions.schemas import PublicSessionRead
 from orna_atlas.app.core.schema_validation import reject_required_nulls
 
 
@@ -28,13 +28,10 @@ class CollectionDetailRead(BaseModel):
     sort_order: int
     location_count: int = 0
     session_count: int = 0
-    metadata: dict = Field(validation_alias="metadata_")
-    created_at: datetime
-    updated_at: datetime
     locations: list[LocationRead] = Field(default_factory=list)
-    sessions: list[SessionRead] = Field(default_factory=list)
+    sessions: list[PublicSessionRead] = Field(default_factory=list)
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CollectionBase(BaseModel):

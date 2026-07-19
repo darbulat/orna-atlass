@@ -74,7 +74,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     "event": "http.request.complete",
                     "request_id": request_id,
                     "method": request.method,
-                    "path": request.url.path,
+                    # Route templates are bounded and never contain secret path parameters,
+                    # such as HLS playback grant tokens.
+                    "path": route,
                     "status_code": status_code,
                     "duration_ms": duration_ms,
                 },

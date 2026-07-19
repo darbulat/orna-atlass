@@ -12,9 +12,9 @@ from orna_atlas.app.modules.sessions.schemas import (
     BirdPartsResponse,
     FeaturedSessionRead,
     PlaybackGrantRead,
-    SessionAnnotationRead,
+    PublicSessionAnnotationRead,
+    PublicSessionRead,
     SessionDetailRead,
-    SessionRead,
     WaveformRead,
 )
 
@@ -28,7 +28,7 @@ async def list_featured_sessions(
     return await service.list_featured_sessions(session, limit=limit)
 
 
-@router.get("", response_model=list[SessionRead])
+@router.get("", response_model=list[PublicSessionRead])
 async def list_sessions(
     limit: PageLimit = 50,
     offset: PageOffset = 0,
@@ -71,7 +71,7 @@ async def get_waveform(session_id: UUID, session: AsyncSession = Depends(get_db_
     return service.waveform_for_session(recording)
 
 
-@router.get("/{session_id}/annotations", response_model=list[SessionAnnotationRead])
+@router.get("/{session_id}/annotations", response_model=list[PublicSessionAnnotationRead])
 async def get_annotations(session_id: UUID, session: AsyncSession = Depends(get_db_session)):
     recording = await service.require_session(session, session_id)
     return service.annotations_for_session(recording)

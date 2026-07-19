@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -39,6 +41,117 @@ def test_request_middleware_preserves_valid_correlation_id(caplog) -> None:
     assert record.request_id == "trace-123"
     assert record.status_code == 200
     assert record.duration_ms >= 0
+
+
+def test_request_middleware_logs_route_template_without_hls_token(caplog) -> None:
+    app = FastAPI()
+    app.add_middleware(RequestLoggingMiddleware)
+
+    @app.get("/media/hls/{asset_id}/{token}/{object_name:path}")
+    async def hls_probe(asset_id: str, token: str, object_name: str) -> dict[str, str]:
+        return {"asset_id": asset_id, "token": token, "object_name": object_name}
+
+    canary = "canary-secret-playback-token"
+    with caplog.at_level(logging.INFO, logger="orna_atlas.request"):
+        response = TestClient(app).get(
+            f"/media/hls/asset-1/{canary}/segments/segment-1.m4s"
+        )
+
+    assert response.status_code == 200
+    record = next(item for item in caplog.records if item.message == "request_complete")
+    assert record.path == "/media/hls/{asset_id}/{token}/{object_name:path}"
+    assert canary not in record.getMessage()
+    assert canary not in json.dumps(record.__dict__, default=str)
+
+
+def test_nginx_access_log_redacts_hls_token_paths() -> None:
+    config = Path("deploy/nginx.conf.template").read_text()
+    log_format = config.split("log_format orna_access", 1)[1].split(";", 1)[0]
+
+    assert "~^/api/(?:.*/)?media/hls/ /api/[REDACTED]/media/hls/[REDACTED]" in config
+    assert "~^/api/v1/media/hls/" not in config
+    assert config.count("access_log /var/log/nginx/access.log orna_access;") == 2
+    assert "$orna_log_path" in log_format
+    assert "$request " not in log_format
+    assert "$request_uri" not in log_format
+    assert "$http_" not in log_format
+
+
+def test_api_image_disables_uvicorn_access_log() -> None:
+    dockerfile = Path("Dockerfile.api").read_text()
+
+    assert '"--no-access-log"' in dockerfile
+
+
+def test_https_compose_mounts_token_safe_nginx_config() -> None:
+    compose = Path("docker-compose.https.yml").read_text()
+    base_compose = Path("docker-compose.yml").read_text()
+
+    assert "ports: !override []" in compose
+    assert 'NEXT_PUBLIC_API_URL: ""' in compose
+    assert "./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro" in compose
+    assert "http://127.0.0.1:8000/health" in base_compose
+    healthcheck = base_compose.split("healthcheck:", 1)[1].split("depends_on:", 1)[0]
+    assert "json.load" in healthcheck
+    assert 'payload.get("status") != "ok"' in healthcheck
+    assert "sys.exit(1)" in healthcheck
+    assert "assert " not in healthcheck
+
+
+def test_api_healthcheck_rejects_degraded_dependencies() -> None:
+    class DegradedHealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            payload = b'{"status":"degraded"}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    compose = Path("docker-compose.yml").read_text()
+    command = next(
+        line.strip().removeprefix("- ")
+        for line in compose.splitlines()
+        if "payload=json.load" in line
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), DegradedHealthHandler)
+    thread = Thread(target=server.handle_request)
+    thread.start()
+    try:
+        command = command.replace("127.0.0.1:8000", f"127.0.0.1:{server.server_port}")
+        result = subprocess.run(
+            [sys.executable, "-O", "-c", command], check=False, capture_output=True, text=True
+        )
+    finally:
+        thread.join(timeout=5)
+        server.server_close()
+
+    assert result.returncode != 0
+
+
+def test_https_gateway_routes_jwks_to_api() -> None:
+    config = Path("deploy/nginx.conf.template").read_text()
+
+    assert "location = /.well-known/jwks.json" in config
+    jwks_location = config.split("location = /.well-known/jwks.json", 1)[1].split("}", 1)[0]
+    assert "proxy_pass http://api:8000" in jwks_location
+
+
+def test_server_compose_enforces_production_validation() -> None:
+    compose = Path("docker-compose.server.yml").read_text()
+
+    assert "APP_ENVIRONMENT: production" in compose
+    assert 'LOCAL_ADMIN_ENABLED: "false"' in compose
+
+
+def test_https_readme_certificate_path_matches_mount() -> None:
+    readme = Path("README.md").read_text()
+
+    assert ".deploy/certbot/conf/live/$PUBLIC_HOST/" in readme
+    assert ".deploy/certbot/live/$PUBLIC_HOST/" not in readme
 
 
 def test_metrics_endpoint_exposes_prometheus_payload() -> None:

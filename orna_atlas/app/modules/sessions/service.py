@@ -26,10 +26,10 @@ from orna_atlas.app.modules.sessions import repository
 from orna_atlas.app.modules.sessions.models import RecordingSession
 from orna_atlas.app.modules.sessions.schemas import (
     BirdPartsResponse,
-    BirdVocalPartRead,
     FeaturedSessionRead,
     PlaybackGrantRead,
-    SessionAnnotationRead,
+    PublicBirdVocalPartRead,
+    PublicSessionAnnotationRead,
     SessionCreate,
     SessionUpdate,
     WaveformRead,
@@ -114,7 +114,7 @@ def waveform_for_session(recording: RecordingSession) -> WaveformRead:
     )
 
 
-def annotations_for_session(recording: RecordingSession) -> list[SessionAnnotationRead]:
+def annotations_for_session(recording: RecordingSession) -> list[PublicSessionAnnotationRead]:
     metadata = recording.metadata_ if isinstance(recording.metadata_, dict) else {}
     return safe_annotations_projection(metadata.get("annotations"))
 
@@ -127,7 +127,7 @@ def bird_parts_for_session(recording: RecordingSession) -> BirdPartsResponse:
         session_id=recording.id,
         analysis_provider=parts[0].analysis_provider,
         analysis_model_version=parts[0].analysis_model_version,
-        parts=[BirdVocalPartRead.model_validate(part) for part in parts],
+        parts=[PublicBirdVocalPartRead.model_validate(part) for part in parts],
     )
 
 
@@ -153,7 +153,10 @@ def create_playback_grant(recording: RecordingSession) -> PlaybackGrantRead:
         metadata = rendition_metadata if isinstance(rendition_metadata, dict) else {}
         if metadata.get("format") == "hls":
             token = issue_hls_token(
-                rendition.id, expires_at=expires_at, secret=settings.auth_secret_key
+                rendition.id,
+                expires_at=expires_at,
+                secret=settings.hls_token_secret,
+                key_id=settings.hls_token_key_id,
             )
             stream_url = (
                 f"{settings.api_prefix}/media/hls/{rendition.id}/{token}/index.m3u8"

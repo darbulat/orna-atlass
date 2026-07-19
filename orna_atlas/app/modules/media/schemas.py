@@ -75,6 +75,21 @@ class MediaAssetRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class PublicMediaAssetRead(BaseModel):
+    """Public playback projection without storage or pipeline internals."""
+
+    id: UUID
+    session_id: UUID
+    kind: MediaKind
+    mime_type: str
+    processing_status: ProcessingStatus = ProcessingStatus.UPLOADED
+    duration_seconds: int | None
+    revision: int = Field(default=1, ge=1)
+    is_active: bool = True
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AdminMediaAssetRead(MediaAssetRead):
     storage_key: str
     processing_jobs: list[ProcessingJobRead] = Field(default_factory=list)

@@ -47,8 +47,21 @@ the local compose file:
 docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
 ```
 
-The override disables MinIO, keeps PostgreSQL, Redis, and worker metrics bound
-to loopback, and requires `NEXT_PUBLIC_API_URL`, `CORS_ORIGINS`,
+For the repository-managed HTTPS gateway, set `PUBLIC_HOST`, provision certificates
+under `.deploy/certbot/conf/live/$PUBLIC_HOST/`, and add the tracked HTTPS overlay:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.server.yml \
+  -f docker-compose.https.yml up -d --build
+```
+
+The gateway renders `deploy/nginx.conf.template`; its access-log format replaces every HLS
+playback path with a redacted sentinel before writing the log record.
+
+The override enforces production validation for the API, disables local-admin compatibility,
+disables MinIO, keeps PostgreSQL, Redis, and worker metrics bound to loopback, removes
+direct API/web host-port publication, and requires `AUTH_COOKIE_SECURE=true`,
+`PUBLIC_HOST`, `NEXT_PUBLIC_API_URL`, `CORS_ORIGINS`,
 `S3_ENDPOINT_URL`, and `S3_PUBLIC_ENDPOINT_URL` to be supplied explicitly.
 Set `CORS_ORIGINS` to a JSON list containing the public frontend origin, for
 example `["https://atlas.example.com"]`.

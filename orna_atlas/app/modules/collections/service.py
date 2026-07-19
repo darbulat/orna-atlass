@@ -14,7 +14,7 @@ from orna_atlas.app.modules.collections.schemas import (
 )
 from orna_atlas.app.modules.locations.schemas import LocationRead
 from orna_atlas.app.modules.locations.public import is_publicly_discoverable
-from orna_atlas.app.modules.sessions.schemas import SessionRead
+from orna_atlas.app.modules.sessions.schemas import PublicSessionRead
 
 
 def summary_from_collection(collection: Collection) -> CollectionSummaryRead:
@@ -49,7 +49,7 @@ def detail_from_collection(collection: Collection) -> CollectionDetailRead:
         if is_publicly_discoverable(link.location)
     ]
     sessions = [
-        SessionRead.model_validate(link.session)
+        PublicSessionRead.model_validate(link.session)
         for link in collection.session_links
         if link.session.access_level == "public"
         and getattr(link.session, "publication_status", "published") == "published"
@@ -63,9 +63,6 @@ def detail_from_collection(collection: Collection) -> CollectionDetailRead:
         sort_order=collection.sort_order,
         location_count=summary.location_count,
         session_count=summary.session_count,
-        metadata_=collection.metadata_,
-        created_at=collection.created_at,
-        updated_at=collection.updated_at,
         locations=locations,
         sessions=sessions,
     )

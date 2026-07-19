@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from cryptography.exceptions import UnsupportedAlgorithm
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -216,11 +217,135 @@ def test_production_accepts_hardened_auth_configuration() -> None:
     settings = Settings(
         APP_ENVIRONMENT="production",
         AUTH_SECRET_KEY="x" * 32,
+        HLS_TOKEN_SECRET="h" * 32,
         LOCAL_ADMIN_ENABLED=False,
         AUTH_COOKIE_SECURE=True,
     )
 
     assert settings.environment == "production"
+
+
+def test_production_rs256_requires_independent_hls_secret() -> None:
+    with pytest.raises(ValidationError, match="HLS_TOKEN_SECRET"):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="production",
+            AUTH_SIGNING_ALGORITHM="RS256",
+            AUTH_PRIVATE_KEY="test-private-key",
+            AUTH_COOKIE_SECURE=True,
+        )
+
+    settings = Settings(
+        _env_file=None,
+        APP_ENVIRONMENT="production",
+        AUTH_SIGNING_ALGORITHM="RS256",
+        AUTH_PRIVATE_KEY="test-private-key",
+        AUTH_COOKIE_SECURE=True,
+        HLS_TOKEN_SECRET="h" * 32,
+    )
+
+    assert settings.hls_token_secret == "h" * 32
+    assert settings.hls_token_secret != settings.auth_secret_key
+
+
+def test_production_rejects_reusing_auth_secret_for_hls_tokens() -> None:
+    shared_secret = "s" * 32
+    with pytest.raises(ValidationError, match="independent from AUTH_SECRET_KEY"):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="production",
+            AUTH_SECRET_KEY=shared_secret,
+            AUTH_SIGNING_ALGORITHM="HS256",
+            AUTH_COOKIE_SECURE=True,
+            HLS_TOKEN_SECRET=shared_secret,
+        )
+
+
+def test_production_rejects_reusing_auth_secret_as_previous_hls_key() -> None:
+    shared_secret = "s" * 32
+    with pytest.raises(ValidationError, match="independent from AUTH_SECRET_KEY"):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="production",
+            AUTH_SECRET_KEY=shared_secret,
+            AUTH_SIGNING_ALGORITHM="HS256",
+            AUTH_COOKIE_SECURE=True,
+            HLS_TOKEN_SECRET="h" * 32,
+            HLS_TOKEN_PREVIOUS_SECRETS={"old": shared_secret},
+        )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"HLS_TOKEN_KEY_ID": "2026/07"},
+        {"HLS_TOKEN_PREVIOUS_SECRETS": {"retired?key": "r" * 32}},
+    ],
+)
+def test_hls_key_ids_must_be_url_safe(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValidationError, match="URL-safe"):
+        Settings(_env_file=None, **overrides)
+
+
+def test_production_rejects_development_secret_as_previous_hls_key() -> None:
+    with pytest.raises(ValidationError, match="development default"):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="production",
+            AUTH_SECRET_KEY="a" * 32,
+            AUTH_SIGNING_ALGORITHM="HS256",
+            AUTH_COOKIE_SECURE=True,
+            HLS_TOKEN_SECRET="h" * 32,
+            HLS_TOKEN_PREVIOUS_SECRETS={
+                "old": "development-only-hls-token-secret-32-bytes"
+            },
+        )
+
+
+@pytest.mark.parametrize("reuse_as_previous", [False, True])
+def test_production_rs256_rejects_equivalent_private_key_reuse_for_hls(
+    reuse_as_previous: bool,
+) -> None:
+    _, private_key = _rsa_private_key_and_pem()
+    equivalent_key = private_key.rstrip("\n")
+    assert equivalent_key != private_key
+    hls_secret = "h" * 32 if reuse_as_previous else equivalent_key
+    previous = {"old": equivalent_key} if reuse_as_previous else {}
+
+    with pytest.raises(ValidationError, match="RS256 private key"):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="production",
+            AUTH_SIGNING_ALGORITHM="RS256",
+            AUTH_PRIVATE_KEY=private_key,
+            AUTH_COOKIE_SECURE=True,
+            HLS_TOKEN_SECRET=hls_secret,
+            HLS_TOKEN_PREVIOUS_SECRETS=previous,
+        )
+
+
+def test_production_rs256_tolerates_unsupported_hls_key_material(monkeypatch) -> None:
+    _, private_key = _rsa_private_key_and_pem()
+    unsupported_secret = "u" * 32
+    load_private_key = serialization.load_pem_private_key
+
+    def raise_for_unsupported_secret(data: bytes, password: bytes | None):
+        if data == unsupported_secret.encode():
+            raise UnsupportedAlgorithm("unsupported test key material")
+        return load_private_key(data, password)
+
+    monkeypatch.setattr(serialization, "load_pem_private_key", raise_for_unsupported_secret)
+
+    settings = Settings(
+        _env_file=None,
+        APP_ENVIRONMENT="production",
+        AUTH_SIGNING_ALGORITHM="RS256",
+        AUTH_PRIVATE_KEY=private_key,
+        AUTH_COOKIE_SECURE=True,
+        HLS_TOKEN_SECRET=unsupported_secret,
+    )
+
+    assert settings.hls_token_secret == unsupported_secret
 
 
 def test_local_admin_is_disabled_by_default_and_rejected_in_staging() -> None:

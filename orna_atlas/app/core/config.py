@@ -1,7 +1,21 @@
+import re
 from functools import lru_cache
 
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives import serialization
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _private_key_identity(value: str) -> bytes | None:
+    try:
+        private_key = serialization.load_pem_private_key(value.encode(), password=None)
+    except (TypeError, UnsupportedAlgorithm, ValueError):
+        return None
+    return private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
 
 
 class Settings(BaseSettings):
@@ -69,6 +83,15 @@ class Settings(BaseSettings):
     auth_key_id: str = Field(default="orna-primary", validation_alias="AUTH_KEY_ID")
     auth_private_key: str | None = Field(default=None, validation_alias="AUTH_PRIVATE_KEY")
     auth_jwks_json: str | None = Field(default=None, validation_alias="AUTH_JWKS_JSON")
+    hls_token_secret: str = Field(
+        default="development-only-hls-token-secret-32-bytes",
+        validation_alias="HLS_TOKEN_SECRET",
+    )
+    hls_token_key_id: str = Field(default="primary", validation_alias="HLS_TOKEN_KEY_ID")
+    hls_token_previous_secrets: dict[str, str] = Field(
+        default_factory=dict,
+        validation_alias="HLS_TOKEN_PREVIOUS_SECRETS",
+    )
     access_token_ttl_seconds: int = Field(
         default=900, ge=60, validation_alias="ACCESS_TOKEN_TTL_SECONDS"
     )
@@ -89,6 +112,19 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_SIGNING_ALGORITHM must be HS256 or RS256")
         if self.auth_signing_algorithm == "RS256" and not self.auth_private_key:
             raise ValueError("AUTH_PRIVATE_KEY is required for RS256 signing")
+        if re.fullmatch(r"[A-Za-z0-9_-]+", self.hls_token_key_id) is None:
+            raise ValueError(
+                "HLS_TOKEN_KEY_ID must use only URL-safe letters, digits, underscores, or hyphens"
+            )
+        if self.hls_token_key_id in self.hls_token_previous_secrets:
+            raise ValueError("HLS_TOKEN_KEY_ID must not also be configured as a previous key")
+        if any(
+            re.fullmatch(r"[A-Za-z0-9_-]+", key_id) is None
+            for key_id in self.hls_token_previous_secrets
+        ):
+            raise ValueError(
+                "HLS_TOKEN_PREVIOUS_SECRETS key ids must use only URL-safe letters, digits, underscores, or hyphens"
+            )
         if self.audio_job_max_timeout_seconds < self.audio_job_timeout_seconds:
             raise ValueError(
                 "AUDIO_JOB_MAX_TIMEOUT_SECONDS must be at least AUDIO_JOB_TIMEOUT_SECONDS"
@@ -102,6 +138,47 @@ class Settings(BaseSettings):
                 "LOCAL_ADMIN_ENABLED may only be true in development or local environments"
             )
         if normalized_environment == "production":
+            if self.auth_signing_algorithm == "RS256" and self.auth_private_key:
+                hls_secrets = [
+                    self.hls_token_secret,
+                    *self.hls_token_previous_secrets.values(),
+                ]
+                private_key_identity = _private_key_identity(self.auth_private_key)
+                if self.auth_private_key in hls_secrets or (
+                    private_key_identity is not None
+                    and any(
+                        _private_key_identity(secret) == private_key_identity
+                        for secret in hls_secrets
+                    )
+                ):
+                    raise ValueError(
+                        "HLS token secrets must be independent from the RS256 private key"
+                    )
+            if self.hls_token_secret == self.auth_secret_key:
+                raise ValueError("HLS_TOKEN_SECRET must be independent from AUTH_SECRET_KEY")
+            if (
+                self.hls_token_secret == "development-only-hls-token-secret-32-bytes"
+                or len(self.hls_token_secret) < 32
+            ):
+                raise ValueError("HLS_TOKEN_SECRET must contain at least 32 characters in production")
+            if any(
+                secret == self.auth_secret_key
+                for secret in self.hls_token_previous_secrets.values()
+            ):
+                raise ValueError(
+                    "HLS_TOKEN_PREVIOUS_SECRETS must be independent from AUTH_SECRET_KEY"
+                )
+            if (
+                "development-only-hls-token-secret-32-bytes"
+                in self.hls_token_previous_secrets.values()
+            ):
+                raise ValueError(
+                    "HLS_TOKEN_PREVIOUS_SECRETS must not contain the development default"
+                )
+            if any(len(secret) < 32 for secret in self.hls_token_previous_secrets.values()):
+                raise ValueError(
+                    "HLS_TOKEN_PREVIOUS_SECRETS values must contain at least 32 characters in production"
+                )
             if (
                 self.auth_signing_algorithm == "HS256"
                 and (
