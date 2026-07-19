@@ -82,9 +82,11 @@ def test_api_image_disables_uvicorn_access_log() -> None:
 
 def test_https_compose_mounts_token_safe_nginx_config() -> None:
     compose = Path("docker-compose.https.yml").read_text()
+    base_compose = Path("docker-compose.yml").read_text()
 
     assert "ports: !override []" in compose
     assert "./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro" in compose
+    assert "http://127.0.0.1:8000/health" in base_compose
 
 
 def test_metrics_endpoint_exposes_prometheus_payload() -> None:
