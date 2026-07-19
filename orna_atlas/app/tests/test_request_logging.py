@@ -68,7 +68,7 @@ def test_nginx_access_log_redacts_hls_token_paths() -> None:
     config = Path("deploy/nginx.conf.template").read_text()
     log_format = config.split("log_format orna_access", 1)[1].split(";", 1)[0]
 
-    assert "~^/api/.*/media/hls/ /api/[REDACTED]/media/hls/[REDACTED]" in config
+    assert "~^/api/(?:.*/)?media/hls/ /api/[REDACTED]/media/hls/[REDACTED]" in config
     assert "~^/api/v1/media/hls/" not in config
     assert config.count("access_log /var/log/nginx/access.log orna_access;") == 2
     assert "$orna_log_path" in log_format
@@ -93,7 +93,9 @@ def test_https_compose_mounts_token_safe_nginx_config() -> None:
     assert "http://127.0.0.1:8000/health" in base_compose
     healthcheck = base_compose.split("healthcheck:", 1)[1].split("depends_on:", 1)[0]
     assert "json.load" in healthcheck
-    assert 'payload.get("status") == "ok"' in healthcheck
+    assert 'payload.get("status") != "ok"' in healthcheck
+    assert "sys.exit(1)" in healthcheck
+    assert "assert " not in healthcheck
 
 
 def test_api_healthcheck_rejects_degraded_dependencies() -> None:
@@ -121,7 +123,7 @@ def test_api_healthcheck_rejects_degraded_dependencies() -> None:
     try:
         command = command.replace("127.0.0.1:8000", f"127.0.0.1:{server.server_port}")
         result = subprocess.run(
-            [sys.executable, "-c", command], check=False, capture_output=True, text=True
+            [sys.executable, "-O", "-c", command], check=False, capture_output=True, text=True
         )
     finally:
         thread.join(timeout=5)

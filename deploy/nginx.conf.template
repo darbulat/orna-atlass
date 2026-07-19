@@ -1,5 +1,5 @@
 map $uri $orna_log_path {
-    ~^/api/.*/media/hls/ /api/[REDACTED]/media/hls/[REDACTED];
+    ~^/api/(?:.*/)?media/hls/ /api/[REDACTED]/media/hls/[REDACTED];
     default $uri;
 }
 

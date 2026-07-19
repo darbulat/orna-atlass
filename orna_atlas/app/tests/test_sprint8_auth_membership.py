@@ -301,6 +301,24 @@ def test_production_rejects_development_secret_as_previous_hls_key() -> None:
         )
 
 
+@pytest.mark.parametrize("reuse_as_previous", [False, True])
+def test_production_rs256_rejects_private_key_reuse_for_hls(reuse_as_previous: bool) -> None:
+    private_key = "p" * 64
+    hls_secret = "h" * 32 if reuse_as_previous else private_key
+    previous = {"old": private_key} if reuse_as_previous else {}
+
+    with pytest.raises(ValidationError, match="RS256 private key"):
+        Settings(
+            _env_file=None,
+            APP_ENVIRONMENT="production",
+            AUTH_SIGNING_ALGORITHM="RS256",
+            AUTH_PRIVATE_KEY=private_key,
+            AUTH_COOKIE_SECURE=True,
+            HLS_TOKEN_SECRET=hls_secret,
+            HLS_TOKEN_PREVIOUS_SECRETS=previous,
+        )
+
+
 def test_local_admin_is_disabled_by_default_and_rejected_in_staging() -> None:
     assert not Settings(_env_file=None).local_admin_enabled
     with pytest.raises(ValidationError):

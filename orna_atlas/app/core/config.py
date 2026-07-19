@@ -125,6 +125,13 @@ class Settings(BaseSettings):
                 "LOCAL_ADMIN_ENABLED may only be true in development or local environments"
             )
         if normalized_environment == "production":
+            if self.auth_signing_algorithm == "RS256" and self.auth_private_key and (
+                self.hls_token_secret == self.auth_private_key
+                or self.auth_private_key in self.hls_token_previous_secrets.values()
+            ):
+                raise ValueError(
+                    "HLS token secrets must be independent from the RS256 private key"
+                )
             if self.hls_token_secret == self.auth_secret_key:
                 raise ValueError("HLS_TOKEN_SECRET must be independent from AUTH_SECRET_KEY")
             if (
