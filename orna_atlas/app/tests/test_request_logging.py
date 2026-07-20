@@ -70,7 +70,7 @@ def test_nginx_access_log_redacts_hls_token_paths() -> None:
 
     assert "~^/api/(?:.*/)?media/hls/ /api/[REDACTED]/media/hls/[REDACTED]" in config
     assert "~^/api/v1/media/hls/" not in config
-    assert config.count("access_log /var/log/nginx/access.log orna_access;") == 2
+    assert config.count("access_log /var/log/nginx/access.log orna_access;") == 3
     assert "$orna_log_path" in log_format
     assert "$request " not in log_format
     assert "$request_uri" not in log_format
@@ -90,6 +90,15 @@ def test_https_compose_mounts_token_safe_nginx_config() -> None:
     assert "ports: !override []" in compose
     assert 'NEXT_PUBLIC_API_URL: ""' in compose
     assert "./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro" in compose
+    assert "certbot-renew:" in compose
+    assert (
+        "image: certbot/certbot:v5.7.0@sha256:"
+        "34ee91d2f43008eb78a007d22f23ed4b2eaa9a454cb27ca2c042b49527a695b4"
+    ) in compose
+    assert "certbot/certbot:latest" not in compose
+    assert "certbot renew --webroot -w /var/www/certbot" in compose
+    assert 'pid: "service:gateway"' in compose
+    assert "./.deploy/certbot/conf:/etc/letsencrypt" in compose
     assert "http://127.0.0.1:8000/health" in base_compose
     healthcheck = base_compose.split("healthcheck:", 1)[1].split("depends_on:", 1)[0]
     assert "json.load" in healthcheck
@@ -140,6 +149,18 @@ def test_https_gateway_routes_jwks_to_api() -> None:
     assert "proxy_pass http://api:8000" in jwks_location
 
 
+def test_https_gateway_redirects_www_to_canonical_host() -> None:
+    config = Path("deploy/nginx.conf.template").read_text()
+
+    assert "server_name ${PUBLIC_HOST} www.${PUBLIC_HOST};" in config
+    assert "server_name www.${PUBLIC_HOST};" in config
+    www_https_server = config.split("server_name www.${PUBLIC_HOST};", 1)[1].split(
+        "\nserver {", 1
+    )[0]
+    assert "ssl_certificate /etc/letsencrypt/live/${PUBLIC_HOST}/fullchain.pem;" in www_https_server
+    assert "return 301 https://${PUBLIC_HOST}$request_uri;" in www_https_server
+
+
 def test_server_compose_enforces_production_validation() -> None:
     compose = Path("docker-compose.server.yml").read_text()
 
@@ -152,6 +173,26 @@ def test_https_readme_certificate_path_matches_mount() -> None:
 
     assert ".deploy/certbot/conf/live/$PUBLIC_HOST/" in readme
     assert ".deploy/certbot/live/$PUBLIC_HOST/" not in readme
+
+    certbot_blocks = [
+        section.split("```", 1)[0]
+        for section in readme.split("```bash")[1:]
+        if "certbot/certbot:v5.7.0" in section.split("```", 1)[0]
+    ]
+    assert len(certbot_blocks) == 2
+    webroot_block = next(block for block in certbot_blocks if "--webroot" in block)
+    standalone_block = next(block for block in certbot_blocks if "--standalone" in block)
+
+    for block in certbot_blocks:
+        assert "--non-interactive --agree-tos" in block
+        assert '--email "$CERTBOT_EMAIL"' in block
+        assert '-d "$PUBLIC_HOST"' in block
+        assert '-d "www.$PUBLIC_HOST"' in block
+
+    assert "-p 80:80" not in webroot_block
+    assert ".deploy/certbot/www:/var/www/certbot" in webroot_block
+    assert "-p 80:80" in standalone_block
+    assert ".deploy/certbot/www:/var/www/certbot" not in standalone_block
 
 
 def test_metrics_endpoint_exposes_prometheus_payload() -> None:

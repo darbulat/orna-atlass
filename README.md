@@ -47,8 +47,41 @@ the local compose file:
 docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
 ```
 
-For the repository-managed HTTPS gateway, set `PUBLIC_HOST`, provision certificates
-under `.deploy/certbot/conf/live/$PUBLIC_HOST/`, and add the tracked HTTPS overlay:
+For the repository-managed HTTPS gateway, set `PUBLIC_HOST` to the canonical apex
+hostname, provision a certificate covering both `$PUBLIC_HOST` and `www.$PUBLIC_HOST`
+under `.deploy/certbot/conf/live/$PUBLIC_HOST/`, and add the tracked HTTPS overlay.
+The gateway redirects the `www` hostname to the canonical apex hostname. Run
+certificate issuance only after both DNS names resolve to this server, and set a
+real contact address in `CERTBOT_EMAIL`.
+
+When an existing HTTP gateway already serves `/var/www/certbot` on port 80, use
+the webroot flow without stopping it:
+
+```bash
+docker run --rm \
+  -v "$PWD/.deploy/certbot/conf:/etc/letsencrypt" \
+  -v "$PWD/.deploy/certbot/work:/var/lib/letsencrypt" \
+  -v "$PWD/.deploy/certbot/logs:/var/log/letsencrypt" \
+  -v "$PWD/.deploy/certbot/www:/var/www/certbot" \
+  certbot/certbot:v5.7.0 certonly --non-interactive --agree-tos \
+  --email "$CERTBOT_EMAIL" --webroot -w /var/www/certbot \
+  --cert-name "$PUBLIC_HOST" -d "$PUBLIC_HOST" -d "www.$PUBLIC_HOST"
+```
+
+On a fresh host where no gateway is listening and port 80 is free, bootstrap the
+certificate with standalone mode before starting the HTTPS Compose overlay:
+
+```bash
+docker run --rm -p 80:80 \
+  -v "$PWD/.deploy/certbot/conf:/etc/letsencrypt" \
+  -v "$PWD/.deploy/certbot/work:/var/lib/letsencrypt" \
+  -v "$PWD/.deploy/certbot/logs:/var/log/letsencrypt" \
+  certbot/certbot:v5.7.0 certonly --non-interactive --agree-tos \
+  --email "$CERTBOT_EMAIL" --standalone --cert-name "$PUBLIC_HOST" \
+  -d "$PUBLIC_HOST" -d "www.$PUBLIC_HOST"
+```
+
+The renewal service preserves the names in this certificate lineage automatically.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.server.yml \
