@@ -26,3 +26,18 @@ services:
         condition: service_healthy
       web:
         condition: service_started
+
+  certbot-renew:
+    image: certbot/certbot:v5.7.0@sha256:34ee91d2f43008eb78a007d22f23ed4b2eaa9a454cb27ca2c042b49527a695b4
+    restart: unless-stopped
+    pid: "service:gateway"
+    volumes:
+      - ./.deploy/certbot/conf:/etc/letsencrypt
+      - ./.deploy/certbot/work:/var/lib/letsencrypt
+      - ./.deploy/certbot/logs:/var/log/letsencrypt
+      - ./.deploy/certbot/www:/var/www/certbot
+    entrypoint: /bin/sh
+    command: -c "while true; do certbot renew --webroot -w /var/www/certbot --deploy-hook 'kill -HUP 1'; sleep 43200; done"
+    depends_on:
+      gateway:
+        condition: service_started

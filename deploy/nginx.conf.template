@@ -10,7 +10,7 @@ log_format orna_access '$remote_addr - $remote_user [$time_local] '
 server {
     listen 80;
     listen [::]:80;
-    server_name ${PUBLIC_HOST};
+    server_name ${PUBLIC_HOST} www.${PUBLIC_HOST};
     access_log /var/log/nginx/access.log orna_access;
 
     location /.well-known/acme-challenge/ {
@@ -18,8 +18,21 @@ server {
     }
 
     location / {
-        return 301 https://$host$request_uri;
+        return 301 https://${PUBLIC_HOST}$request_uri;
     }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name www.${PUBLIC_HOST};
+    access_log /var/log/nginx/access.log orna_access;
+
+    ssl_certificate /etc/letsencrypt/live/${PUBLIC_HOST}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${PUBLIC_HOST}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    return 301 https://${PUBLIC_HOST}$request_uri;
 }
 
 server {
