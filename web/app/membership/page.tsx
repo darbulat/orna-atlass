@@ -327,7 +327,7 @@ export default function MembershipPage() {
           </>
         ) : null}
         {providerLoadError ? <AuthNotice error>Social sign-in is temporarily unavailable.</AuthNotice> : null}
-        <p className="auth-legal">By continuing, you acknowledge ORNA Atlas’s privacy-first account and location-data practices described on the <Link href="/about">About page</Link>.</p>
+        <p className="auth-legal">By continuing, you agree to the <Link href="/terms">Terms of Use</Link> and acknowledge the <Link href="/privacy">Privacy Policy</Link>.</p>
         {message ? <p className="auth-notice" role="alert">{message}</p> : null}
       </section>
     </main>

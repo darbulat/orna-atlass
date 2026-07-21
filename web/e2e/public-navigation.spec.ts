@@ -30,7 +30,61 @@ test("public pages use a consistent ORNA Atlas home wordmark", async ({ page }) 
     .getByRole("link", { name: "ORNA Atlas", exact: true })).toHaveAttribute("href", "/");
 
   await page.goto("/atlas?view=list");
-  await expect(page.getByRole("link", { name: "ORNA Atlas", exact: true })).toHaveAttribute("href", "/");
+  await expect(page.locator(".atlas-brand")).toHaveAttribute("href", "/");
+});
+
+test("public legal pages disclose the operator and are linked from the home page", async ({ page }) => {
+  await page.goto("/");
+
+  const legalNavigation = page.getByRole("navigation", { name: "Legal" });
+  await expect(legalNavigation.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute(
+    "href",
+    "/privacy",
+  );
+  await expect(legalNavigation.getByRole("link", { name: "Terms" })).toHaveAttribute(
+    "href",
+    "/terms",
+  );
+
+  await page.goto("/privacy");
+  await expect(page).toHaveTitle(/Privacy Policy/);
+  await expect(page.getByRole("heading", { level: 1, name: "Privacy Policy" })).toBeVisible();
+  await expect(page.getByText("Kale Ltd.", { exact: true })).toBeVisible();
+  await expect(page.getByText("221040900084", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your privacy rights" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Map imagery provider" })).toBeVisible();
+  await expect(page.getByText(/ArcGIS World Imagery/)).toBeVisible();
+
+  await page.goto("/terms");
+  await expect(page).toHaveTitle(/Terms of Use/);
+  await expect(page.getByRole("heading", { level: 1, name: "Terms of Use" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Our rights and third-party content" })).toBeVisible();
+  await expect(page.getByText("Rim Safiullin", { exact: true })).toBeVisible();
+  await expect(page.getByText("Software development", { exact: true })).toBeVisible();
+  await expect(page.getByText("Software maintenance", { exact: true })).toBeVisible();
+  await expect(page.getByText("Other IT services", { exact: true })).toBeVisible();
+});
+
+test("legal pages remain contained and navigable on a narrow phone", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+
+  for (const path of ["/privacy", "/terms"]) {
+    await page.goto(path);
+    const metrics = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+    expect(metrics.scrollWidth).toBe(metrics.viewport);
+
+    const navigationLinks = page.locator(".legal-nav a, .site-footer nav a");
+    for (const link of await navigationLinks.all()) {
+      const box = await link.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+    }
+  }
 });
 
 test("home skip link bypasses the primary navigation", async ({ page }) => {
