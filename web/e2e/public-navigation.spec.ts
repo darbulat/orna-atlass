@@ -37,6 +37,17 @@ test("home page opens on a selected interactive globe before marketing content",
   await expect(page).toHaveURL(/\/$/);
 });
 
+test("home globe includes a current dawn location outside the capped Atlas window", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=dawn-only-location`);
+  expect(control.ok()).toBe(true);
+  await page.goto("/");
+
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas.getByText("Pine Marsh", { exact: true }).first()).toBeVisible();
+  await expect(atlas.getByRole("button", { name: "Listen", exact: true })).toBeEnabled();
+});
+
 test("home globe header keeps exploration public and sign-in optional", async ({ page }) => {
   await page.goto("/");
 

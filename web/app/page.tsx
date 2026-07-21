@@ -8,15 +8,33 @@ import {
   fetchAtlasPoints,
   fetchCurrentDawn,
   fetchFeaturedSessions,
+  type AtlasPointsResponse,
+  type DawnCurrentResponse,
   type FeaturedSession,
 } from "../lib/api/sessions";
 
 export const dynamic = "force-dynamic";
 
+function includeDawnLocations(
+  atlasPoints: AtlasPointsResponse["points"],
+  dawn: DawnCurrentResponse,
+): AtlasPointsResponse["points"] {
+  const merged = [...atlasPoints];
+  const pointSlugs = new Set(
+    atlasPoints.flatMap((point) => point.type === "point" ? [point.slug] : []),
+  );
+  for (const entry of [...dawn.active_locations, ...dawn.next_locations]) {
+    if (pointSlugs.has(entry.location.slug)) continue;
+    merged.push(entry.location);
+    pointSlugs.add(entry.location.slug);
+  }
+  return merged;
+}
+
 async function fetchHomeAtlas() {
   const atlas = await fetchAtlasPoints("globe", [], { cache: "no-store" });
   const dawn = await fetchCurrentDawn(Math.max(250, atlas.points.length), { cache: "no-store" });
-  return { atlas, dawn };
+  return { points: includeDawnLocations(atlas.points, dawn), dawn };
 }
 
 export default async function HomePage() {
@@ -49,7 +67,7 @@ export default async function HomePage() {
         <div className="home-atlas-entry" id="atlas-entry">
           <AtlasExplorer
             initialView="globe"
-            points={atlasResult.value.atlas.points}
+            points={atlasResult.value.points}
             dawn={atlasResult.value.dawn}
             sidePanelSession={null}
             showInternalNavigation={false}

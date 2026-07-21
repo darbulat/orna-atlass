@@ -163,7 +163,7 @@ const server = createServer((request, response) => {
   }
   if (request.method === "POST" && path === "/__e2e/atlas-response") {
     const mode = url.searchParams.get("mode");
-    if (!["valid-optional-point", "valid-boundary-fields", "invalid-date", "malformed-atlas", "malformed-point", "malformed-dawn", "malformed-dawn-refresh", "unavailable"].includes(mode)) {
+    if (!["valid-optional-point", "valid-boundary-fields", "dawn-only-location", "invalid-date", "malformed-atlas", "malformed-point", "malformed-dawn", "malformed-dawn-refresh", "unavailable"].includes(mode)) {
       send(response, 400, { detail: "Unsupported atlas response mode" });
       return;
     }
@@ -290,6 +290,16 @@ const server = createServer((request, response) => {
           latest_session: { ...atlasPoint.latest_session, recorded_at: "2026-01-01T24:00:00Z" },
         }],
         cache_key: "e2e:invalid-date",
+      });
+      return;
+    }
+    if (responseMode === "dawn-only-location") {
+      send(response, 200, {
+        bbox: null,
+        zoom: 5,
+        mode: "points",
+        points: [],
+        cache_key: "e2e:dawn-only-location",
       });
       return;
     }
