@@ -29,6 +29,7 @@ type Props = {
   points: Array<AtlasPoint | AtlasCluster>;
   dawn: DawnCurrentResponse;
   sidePanelSession: SessionDetail | null;
+  showInternalNavigation?: boolean;
 };
 
 type CesiumGlobeProps = {
@@ -370,7 +371,13 @@ function StaticGlobeFallback({
   );
 }
 
-export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: Props) {
+export function AtlasExplorer({
+  initialView,
+  points,
+  dawn,
+  sidePanelSession,
+  showInternalNavigation = true,
+}: Props) {
   const locationCardCount = useLocationCardCount();
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [currentDawn, setCurrentDawn] = useState(dawn);
@@ -720,10 +727,12 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
               </ol>
             </div>
           )}
-          <Link className="atlas-brand" href="/" aria-label="ORNA Atlas">
-            <span>ORNA</span>
-            <span>Atlas</span>
-          </Link>
+          {showInternalNavigation ? (
+            <Link className="atlas-brand" href="/" aria-label="ORNA Atlas">
+              <span>ORNA</span>
+              <span>Atlas</span>
+            </Link>
+          ) : null}
           {selectedDawn?.state === "active" ? <DawnNowBadge className="atlas-live-left" /> : null}
           <div className="dawn-copy">
             <span>{listeningModeKicker[selectedMode]}</span>
@@ -739,19 +748,21 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
                 aria-expanded={isSidePanelOpen}
                 onClick={openSelectedSession}
               >
-                Enter
+                Listen
                 <span aria-hidden="true">›</span>
               </button>
             ) : (
               <button className="listen-pill" type="button" disabled>
-                Enter
+                Listen
                 <span aria-hidden="true">›</span>
               </button>
             )}
           </div>
-          <Link className="about-link" href="/about">
-            About
-          </Link>
+          {showInternalNavigation ? (
+            <Link className="about-link" href="/about">
+              About
+            </Link>
+          ) : null}
           <div className="globe-tools" aria-label="Globe tools">
             <button
               type="button"

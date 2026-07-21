@@ -1,14 +1,27 @@
 import Link from "next/link";
 
 import { AnalyticsLink } from "../components/analytics-link";
+import { AtlasExplorer } from "../components/atlas/AtlasExplorer";
 import { HomeListeningSample } from "../components/home-listening-sample";
 import { fetchCollections, type CollectionSummary } from "../lib/api/collections";
-import { fetchFeaturedSessions, type FeaturedSession } from "../lib/api/sessions";
+import {
+  fetchAtlasPoints,
+  fetchCurrentDawn,
+  fetchFeaturedSessions,
+  type FeaturedSession,
+} from "../lib/api/sessions";
 
 export const dynamic = "force-dynamic";
 
+async function fetchHomeAtlas() {
+  const atlas = await fetchAtlasPoints("globe", [], { cache: "no-store" });
+  const dawn = await fetchCurrentDawn(Math.max(250, atlas.points.length), { cache: "no-store" });
+  return { atlas, dawn };
+}
+
 export default async function HomePage() {
-  const [featuredResult, collectionsResult] = await Promise.allSettled([
+  const [atlasResult, featuredResult, collectionsResult] = await Promise.allSettled([
+    fetchHomeAtlas(),
     fetchFeaturedSessions(6),
     fetchCollections(6),
   ]);
@@ -23,11 +36,32 @@ export default async function HomePage() {
       <nav className="site-nav home-nav" aria-label="Primary navigation">
         <Link className="site-wordmark" href="/">ORNA Atlas</Link>
         <div>
-          <Link href="/atlas">Atlas</Link>
+          <Link href="#atlas-entry">Map</Link>
+          <Link href="#collections">Collections</Link>
           <Link href="/about">About</Link>
+          <Link href="#atlas-search">Search</Link>
+          <Link href="/membership?mode=login">Sign in</Link>
+          <Link href="/membership?mode=register">Subscribe</Link>
         </div>
       </nav>
       <main id="main-content">
+      {atlasResult.status === "fulfilled" ? (
+        <div className="home-atlas-entry" id="atlas-entry">
+          <AtlasExplorer
+            initialView="globe"
+            points={atlasResult.value.atlas.points}
+            dawn={atlasResult.value.dawn}
+            sidePanelSession={null}
+            showInternalNavigation={false}
+          />
+        </div>
+      ) : (
+        <section className="panel unavailable-panel home-atlas-unavailable" role="alert">
+          <p className="eyebrow">Atlas unavailable</p>
+          <h1>We could not load the listening globe.</h1>
+          <p>The atlas is temporarily unavailable. Please try again soon.</p>
+        </section>
+      )}
       <section className="hero">
         <p className="eyebrow">Continuous field archive</p>
         <h1>Real places for focus, rest, and deep listening.</h1>
@@ -71,7 +105,7 @@ export default async function HomePage() {
         ) : <p className="empty-state">Featured sessions will appear once editorial curation is published.</p>}
       </section>
 
-      <section className="editorial-section" aria-labelledby="collections-heading">
+      <section className="editorial-section" id="collections" aria-labelledby="collections-heading">
         <div className="section-heading"><p className="eyebrow">Collections</p><h2 id="collections-heading">Atlas journeys</h2></div>
         {collections === null ? (
           <p className="unavailable-state" role="alert">Collections are temporarily unavailable. Please try again soon.</p>

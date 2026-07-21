@@ -117,6 +117,9 @@ const sessions = new Map([
   ["second-session", session(secondSessionId, "second-session", "Second Session")],
 ]);
 const grantCounts = new Map();
+let nextAtlasResponse = "ok";
+let nextDawnResponse = "ok";
+let nextSearchResponse = "ok";
 
 function headers(extra = {}) {
   return {
@@ -156,6 +159,26 @@ const server = createServer((request, response) => {
   }
   if (path === "/health") {
     send(response, 200, { status: "ok" });
+    return;
+  }
+  if (request.method === "POST" && path === "/__e2e/atlas-response") {
+    const mode = url.searchParams.get("mode");
+    if (!["valid-optional-point", "valid-boundary-fields", "invalid-date", "malformed-atlas", "malformed-point", "malformed-dawn", "malformed-dawn-refresh", "unavailable"].includes(mode)) {
+      send(response, 400, { detail: "Unsupported atlas response mode" });
+      return;
+    }
+    nextAtlasResponse = mode === "malformed-dawn" || mode === "malformed-dawn-refresh" ? "ok" : mode;
+    nextDawnResponse = mode === "malformed-dawn" || mode === "malformed-dawn-refresh" ? "malformed" : "ok";
+    send(response, 204, null);
+    return;
+  }
+  if (request.method === "POST" && path === "/__e2e/search-response") {
+    if (url.searchParams.get("mode") !== "hidden-public") {
+      send(response, 400, { detail: "Unsupported search response mode" });
+      return;
+    }
+    nextSearchResponse = "hidden-public";
+    send(response, 204, null);
     return;
   }
   if (request.method === "GET" && path === "/api/v1/auth/oauth/providers") {
@@ -206,10 +229,80 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.method === "GET" && path === "/api/v1/atlas/points") {
+    const responseMode = nextAtlasResponse;
+    nextAtlasResponse = "ok";
+    if (responseMode === "unavailable") {
+      send(response, 503, { detail: "Atlas fixture unavailable" });
+      return;
+    }
+    if (responseMode === "malformed-atlas") {
+      send(response, 200, { bbox: null, zoom: 5, mode: "points", points: "invalid", cache_key: "e2e:malformed" });
+      return;
+    }
+    if (responseMode === "malformed-point") {
+      send(response, 200, {
+        bbox: null,
+        zoom: 5,
+        mode: "points",
+        points: [{ ...atlasPoint, latest_session: {} }],
+        cache_key: "e2e:malformed-point",
+      });
+      return;
+    }
+    if (responseMode === "valid-optional-point") {
+      send(response, 200, {
+        bbox: null,
+        zoom: 5,
+        mode: "points",
+        points: [{ ...atlasPoint, country_code: null, latest_session: undefined }],
+        cache_key: "e2e:valid-optional-point",
+      });
+      return;
+    }
+    if (responseMode === "valid-boundary-fields") {
+      send(response, 200, {
+        bbox: null,
+        zoom: 5,
+        mode: "points",
+        points: [{
+          ...atlasPoint,
+          id: "00000000-0000-0000-0000-000000000000",
+          timezone: "",
+          sensitivity_level: "",
+          latest_session: {
+            ...atlasPoint.latest_session,
+            id: "00000000-0000-0000-0000-000000000000",
+            recorded_at: "2026-01-01t12:00:00z",
+            duration_seconds: -1,
+          },
+        }],
+        cache_key: "e2e:valid-boundary-fields",
+      });
+      return;
+    }
+    if (responseMode === "invalid-date") {
+      send(response, 200, {
+        bbox: null,
+        zoom: 5,
+        mode: "points",
+        points: [{
+          ...atlasPoint,
+          latest_session: { ...atlasPoint.latest_session, recorded_at: "2026-01-01T24:00:00Z" },
+        }],
+        cache_key: "e2e:invalid-date",
+      });
+      return;
+    }
     send(response, 200, { bbox: null, zoom: 5, mode: "points", points: [atlasPoint], cache_key: "e2e:atlas" });
     return;
   }
   if (request.method === "GET" && path === "/api/v1/atlas/dawn/current") {
+    const responseMode = nextDawnResponse;
+    nextDawnResponse = "ok";
+    if (responseMode === "malformed") {
+      send(response, 200, {});
+      return;
+    }
     send(response, 200, {
       generated_at: now,
       window: { before_minutes: 45, after_minutes: 30, refresh_seconds: 60 },
@@ -233,6 +326,30 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.method === "GET" && path === "/api/v1/search") {
+    const responseMode = nextSearchResponse;
+    nextSearchResponse = "ok";
+    if (responseMode === "hidden-public") {
+      const hiddenPoint = {
+        ...atlasPoint,
+        id: "00000000-0000-4000-8000-000000000099",
+        slug: "hidden-roost",
+        name: "Hidden Roost",
+        coordinate_visibility: "hidden_public",
+      };
+      send(response, 200, [{
+        type: "location",
+        id: hiddenPoint.id,
+        slug: hiddenPoint.slug,
+        title: hiddenPoint.name,
+        subtitle: null,
+        habitat: null,
+        latitude: hiddenPoint.latitude,
+        longitude: hiddenPoint.longitude,
+        session_slug: null,
+        atlas_point: hiddenPoint,
+      }]);
+      return;
+    }
     send(response, 200, [{
       type: "location",
       id: locationId,
