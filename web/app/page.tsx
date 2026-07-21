@@ -19,9 +19,17 @@ export default async function HomePage() {
   );
 
   return (
-    <main className="shell home-shell" id="main-content">
+    <div className="shell home-shell">
+      <nav className="site-nav home-nav" aria-label="Primary navigation">
+        <Link className="site-wordmark" href="/">ORNA Atlas</Link>
+        <div>
+          <Link href="/atlas">Atlas</Link>
+          <Link href="/about">About</Link>
+        </div>
+      </nav>
+      <main id="main-content">
       <section className="hero">
-        <p className="eyebrow">ORNA Atlas</p>
+        <p className="eyebrow">Continuous field archive</p>
         <h1>Real places for focus, rest, and deep listening.</h1>
         <p>
           Continuous nature recordings from living landscapes—no loops and no generated sound.
@@ -125,6 +133,7 @@ export default async function HomePage() {
         </div>
         <div className="closing-cta"><p>Start with a place. Stay for the whole horizon.</p><AnalyticsLink destination="/atlas" eventName="final_cta_clicked" placement="footer_atlas">Explore the atlas</AnalyticsLink><AnalyticsLink destination="/membership?mode=register" eventName="final_cta_clicked" placement="footer_membership">Join early access</AnalyticsLink></div>
       </section>
-    </main>
+      </main>
+    </div>
   );
 }

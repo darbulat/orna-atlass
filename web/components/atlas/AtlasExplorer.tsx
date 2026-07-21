@@ -720,10 +720,10 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
               </ol>
             </div>
           )}
-          <div className="atlas-brand">
+          <Link className="atlas-brand" href="/" aria-label="ORNA Atlas">
             <span>ORNA</span>
             <span>Atlas</span>
-          </div>
+          </Link>
           {selectedDawn?.state === "active" ? <DawnNowBadge className="atlas-live-left" /> : null}
           <div className="dawn-copy">
             <span>{listeningModeKicker[selectedMode]}</span>

@@ -3,8 +3,8 @@ import Link from "next/link";
 export default function AboutPage() {
   return (
     <main className="about-page" id="main-content">
-      <nav className="about-nav" aria-label="About navigation">
-        <Link className="about-wordmark" href="/atlas">ORNA Atlas</Link>
+      <nav className="site-nav about-nav" aria-label="About navigation">
+        <Link className="site-wordmark about-wordmark" href="/">ORNA Atlas</Link>
         <Link href="/atlas">Enter the atlas <span aria-hidden="true">↗</span></Link>
       </nav>
 
