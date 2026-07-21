@@ -51,9 +51,18 @@ button:hover { background: rgba(155, 216, 189, 0.22); }
 }
 .home-nav {
   border-bottom: 1px solid rgba(237,247,242,.18);
-  margin-bottom: clamp(72px, 10vw, 144px);
+  left: 64px;
+  position: absolute;
+  pointer-events: none;
+  right: 64px;
+  top: 64px;
+  z-index: 10;
 }
-.home-nav div { display: flex; gap: 28px; }
+.home-nav div { display: flex; flex-wrap: wrap; gap: 28px; justify-content: flex-end; }
+.home-nav div a { justify-content: center; min-width: 44px; }
+.home-atlas-entry .atlas-live-left { top: 104px; }
+.home-atlas-entry .atlas-side-panel { position: relative; z-index: 11; }
+.home-nav a { pointer-events: auto; }
 .home-nav div a { color: #c8d8d1; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
 .hero { max-width: 780px; }
 .eyebrow { color: #9bd8bd; letter-spacing: 0.2em; text-transform: uppercase; }
@@ -85,6 +94,7 @@ p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
   letter-spacing: -.035em;
 }
 .home-shell h1 { font-size: clamp(3.2rem, 7.4vw, 6.4rem); }
+.home-atlas-entry { margin-bottom: clamp(100px, 12vw, 180px); }
 .conversion-section, .editorial-section { margin-top: clamp(100px, 12vw, 180px); }
 .conversion-heading { max-width: 760px; }
 .conversion-heading > p:last-child { max-width: 680px; }
@@ -136,6 +146,9 @@ p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
 @media (max-width: 700px) {
   .shell { padding: 36px 22px; }
   .home-shell { padding: 36px 22px; }
+  .home-nav { left: 22px; right: 22px; top: 36px; }
+  .home-nav div { gap: 8px 16px; }
+  .home-atlas-entry .atlas-live-left { top: 180px; }
   .story-grid, .proof-grid { grid-template-columns: 1fr; }
   .proof-grid div, .proof-grid div:first-child { border-left: 0; border-top: 1px solid rgba(255,255,255,.16); padding: 22px 0; }
   .pricing-section { border-radius: 22px; padding: 28px 20px; }

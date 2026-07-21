@@ -257,7 +257,7 @@ test("switching sessions aborts a stale grant and ignores its late response", as
   await page.getByRole("button", { name: "Play session" }).click({ noWaitAfter: true });
   await expect.poll(() => firstRequestStarted).toBe(true);
   await page.getByRole("link", { name: "Back to atlas" }).click();
-  await page.getByRole("button", { name: "Enter", exact: true }).click();
+  await page.getByRole("button", { name: "Listen", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Pine Marsh" })).toBeVisible();
   await page.getByRole("button", { name: "Play session" }).click();
 

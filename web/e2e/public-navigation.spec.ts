@@ -1,23 +1,229 @@
 import { expect, test } from "@playwright/test";
 
-test("home page offers immediate free listening before atlas exploration", async ({ page }) => {
+const mockApiUrl = "http://127.0.0.1:4010";
+
+test("home page opens on a selected interactive globe before marketing content", async ({ page }) => {
   let grantRequests = 0;
+  let authRequests = 0;
   page.on("request", (request) => {
     if (request.method() === "POST" && request.url().includes("/playback-grants")) grantRequests += 1;
+    if (request.url().includes("/api/v1/auth/")) authRequests += 1;
   });
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Real places for focus, rest, and deep listening");
-  await expect(page.getByRole("link", { name: "Skip to main content" })).toHaveAttribute(
-    "href",
-    "#main-content",
-  );
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Skip to main content" })).toBeFocused();
 
-  await page.getByRole("button", { name: "Listen free" }).click();
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas).toBeVisible();
+  await expect(atlas.getByLabel("Interactive Cesium globe")).toBeVisible();
+  const selectedLocation = atlas.locator(".dawn-copy");
+  await expect(selectedLocation.getByText("Pine Marsh", { exact: true })).toBeVisible();
+  await expect(selectedLocation.getByText("local time", { exact: true })).toBeVisible();
+
+  const viewport = page.viewportSize();
+  const atlasBox = await atlas.boundingBox();
+  const marketingBox = await page.locator(".hero").boundingBox();
+  expect(viewport).not.toBeNull();
+  expect(atlasBox).not.toBeNull();
+  expect(marketingBox).not.toBeNull();
+  expect(atlasBox!.y).toBeLessThan(viewport!.height);
+  expect(marketingBox!.y).toBeGreaterThanOrEqual(viewport!.height);
+
+  await atlas.getByRole("button", { name: "Listen", exact: true }).click();
+  const player = atlas.getByRole("region", { name: "Session player" });
+  await expect(player).toBeVisible();
+  await player.getByRole("button", { name: "Play session" }).click();
   await expect.poll(() => grantRequests).toBe(1);
-  await expect(page.locator(".hero").getByRole("link", { name: "Explore the atlas" })).toHaveAttribute("href", "/atlas");
+  expect(authRequests).toBe(0);
+  await expect(page).toHaveURL(/\/$/);
+});
+
+test("home globe includes a current dawn location outside the capped Atlas window", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=dawn-only-location`);
+  expect(control.ok()).toBe(true);
+  await page.goto("/");
+
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas.getByText("Pine Marsh", { exact: true }).first()).toBeVisible();
+  await expect(atlas.getByRole("button", { name: "Listen", exact: true })).toBeEnabled();
+});
+
+test("home globe selects the first active dawn location instead of an earlier Dawn-mode point", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post("http://127.0.0.1:4010/__e2e/atlas-response?mode=multiple-dawn");
+  expect(control.ok()).toBeTruthy();
+
+  await page.goto("/");
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas.locator(".dawn-copy strong")).toHaveText("Pine Marsh");
+});
+
+test("home globe selects the next dawn location when no location is active", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post("http://127.0.0.1:4010/__e2e/atlas-response?mode=next-only-dawn");
+  expect(control.ok()).toBeTruthy();
+
+  await page.goto("/");
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas.locator(".dawn-copy strong")).toHaveText("Ridge Dawn");
+});
+
+test("home globe merges newly active dawn locations after a client refresh", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  await page.clock.install();
+  const control = await request.post("http://127.0.0.1:4010/__e2e/atlas-response?mode=dawn-refresh-location");
+  expect(control.ok()).toBeTruthy();
+
+  await page.goto("/");
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas.getByText("Ridge Dawn", { exact: true })).toHaveCount(0);
+  await page.clock.runFor(1_100);
+  await expect(atlas.getByText("Ridge Dawn", { exact: true }).first()).toBeVisible();
+});
+
+test("home navigation leaves the inline player controls clickable", async ({ page }) => {
+  await page.goto("/");
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await atlas.getByRole("button", { name: "Listen", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Session player" })).toBeVisible();
+
+  await expect(page.locator(".home-nav")).toHaveCSS("pointer-events", "none");
+  await expect(page.locator(".home-nav a").first()).toHaveCSS("pointer-events", "auto");
+  await page.getByRole("button", { name: "Hide player" }).click();
+  await expect(page.getByRole("region", { name: "Session player" })).toHaveCount(0);
+});
+
+test("mobile home navigation leaves the inline player controls clickable", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await atlas.getByRole("button", { name: "Listen", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Session player" })).toBeVisible();
+  await page.getByRole("button", { name: "Hide player" }).click();
+  await expect(page.getByRole("region", { name: "Session player" })).toHaveCount(0);
+});
+
+test("home globe header keeps exploration public and sign-in optional", async ({ page }) => {
+  await page.goto("/");
+
+  const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+  await expect(navigation.getByRole("link", { name: "Map", exact: true })).toHaveAttribute("href", "#atlas-entry");
+  await expect(navigation.getByRole("link", { name: "Collections", exact: true })).toHaveAttribute("href", "#collections");
+  await expect(navigation.getByRole("link", { name: "About", exact: true })).toHaveAttribute("href", "/about");
+  await expect(navigation.getByRole("link", { name: "Search", exact: true })).toHaveAttribute("href", "#atlas-search");
+  await expect(navigation.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute(
+    "href",
+    "/membership?mode=login",
+  );
+  await expect(navigation.getByRole("link", { name: "Subscribe", exact: true })).toHaveAttribute(
+    "href",
+    "/membership?mode=register",
+  );
+  await expect(page.getByRole("region", { name: "ORNA Atlas" }).getByRole("button", { name: "Listen", exact: true })).toBeEnabled();
+});
+
+test("home globe header stays reachable on a 320px viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto("/");
+
+  const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+  const links = navigation.getByRole("link");
+  await expect(links).toHaveCount(7);
+  for (const link of await links.all()) {
+    const box = await link.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+  const badge = page.locator(".atlas-live-left");
+  const badgeBox = await badge.boundingBox();
+  const navigationBox = await navigation.boundingBox();
+  expect(badgeBox).not.toBeNull();
+  expect(navigationBox).not.toBeNull();
+  expect(badgeBox!.y).toBeGreaterThanOrEqual(navigationBox!.y + navigationBox!.height);
+  await expect(page.getByRole("region", { name: "ORNA Atlas" }).getByRole("button", { name: "Listen", exact: true })).toBeVisible();
+  await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 320);
+});
+
+test("home globe fails closed for unavailable or malformed atlas responses", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+
+  for (const mode of ["unavailable", "malformed-atlas", "malformed-point", "invalid-date", "malformed-dawn"]) {
+    const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=${mode}`);
+    expect(control.ok()).toBe(true);
+    await page.goto("/");
+    await expect(page.getByRole("alert").filter({ hasText: "Atlas unavailable" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "ORNA Atlas" })).toHaveCount(0);
+  }
+});
+
+test("home globe keeps the last valid dawn state after a malformed refresh", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  await page.clock.install();
+  await page.goto("/");
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas).toBeVisible();
+  const search = atlas.locator("#atlas-search");
+  await search.fill("Pi");
+  await search.clear();
+
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=malformed-dawn-refresh`);
+  expect(control.ok()).toBe(true);
+  await page.clock.runFor(60_000);
+
+  await expect(atlas).toBeVisible();
+  await expect(atlas.getByRole("status")).toContainText("Showing the last successful dawn update.");
+  await expect(atlas.getByRole("button", { name: "Listen", exact: true })).toBeEnabled();
+});
+
+test("home globe accepts nullable and omitted optional Atlas point fields", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=valid-optional-point`);
+  expect(control.ok()).toBe(true);
+  await page.goto("/");
+
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas).toBeVisible();
+  await expect(atlas.getByText("Pine Marsh", { exact: true }).first()).toBeVisible();
+  await expect(atlas.getByRole("button", { name: "Listen", exact: true })).toBeDisabled();
+});
+
+test("home globe accepts UUID and date-time boundaries allowed by the API contract", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=valid-boundary-fields`);
+  expect(control.ok()).toBe(true);
+  await page.goto("/");
+
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas).toBeVisible();
+  await expect(atlas.getByRole("button", { name: "Listen", exact: true })).toBeEnabled();
+});
+
+test("home search keeps an upcoming dawn location in Dawn mode", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const atlasControl = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=next-only-dawn`);
+  expect(atlasControl.ok()).toBe(true);
+  await page.goto("/");
+  const searchControl = await request.post(`${mockApiUrl}/__e2e/search-response?mode=next-only-dawn`);
+  expect(searchControl.ok()).toBe(true);
+
+  await page.locator("#atlas-search").fill("ridge");
+  await page.locator(".search-results").getByRole("button", { name: /Ridge Dawn/ }).click();
+  await expect(page.getByRole("tab", { name: "Dawn" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText(/Dawn Now/i)).toHaveCount(0);
+});
+
+test("home search rejects hidden coordinates before they can enter the globe", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  await page.goto("/");
+  const control = await request.post(`${mockApiUrl}/__e2e/search-response?mode=hidden-public`);
+  expect(control.ok()).toBe(true);
+
+  await page.locator("#atlas-search").fill("hidden");
+  await expect(page.getByText("The server returned an invalid response", { exact: true })).toBeVisible();
+  await expect(page.getByText("Hidden Roost", { exact: true })).toHaveCount(0);
 });
 
 test("public pages use a consistent ORNA Atlas home wordmark", async ({ page }) => {
@@ -291,6 +497,41 @@ test("atlas route renders without a browser error", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Tune filters" })).toHaveCount(0);
 });
 
+test("atlas route includes a current dawn location outside the capped Atlas window", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=dawn-only-location`);
+  expect(control.ok()).toBe(true);
+  await page.route("**/api/v1/atlas/dawn/current**", (route) => route.abort());
+
+  await page.goto("/atlas");
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas.locator(".dawn-copy strong")).toHaveText("Pine Marsh");
+  await expect(atlas.getByRole("button", { name: "Listen", exact: true })).toBeEnabled();
+});
+
+test("atlas list view selects an active dawn location during SSR", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=dawn-only-location`);
+  expect(control.ok()).toBe(true);
+  await page.route("**/api/v1/atlas/dawn/current**", (route) => route.abort());
+
+  await page.goto("/atlas?view=list");
+  await expect(page.getByRole("region", { name: "ORNA Atlas" }).locator(".dawn-copy strong"))
+    .toHaveText("Pine Marsh");
+});
+
+test("atlas list view selects a next dawn location during SSR", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=next-only-dawn-list`);
+  expect(control.ok()).toBe(true);
+  await page.route("**/api/v1/atlas/dawn/current**", (route) => route.abort());
+
+  await page.goto("/atlas?view=list");
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas.locator(".dawn-copy strong")).toHaveText("Ridge Dawn");
+  await expect(atlas.getByRole("tab", { name: "Dawn" })).toHaveAttribute("aria-selected", "true");
+});
+
 test("current-location control selects the nearest public listening site", async ({ context, page }) => {
   await context.grantPermissions(["geolocation"], { origin: "http://127.0.0.1:3100" });
   await context.setGeolocation({ latitude: 59.43, longitude: 24.72 });
@@ -392,7 +633,7 @@ test("enter recenters the resized globe on the selected location at a closer zoo
     };
   });
 
-  await page.getByRole("button", { name: "Enter", exact: true }).click();
+  await page.getByRole("button", { name: "Listen", exact: true }).click();
 
   await expect.poll(() => page.evaluate(() => {
     const probe = (window as typeof window & {

@@ -11,7 +11,7 @@ import type {
   SessionDetail,
 } from "../../lib/api/sessions";
 import { ApiError, apiErrorMessage } from "../../lib/api/client";
-import { fetchCurrentDawn, fetchSessionDetail, searchAtlas } from "../../lib/api/sessions";
+import { fetchCurrentDawn, fetchSessionDetail, includeDawnLocations, searchAtlas } from "../../lib/api/sessions";
 import { useGlobalPlayerSuppression } from "../audio/PlayerProvider";
 import { SessionPlayer } from "../audio/SessionPlayer";
 import {
@@ -28,7 +28,9 @@ type Props = {
   initialView: AtlasView;
   points: Array<AtlasPoint | AtlasCluster>;
   dawn: DawnCurrentResponse;
+  initialSelectedSlug?: string | null;
   sidePanelSession: SessionDetail | null;
+  showInternalNavigation?: boolean;
 };
 
 type CesiumGlobeProps = {
@@ -370,12 +372,27 @@ function StaticGlobeFallback({
   );
 }
 
-export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: Props) {
+export function AtlasExplorer({
+  initialView,
+  points,
+  dawn,
+  initialSelectedSlug: preferredInitialSlug = null,
+  sidePanelSession,
+  showInternalNavigation = true,
+}: Props) {
   const locationCardCount = useLocationCardCount();
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [currentDawn, setCurrentDawn] = useState(dawn);
   const [view] = useState<AtlasView>(initialView);
-  const [selectedMode, setSelectedMode] = useState<ListeningMode>(initialView === "list" ? "Night" : "Dawn");
+  const [selectedMode, setSelectedMode] = useState<ListeningMode>(
+    preferredInitialSlug
+      && [...dawn.active_locations, ...dawn.next_locations]
+        .some((item) => item.location.slug === preferredInitialSlug)
+      ? "Dawn"
+      : initialView === "list"
+        ? "Night"
+        : "Dawn",
+  );
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -390,12 +407,19 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     () => new Set(currentDawn.active_locations.map((item) => item.location.slug)),
     [currentDawn.active_locations],
   );
-  const locations = useMemo(
-    () => filterLocationsByMode(allLocations, selectedMode, currentDawn.generated_at, activeDawnSlugs),
-    [activeDawnSlugs, allLocations, currentDawn.generated_at, selectedMode],
+  const dawnModeSlugs = useMemo(
+    () => new Set(
+      [...currentDawn.active_locations, ...currentDawn.next_locations].map((item) => item.location.slug),
+    ),
+    [currentDawn.active_locations, currentDawn.next_locations],
   );
-  const initialSelectedSlug =
-    sidePanelSession && locations.some((location) => location.slug === sidePanelSession.location.slug)
+  const locations = useMemo(
+    () => filterLocationsByMode(allLocations, selectedMode, currentDawn.generated_at, dawnModeSlugs),
+    [allLocations, currentDawn.generated_at, dawnModeSlugs, selectedMode],
+  );
+  const initialSelectedSlug = preferredInitialSlug && locations.some((location) => location.slug === preferredInitialSlug)
+    ? preferredInitialSlug
+    : sidePanelSession && locations.some((location) => location.slug === sidePanelSession.location.slug)
       ? sidePanelSession.location.slug
       : locations[0]?.slug ?? null;
   const [selectedSlug, setSelectedSlug] = useState(initialSelectedSlug);
@@ -482,6 +506,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
       try {
         const nextDawn = await fetchCurrentDawn(Math.max(250, allLocations.length));
         if (isCurrent) {
+          setAtlasPoints((currentPoints) => includeDawnLocations(currentPoints, nextDawn));
           setCurrentDawn(nextDawn);
           setDawnRefreshError(null);
         }
@@ -586,7 +611,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
     if (!resultLocation) {
       return;
     }
-    const resultMode = listeningModeForLocation(resultLocation, currentDawn.generated_at, activeDawnSlugs);
+    const resultMode = listeningModeForLocation(resultLocation, currentDawn.generated_at, dawnModeSlugs);
     setSelectedMode(resultMode);
     if (!existingLocation) {
       const atlasPoint = result.atlas_point;
@@ -600,7 +625,7 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
         allLocations,
         resultMode,
         currentDawn.generated_at,
-        activeDawnSlugs,
+        dawnModeSlugs,
       );
       const resultIndex = modeLocations.findIndex((location) => location.slug === result.slug);
       setCarouselStart(resultIndex === -1 ? 0 : resultIndex);
@@ -645,12 +670,12 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
             ? candidate
             : best,
         );
-        const mode = listeningModeForLocation(nearest, currentDawn.generated_at, activeDawnSlugs);
+        const mode = listeningModeForLocation(nearest, currentDawn.generated_at, dawnModeSlugs);
         const modeLocations = filterLocationsByMode(
           allLocations,
           mode,
           currentDawn.generated_at,
-          activeDawnSlugs,
+          dawnModeSlugs,
         );
         setSelectedMode(mode);
         setCarouselStart(Math.max(0, modeLocations.findIndex((location) => location.slug === nearest.slug)));
@@ -720,10 +745,12 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
               </ol>
             </div>
           )}
-          <Link className="atlas-brand" href="/" aria-label="ORNA Atlas">
-            <span>ORNA</span>
-            <span>Atlas</span>
-          </Link>
+          {showInternalNavigation ? (
+            <Link className="atlas-brand" href="/" aria-label="ORNA Atlas">
+              <span>ORNA</span>
+              <span>Atlas</span>
+            </Link>
+          ) : null}
           {selectedDawn?.state === "active" ? <DawnNowBadge className="atlas-live-left" /> : null}
           <div className="dawn-copy">
             <span>{listeningModeKicker[selectedMode]}</span>
@@ -739,19 +766,21 @@ export function AtlasExplorer({ initialView, points, dawn, sidePanelSession }: P
                 aria-expanded={isSidePanelOpen}
                 onClick={openSelectedSession}
               >
-                Enter
+                Listen
                 <span aria-hidden="true">›</span>
               </button>
             ) : (
               <button className="listen-pill" type="button" disabled>
-                Enter
+                Listen
                 <span aria-hidden="true">›</span>
               </button>
             )}
           </div>
-          <Link className="about-link" href="/about">
-            About
-          </Link>
+          {showInternalNavigation ? (
+            <Link className="about-link" href="/about">
+              About
+            </Link>
+          ) : null}
           <div className="globe-tools" aria-label="Globe tools">
             <button
               type="button"
