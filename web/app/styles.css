@@ -18,6 +18,43 @@ button {
 }
 button:hover { background: rgba(155, 216, 189, 0.22); }
 .shell { min-height: 100vh; padding: 64px; background: radial-gradient(circle at top right, #21463d, #07110f 48%); }
+.site-nav {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+.site-nav a {
+  align-items: center;
+  display: inline-flex;
+  min-height: 44px;
+  position: relative;
+  text-decoration: none;
+}
+.site-nav a:not(.site-wordmark)::after {
+  background: currentColor;
+  bottom: 7px;
+  content: "";
+  height: 1px;
+  left: 0;
+  position: absolute;
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform .2s ease;
+  width: 100%;
+}
+.site-nav a:not(.site-wordmark):hover::after { transform: scaleX(1); transform-origin: left; }
+.site-wordmark {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.home-nav {
+  border-bottom: 1px solid rgba(237,247,242,.18);
+  margin-bottom: clamp(72px, 10vw, 144px);
+}
+.home-nav div { display: flex; gap: 28px; }
+.home-nav div a { color: #c8d8d1; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
 .hero { max-width: 780px; }
 .eyebrow { color: #9bd8bd; letter-spacing: 0.2em; text-transform: uppercase; }
 h1 { font-size: clamp(3rem, 7vw, 6rem); line-height: 0.95; margin: 0 0 24px; }
@@ -33,7 +70,21 @@ p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
 .hero-sample div span { color: #9db2a9; font-size: .82rem; }
 .hero-sample p { color: #f3b6ac; font-size: .85rem; grid-column: 1 / -1; margin: 0; }
 
-.home-shell { overflow: hidden; }
+.home-shell {
+  background:
+    radial-gradient(circle at 88% 4%, rgba(57,107,91,.72), transparent 23%),
+    radial-gradient(ellipse at 8% 46%, rgba(49,83,73,.34), transparent 24%),
+    radial-gradient(ellipse at 92% 78%, rgba(91,117,96,.2), transparent 22%),
+    #07110f;
+  overflow: hidden;
+}
+.home-shell h1,
+.home-shell h2 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  letter-spacing: -.035em;
+}
+.home-shell h1 { font-size: clamp(3.2rem, 7.4vw, 6.4rem); }
 .conversion-section, .editorial-section { margin-top: clamp(100px, 12vw, 180px); }
 .conversion-heading { max-width: 760px; }
 .conversion-heading > p:last-child { max-width: 680px; }
@@ -84,11 +135,41 @@ p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
 }
 @media (max-width: 700px) {
   .shell { padding: 36px 22px; }
-  .intent-grid, .story-grid, .proof-grid { grid-template-columns: 1fr; }
-  .intent-grid > a { min-height: 240px; }
-  .proof-grid div, .proof-grid div:first-child { border-left: 0; border-top: 1px solid rgba(255,255,255,.16); padding: 28px 0; }
+  .home-shell { padding: 36px 22px; }
+  .story-grid, .proof-grid { grid-template-columns: 1fr; }
+  .proof-grid div, .proof-grid div:first-child { border-left: 0; border-top: 1px solid rgba(255,255,255,.16); padding: 22px 0; }
   .pricing-section { border-radius: 22px; padding: 28px 20px; }
   .price-card { padding: 24px 20px; }
+  .home-shell .conversion-section,
+  .home-shell .editorial-section { margin-top: 68px; }
+  .home-shell .panel { margin-top: 36px; }
+  .home-shell .intent-grid,
+  .home-shell .featured-grid {
+    display: flex;
+    margin-right: -22px;
+    overflow-x: auto;
+    padding-bottom: 12px;
+    padding-right: 22px;
+    scroll-padding-left: 0;
+    scroll-snap-type: x mandatory;
+  }
+  .home-shell .intent-grid > a,
+  .home-shell .featured-grid article {
+    box-sizing: border-box;
+    flex: 0 0 min(76vw, 290px);
+    scroll-snap-align: start;
+  }
+  .home-shell .intent-grid > a { min-height: 220px; }
+  .home-shell .story-grid { gap: 0; }
+  .home-shell .story-grid article {
+    background: transparent;
+    border: 0;
+    border-top: 1px solid rgba(255,255,255,.16);
+    border-radius: 0;
+    min-height: 0;
+    padding: 24px 0;
+  }
+  .home-shell .story-grid h3 { margin-top: 20px; }
 }
 
 .about-page { background: #e9e5d8; color: #17231d; min-height: 100vh; padding: 0 6vw 7vw; }
@@ -111,7 +192,7 @@ p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
 .about-principle-grid p { font-size: .98rem; line-height: 1.5; }
 .about-closing { border-top: 1px solid rgba(23,35,29,.22); padding: 100px 0 40px; }
 .about-closing h2 { margin: 70px 0; max-width: 1000px; }
-.about-enter { border-bottom: 1px solid #17231d; display: inline-flex; font-size: .8rem; gap: 50px; letter-spacing: .14em; padding-bottom: 10px; text-decoration: none; text-transform: uppercase; }
+.about-enter { align-items: center; border-bottom: 1px solid #17231d; display: inline-flex; font-size: .8rem; gap: 50px; letter-spacing: .14em; min-height: 44px; padding-bottom: 10px; text-decoration: none; text-transform: uppercase; }
 @media (max-width: 760px) {
   .about-page { padding-inline: 24px; }
   .about-manifesto, .about-principles { grid-template-columns: 1fr; padding: 55px 0 80px; }
@@ -1111,11 +1192,15 @@ a:focus-visible {
   filter: saturate(0.92) contrast(1.08) brightness(0.72);
 }
 .atlas-brand {
+  color: #f4efe2;
   display: grid;
   font-size: 1.18rem;
   left: 32px;
   line-height: 1;
+  min-height: 44px;
+  min-width: 44px;
   position: absolute;
+  text-decoration: none;
   top: 34px;
   z-index: 4;
 }
@@ -1737,6 +1822,7 @@ a:focus-visible {
   font-size: 0.76rem;
 }
 @media (prefers-reduced-motion: reduce) {
+  .site-nav a::after { transition: none; }
   .skip-link { transition: none; }
   .waveform span { transition: none; }
 }
@@ -1800,14 +1886,32 @@ a:focus-visible {
     grid-template-rows: auto;
   }
   .atlas-discovery-panel {
+    min-width: 0;
     padding: 28px 18px 22px;
   }
   .time-tabs {
     gap: 10px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-width: 0;
     width: 100%;
   }
+  .time-tabs button {
+    min-height: 44px;
+  }
   .location-carousel {
-    grid-template-columns: 28px repeat(2, minmax(0, 1fr)) 28px;
+    grid-template-columns: 44px repeat(2, minmax(0, 1fr)) 44px;
+    min-width: 0;
+  }
+  .globe-tools button,
+  .carousel-arrow {
+    height: 44px;
+    width: 44px;
+  }
+  .about-link {
+    align-items: center;
+    display: inline-flex;
+    min-height: 44px;
+    min-width: 44px;
   }
   .scenic-panel {
     min-height: 430px;
