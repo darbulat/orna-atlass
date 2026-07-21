@@ -1,6 +1,6 @@
 import { AtlasExplorer } from "../../components/atlas/AtlasExplorer";
 import { apiErrorMessage } from "../../lib/api/client";
-import { fetchAtlasPoints, fetchCurrentDawn } from "../../lib/api/sessions";
+import { fetchAtlasPoints, fetchCurrentDawn, includeDawnLocations } from "../../lib/api/sessions";
 
 export default async function Page({ searchParams }: { searchParams?: Promise<{ view?: string }> }) {
   const resolvedSearchParams = await searchParams;
@@ -16,7 +16,17 @@ export default async function Page({ searchParams }: { searchParams?: Promise<{ 
 
     return (
       <main id="main-content" className="shell atlas-shell">
-        <AtlasExplorer initialView={view} points={atlas.points} dawn={dawn} sidePanelSession={null} />
+        <AtlasExplorer
+          initialView={view}
+          points={includeDawnLocations(atlas.points, dawn)}
+          dawn={dawn}
+          initialSelectedSlug={
+            dawn.active_locations[0]?.location.slug
+              ?? dawn.next_locations[0]?.location.slug
+              ?? null
+          }
+          sidePanelSession={null}
+        />
       </main>
     );
   } catch (error) {

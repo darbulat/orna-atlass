@@ -47,6 +47,23 @@ const atlasPoint = {
   },
 };
 
+const ridgePoint = {
+  ...atlasPoint,
+  id: "10000000-0000-4000-8000-000000000009",
+  slug: "ridge-dawn",
+  name: "Ridge Dawn",
+  latitude: 58.42,
+  longitude: 23.71,
+};
+
+const morningPoint = {
+  ...atlasPoint,
+  id: "10000000-0000-4000-8000-000000000010",
+  slug: "morning-marsh",
+  name: "Morning Marsh",
+  timezone: "Asia/Dhaka",
+};
+
 function session(id, slug, title) {
   return {
     id,
@@ -163,21 +180,30 @@ const server = createServer((request, response) => {
   }
   if (request.method === "POST" && path === "/__e2e/atlas-response") {
     const mode = url.searchParams.get("mode");
-    if (!["valid-optional-point", "valid-boundary-fields", "dawn-only-location", "invalid-date", "malformed-atlas", "malformed-point", "malformed-dawn", "malformed-dawn-refresh", "unavailable"].includes(mode)) {
+    if (!["valid-optional-point", "valid-boundary-fields", "dawn-only-location", "multiple-dawn", "next-only-dawn", "next-only-dawn-list", "dawn-refresh-location", "invalid-date", "malformed-atlas", "malformed-point", "malformed-dawn", "malformed-dawn-refresh", "unavailable"].includes(mode)) {
       send(response, 400, { detail: "Unsupported atlas response mode" });
       return;
     }
-    nextAtlasResponse = mode === "malformed-dawn" || mode === "malformed-dawn-refresh" ? "ok" : mode;
-    nextDawnResponse = mode === "malformed-dawn" || mode === "malformed-dawn-refresh" ? "malformed" : "ok";
+    nextAtlasResponse = mode === "malformed-dawn" || mode === "malformed-dawn-refresh" || mode === "dawn-refresh-location" || mode === "next-only-dawn-list" ? "ok" : mode;
+    nextDawnResponse = mode === "malformed-dawn" || mode === "malformed-dawn-refresh"
+      ? "malformed"
+      : mode === "multiple-dawn"
+        ? "multiple"
+        : mode === "next-only-dawn" || mode === "next-only-dawn-list"
+          ? "next-only"
+          : mode === "dawn-refresh-location"
+            ? "before-refresh"
+            : "ok";
     send(response, 204, null);
     return;
   }
   if (request.method === "POST" && path === "/__e2e/search-response") {
-    if (url.searchParams.get("mode") !== "hidden-public") {
+    const mode = url.searchParams.get("mode");
+    if (!["hidden-public", "next-only-dawn"].includes(mode)) {
       send(response, 400, { detail: "Unsupported search response mode" });
       return;
     }
-    nextSearchResponse = "hidden-public";
+    nextSearchResponse = mode;
     send(response, 204, null);
     return;
   }
@@ -293,6 +319,26 @@ const server = createServer((request, response) => {
       });
       return;
     }
+    if (responseMode === "next-only-dawn") {
+      send(response, 200, {
+        bbox: null,
+        zoom: 5,
+        mode: "points",
+        points: [morningPoint, ridgePoint],
+        cache_key: "e2e:next-only-dawn",
+      });
+      return;
+    }
+    if (responseMode === "multiple-dawn") {
+      send(response, 200, {
+        bbox: null,
+        zoom: 5,
+        mode: "points",
+        points: [ridgePoint, atlasPoint],
+        cache_key: "e2e:multiple-dawn",
+      });
+      return;
+    }
     if (responseMode === "dawn-only-location") {
       send(response, 200, {
         bbox: null,
@@ -313,11 +359,23 @@ const server = createServer((request, response) => {
       send(response, 200, {});
       return;
     }
+    const refreshSeconds = responseMode === "before-refresh" ? 1 : 60;
+    const activePoints = responseMode === "multiple"
+      ? [atlasPoint, ridgePoint]
+      : responseMode === "after-refresh"
+        ? [ridgePoint]
+        : responseMode === "next-only"
+          ? []
+          : [atlasPoint];
+    const nextPoints = responseMode === "next-only" ? [ridgePoint] : [];
+    if (responseMode === "before-refresh") {
+      nextDawnResponse = "after-refresh";
+    }
     send(response, 200, {
       generated_at: now,
-      window: { before_minutes: 45, after_minutes: 30, refresh_seconds: 60 },
-      active_locations: [{
-        location: atlasPoint,
+      window: { before_minutes: 45, after_minutes: 30, refresh_seconds: refreshSeconds },
+      active_locations: activePoints.map((point) => ({
+        location: point,
         local_date: "2026-07-14",
         local_time: "23:00",
         civil_dawn_at: null,
@@ -329,15 +387,43 @@ const server = createServer((request, response) => {
         minutes_until_sunrise: 30,
         state: "active",
         solar_phase: "civil_dawn",
-      }],
-      next_locations: [],
-      cache_key: "e2e:dawn",
+      })),
+      next_locations: nextPoints.map((point) => ({
+        location: point,
+        local_date: "2026-07-14",
+        local_time: "23:00",
+        civil_dawn_at: null,
+        sunrise_at: null,
+        sunset_at: null,
+        civil_dusk_at: null,
+        window_starts_at: null,
+        window_ends_at: null,
+        minutes_until_sunrise: 360,
+        state: "upcoming",
+        solar_phase: "night",
+      })),
+      cache_key: `e2e:dawn:${responseMode}`,
     });
     return;
   }
   if (request.method === "GET" && path === "/api/v1/search") {
     const responseMode = nextSearchResponse;
     nextSearchResponse = "ok";
+    if (responseMode === "next-only-dawn") {
+      send(response, 200, [{
+        type: "location",
+        id: ridgePoint.id,
+        slug: ridgePoint.slug,
+        title: ridgePoint.name,
+        subtitle: ridgePoint.region,
+        habitat: ridgePoint.habitat,
+        latitude: ridgePoint.latitude,
+        longitude: ridgePoint.longitude,
+        session_slug: null,
+        atlas_point: ridgePoint,
+      }]);
+      return;
+    }
     if (responseMode === "hidden-public") {
       const hiddenPoint = {
         ...atlasPoint,

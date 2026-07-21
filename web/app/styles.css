@@ -53,6 +53,7 @@ button:hover { background: rgba(155, 216, 189, 0.22); }
   border-bottom: 1px solid rgba(237,247,242,.18);
   left: 64px;
   position: absolute;
+  pointer-events: none;
   right: 64px;
   top: 64px;
   z-index: 10;
@@ -60,6 +61,8 @@ button:hover { background: rgba(155, 216, 189, 0.22); }
 .home-nav div { display: flex; flex-wrap: wrap; gap: 28px; justify-content: flex-end; }
 .home-nav div a { justify-content: center; min-width: 44px; }
 .home-atlas-entry .atlas-live-left { top: 104px; }
+.home-atlas-entry .atlas-side-panel { position: relative; z-index: 11; }
+.home-nav a { pointer-events: auto; }
 .home-nav div a { color: #c8d8d1; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
 .hero { max-width: 780px; }
 .eyebrow { color: #9bd8bd; letter-spacing: 0.2em; text-transform: uppercase; }

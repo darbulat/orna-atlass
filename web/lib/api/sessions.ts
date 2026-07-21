@@ -22,6 +22,21 @@ export type DawnCurrentResponse = components["schemas"]["DawnCurrentResponse"];
 export type DawnFollowResponse = components["schemas"]["DawnFollowResponse"];
 export type SearchResult = components["schemas"]["SearchResult"];
 
+export function includeDawnLocations(
+  points: Array<AtlasPoint | AtlasCluster>,
+  dawn: DawnCurrentResponse,
+): Array<AtlasPoint | AtlasCluster> {
+  const merged = [...points];
+  const knownSlugs = new Set(points.filter((item): item is AtlasPoint => item.type === "point").map((item) => item.slug));
+  for (const item of [...dawn.active_locations, ...dawn.next_locations]) {
+    if (!knownSlugs.has(item.location.slug)) {
+      merged.push(item.location);
+      knownSlugs.add(item.location.slug);
+    }
+  }
+  return merged;
+}
+
 const browserApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
 const serverApiBaseUrl = process.env.API_SERVER_URL
   ?? process.env.NEXT_PUBLIC_API_URL
