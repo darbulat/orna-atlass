@@ -25,6 +25,9 @@ test("auth screen presents email and all configured social entry points", async 
     "href",
     /\/api\/v1\/auth\/oauth\/facebook\/start\?return_to=%2Fmembership/,
   );
+  const legalNotice = page.locator(".auth-legal");
+  await expect(legalNotice.getByRole("link", { name: "Terms of Use" })).toHaveAttribute("href", "/terms");
+  await expect(legalNotice.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
 });
 
 
