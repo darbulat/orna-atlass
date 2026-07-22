@@ -63,6 +63,14 @@ def test_session_detail_schema_contains_location_integrity_and_safe_media() -> N
         weather="Light rain",
         access_level="public",
         metadata_={
+            "context": {
+                "photo_url": "https://cdn.example.test/wetland.jpg",
+                "altitude_meters": 42,
+                "temperature_celsius": 12.5,
+                "wind_speed_kph": 8.4,
+                "humidity_percent": 78,
+                "moon_phase": "Waxing crescent",
+            },
             "recording_integrity": {
                 "human_noise_level": "none_detected",
                 "post_processing": "No loops, no studio layers",
@@ -83,6 +91,12 @@ def test_session_detail_schema_contains_location_integrity_and_safe_media() -> N
     detail = SessionDetailRead.model_validate(recording).model_dump(mode="json")
 
     assert detail["location"]["slug"] == "misty-wetland"
+    assert detail["photo_url"] == "https://cdn.example.test/wetland.jpg"
+    assert detail["altitude_meters"] == 42
+    assert detail["temperature_celsius"] == 12.5
+    assert detail["wind_speed_kph"] == 8.4
+    assert detail["humidity_percent"] == 78
+    assert detail["moon_phase"] == "Waxing crescent"
     assert detail["recording_integrity"]["human_noise_level"] == "none_detected"
     assert detail["waveform"]["peaks"] == [0.1, 0.5]
     assert detail["annotations"][0]["label"] == "First bird call"

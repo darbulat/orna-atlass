@@ -32,6 +32,45 @@ def test_atlas_bbox_validation_rejects_invalid_ranges() -> None:
     assert service.parse_bbox("170,-10,-170,10").east == -170
 
 
+def test_atlas_point_teases_published_members_only_session_without_media_or_exact_coordinates() -> None:
+    now = datetime.now(UTC)
+    location = SimpleNamespace(
+        id=uuid4(),
+        slug="member-marsh",
+        name="Member Marsh",
+        description=None,
+        country_code="EE",
+        region="Laanemaa",
+        habitat="wetland",
+        latitude=58.91,
+        longitude=23.72,
+        timezone="Europe/Tallinn",
+        sensitivity_level="protected",
+        coordinate_visibility="approximate_public",
+        sessions=[
+            SimpleNamespace(
+                id=uuid4(),
+                slug="member-marsh-long-form",
+                title="Member Marsh Long Form",
+                recorded_at=now,
+                duration_seconds=7200,
+                access_level="members_only",
+                publication_status="published",
+            )
+        ],
+    )
+
+    payload = service.point_from_location(location, include_locked=True).model_dump(mode="json")
+
+    assert payload["session_count"] == 1
+    assert payload["latest_session"]["access_level"] == "members_only"
+    assert set(payload["latest_session"]) == {
+        "id", "slug", "title", "recorded_at", "duration_seconds", "access_level"
+    }
+    assert "exact_latitude" not in payload
+    assert "media_assets" not in payload["latest_session"]
+
+
 def test_protected_location_uses_public_coordinates() -> None:
     now = datetime.now(UTC)
     location = SimpleNamespace(

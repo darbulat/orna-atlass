@@ -11,6 +11,7 @@ class AtlasSessionSummary(BaseModel):
     title: str
     recorded_at: datetime
     duration_seconds: int | None = None
+    access_level: Literal["public", "members_only"]
 
 
 class AtlasPoint(BaseModel):

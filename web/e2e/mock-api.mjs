@@ -44,6 +44,7 @@ const atlasPoint = {
     title: "Second Session",
     recorded_at: now,
     duration_seconds: 3600,
+    access_level: "public",
   },
 };
 
@@ -64,6 +65,20 @@ const morningPoint = {
   timezone: "Asia/Dhaka",
 };
 
+const lockedPoint = {
+  ...atlasPoint,
+  id: "10000000-0000-4000-8000-000000000011",
+  slug: "members-cove",
+  name: "Members Cove",
+  latest_session: {
+    ...atlasPoint.latest_session,
+    id: "20000000-0000-4000-8000-000000000011",
+    slug: "members-cove-long-form",
+    title: "Members Cove Long Form",
+    access_level: "members_only",
+  },
+};
+
 function session(id, slug, title) {
   return {
     id,
@@ -75,6 +90,12 @@ function session(id, slug, title) {
     duration_seconds: 3600,
     recorder: "ORNA test recorder",
     weather: "Clear",
+    photo_url: null,
+    altitude_meters: 42,
+    temperature_celsius: 12.5,
+    wind_speed_kph: 8.2,
+    humidity_percent: 73,
+    moon_phase: "Waxing crescent",
     access_level: "public",
     publication_status: "published",
     processing_status: "ready",
@@ -180,12 +201,14 @@ const server = createServer((request, response) => {
   }
   if (request.method === "POST" && path === "/__e2e/atlas-response") {
     const mode = url.searchParams.get("mode");
-    if (!["valid-optional-point", "valid-boundary-fields", "dawn-only-location", "multiple-dawn", "next-only-dawn", "next-only-dawn-list", "dawn-refresh-location", "invalid-date", "malformed-atlas", "malformed-point", "malformed-dawn", "malformed-dawn-refresh", "unavailable"].includes(mode)) {
+    if (!["valid-optional-point", "valid-boundary-fields", "locked-point", "session-navigation", "carousel-boundaries", "dawn-only-location", "multiple-dawn", "next-only-dawn", "next-only-dawn-list", "dawn-refresh-location", "invalid-date", "malformed-atlas", "malformed-point", "malformed-dawn", "malformed-dawn-refresh", "unavailable"].includes(mode)) {
       send(response, 400, { detail: "Unsupported atlas response mode" });
       return;
     }
     nextAtlasResponse = mode === "malformed-dawn" || mode === "malformed-dawn-refresh" || mode === "dawn-refresh-location" || mode === "next-only-dawn-list" ? "ok" : mode;
-    nextDawnResponse = mode === "malformed-dawn" || mode === "malformed-dawn-refresh"
+    nextDawnResponse = mode === "carousel-boundaries"
+      ? "empty"
+      : mode === "malformed-dawn" || mode === "malformed-dawn-refresh"
       ? "malformed"
       : mode === "multiple-dawn"
         ? "multiple"
@@ -306,6 +329,58 @@ const server = createServer((request, response) => {
       });
       return;
     }
+    if (responseMode === "locked-point") {
+      send(response, 200, {
+        bbox: null,
+        zoom: 5,
+        mode: "points",
+        points: [lockedPoint, atlasPoint],
+        cache_key: "e2e:locked-point",
+      });
+      return;
+    }
+    if (responseMode === "session-navigation" || responseMode === "carousel-boundaries") {
+      const firstPoint = {
+        ...atlasPoint,
+        id: "10000000-0000-4000-8000-000000000012",
+        slug: "first-wetland",
+        name: "First Wetland",
+        latest_session: {
+          ...atlasPoint.latest_session,
+          id: firstSessionId,
+          slug: "first-session",
+          title: "First Session",
+        },
+      };
+      const secondPoint = {
+        ...ridgePoint,
+        timezone: atlasPoint.timezone,
+        latest_session: {
+          ...atlasPoint.latest_session,
+          id: secondSessionId,
+          slug: "second-session",
+          title: "Second Session",
+        },
+      };
+      const thirdPoint = {
+        ...secondPoint,
+        id: "10000000-0000-4000-8000-000000000014",
+        slug: "third-reedbed",
+        name: "Third Reedbed",
+        latitude: 57.42,
+        longitude: 22.71,
+      };
+      send(response, 200, {
+        bbox: null,
+        zoom: 5,
+        mode: "points",
+        points: responseMode === "carousel-boundaries"
+          ? [firstPoint, secondPoint, thirdPoint]
+          : [firstPoint, secondPoint],
+        cache_key: "e2e:session-navigation",
+      });
+      return;
+    }
     if (responseMode === "invalid-date") {
       send(response, 200, {
         bbox: null,
@@ -360,7 +435,9 @@ const server = createServer((request, response) => {
       return;
     }
     const refreshSeconds = responseMode === "before-refresh" ? 1 : 60;
-    const activePoints = responseMode === "multiple"
+    const activePoints = responseMode === "empty"
+      ? []
+      : responseMode === "multiple"
       ? [atlasPoint, ridgePoint]
       : responseMode === "after-refresh"
         ? [ridgePoint]
@@ -478,6 +555,10 @@ const server = createServer((request, response) => {
   }
   if (request.method === "GET" && path === "/api/v1/memberships/me") {
     send(response, 401, { detail: "Not authenticated" });
+    return;
+  }
+  if (request.method === "POST" && path === "/api/v1/auth/magic-link/request") {
+    send(response, 202, { accepted: true });
     return;
   }
   if (request.method === "POST" && path === "/api/v1/auth/login") {

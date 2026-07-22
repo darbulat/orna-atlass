@@ -1,4 +1,5 @@
 import { SessionPlayer } from "../../../components/audio/SessionPlayer";
+import { SiteHeader } from "../../../components/site-header";
 import { cookies } from "next/headers";
 import { AnnotationTimeline } from "../../../components/sessions/AnnotationTimeline";
 import { BirdPartsTimeline } from "../../../components/sessions/BirdPartsTimeline";
@@ -41,6 +42,7 @@ function SessionLoadState({ slug, error }: { slug: string; error: unknown }) {
 
   return (
     <main className="shell session-shell" id="main-content">
+      <SiteHeader />
       <section className="panel unavailable-panel" role={status === 404 ? "status" : "alert"}>
         <p className="eyebrow">Session</p>
         <h1>{heading}</h1>
@@ -54,6 +56,7 @@ function SessionLoadState({ slug, error }: { slug: string; error: unknown }) {
 function SessionDetailView({ session }: { session: SessionDetail }) {
   return (
     <main className="shell session-shell" id="main-content">
+      <SiteHeader />
       <section className="session-hero">
         <p className="eyebrow">ORNA Session</p>
         <h1>{session.title}</h1>

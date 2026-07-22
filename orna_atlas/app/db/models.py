@@ -8,6 +8,7 @@ from orna_atlas.app.modules.admin.models import AuditEvent
 from orna_atlas.app.modules.auth.models import RefreshToken
 from orna_atlas.app.modules.collections.models import Collection, CollectionLocation, CollectionSession
 from orna_atlas.app.modules.locations.models import Location
+from orna_atlas.app.modules.library.models import ListeningHistory, UserFavorite
 from orna_atlas.app.modules.media.models import (
     HlsProcessingJob,
     MediaAsset,
@@ -26,6 +27,7 @@ __all__ = [
     "CollectionSession",
     "HlsProcessingJob",
     "Location",
+    "ListeningHistory",
     "MediaAsset",
     "Membership",
     "ProcessingJob",
@@ -33,4 +35,5 @@ __all__ = [
     "RecordingSession",
     "RefreshToken",
     "User",
+    "UserFavorite",
 ]

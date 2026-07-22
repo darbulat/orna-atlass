@@ -55,6 +55,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request_id = _request_id(request.headers.get(REQUEST_ID_HEADER))
         context_token = request_id_context.set(request_id)
         started = time.perf_counter()
+        request.state.received_at = datetime.now(UTC)
         status_code = 500
         response: Response | None = None
         try:

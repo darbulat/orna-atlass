@@ -185,7 +185,10 @@ test("session details keep technical assets collapsed and controls use descripti
   await expect(page.locator("summary", { hasText: "Technical details" })).toBeVisible();
   await expect(page.getByText("source_audio", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Back to atlas" })).toHaveText("Back to atlas");
-  await expect(page.getByRole("button", { name: "Timeline help" })).toHaveCount(0);
+  const timelineHelp = page.getByRole("button", { name: "Timeline help" });
+  await expect(timelineHelp).toBeVisible();
+  await timelineHelp.click();
+  await expect(page.getByText(/Each line marks a model-assisted candidate interval/)).toBeVisible();
 });
 
 test("mobile seek controls flank the player core without overlapping it", async ({ page }) => {
@@ -259,7 +262,6 @@ test("switching sessions aborts a stale grant and ignores its late response", as
   await page.getByRole("link", { name: "Back to atlas" }).click();
   await page.getByRole("button", { name: "Listen", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Pine Marsh" })).toBeVisible();
-  await page.getByRole("button", { name: "Play session" }).click();
 
   await expect(page.getByRole("button", { name: "Pause playback" })).toBeVisible();
   releaseFirstResponse?.();
@@ -315,6 +317,8 @@ test("playback emits bounded engagement milestones once per session", async ({ p
   await expect.poll(() => page.evaluate(() => (
     window as typeof window & { __analytics?: Array<{ name: string }> }
   ).__analytics?.map((event) => event.name) ?? [])).toEqual([
+    "session_preview_start",
+    "player_play",
     "listening_30_seconds",
     "listening_5_minutes",
   ]);
@@ -345,9 +349,13 @@ test("short keyboard seeks do not count toward listening milestones", async ({ p
     });
   }
 
-  expect(await page.evaluate(() => (
-    window as typeof window & { __analytics?: unknown[] }
-  ).__analytics ?? [])).toEqual([]);
+  const analytics = await page.evaluate<Array<{ name: string; placement: string }>>(() => (
+    window as typeof window & { __analytics?: Array<{ name: string; placement: string }> }
+  ).__analytics ?? []);
+  expect(analytics).toContainEqual({ name: "session_preview_start", placement: "session_overlay" });
+  expect(analytics).toContainEqual({ name: "player_play", placement: "session_overlay" });
+  expect(analytics.filter((event) => event.name === "player_seek")).toHaveLength(6);
+  expect(analytics.some((event) => String(event.name).startsWith("listening_"))).toBe(false);
 });
 
 test("playback returns from stalled to playing when media resumes", async ({ page }) => {

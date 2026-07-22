@@ -83,9 +83,16 @@ export function groupBirdPartsBySpecies(parts: BirdVocalPart[]): BirdTimelineTra
 }
 
 export function buildWeatherItems(session: SessionDetail) {
+  const number = (value: number | null | undefined, suffix: string) => (
+    typeof value === "number" ? `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}${suffix}` : "Unavailable"
+  );
   return [
+    { label: "altitude", value: number(session.altitude_meters, " m") },
+    { label: "temperature", value: number(session.temperature_celsius, " °C") },
+    { label: "wind", value: number(session.wind_speed_kph, " km/h") },
+    { label: "humidity", value: number(session.humidity_percent, "%") },
+    { label: "moon phase", value: session.moon_phase?.trim() || "Unavailable" },
     { label: "conditions", value: session.weather?.trim() || "Unavailable" },
-    { label: "habitat", value: session.location.habitat?.trim() || "—" },
   ];
 }
 

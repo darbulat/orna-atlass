@@ -105,6 +105,7 @@ function isAtlasSessionSummary(value: unknown): value is AtlasSessionSummary {
     && typeof value.slug === "string"
     && typeof value.title === "string"
     && isDateTime(value.recorded_at)
+    && (value.access_level === "public" || value.access_level === "members_only")
     && (value.duration_seconds === undefined
       || value.duration_seconds === null
       || Number.isInteger(value.duration_seconds));

@@ -1,8 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useCallback, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
-import type { SessionDetail } from "../../lib/api/sessions";
+import Image from "next/image";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { isApiError } from "../../lib/api/client";
+import {
+  ACCOUNT_AUTH_CHANGED_EVENT,
+  isAccountAuthenticationUnavailable,
+} from "../../lib/api/account-auth-state";
+import { addFavorite, fetchFavorites, removeFavorite } from "../../lib/api/library";
+import { type SessionDetail } from "../../lib/api/sessions";
 import { usePlayer } from "./PlayerProvider";
 import {
   TIMELINE_TRACK_START,
@@ -24,15 +31,33 @@ import {
 type SessionPlayerProps = {
   session: SessionDetail;
   onClose?: () => void;
+  onPrevious?: () => void;
+  onNext?: () => void;
 };
 
-export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
+function trackPlayerEvent(name: string) {
+  window.dispatchEvent(new CustomEvent("orna:analytics", {
+    detail: { name, placement: "session_overlay" },
+  }));
+}
+
+export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionPlayerProps) {
   const { currentSession, playbackState, grant, currentTimeSeconds, durationSeconds, play, pause, seek, error } =
     usePlayer();
   const timelineRef = useRef<HTMLDivElement | null>(null);
-  const pendingTimelineSeekRef = useRef<number | null>(null);
-  const isPreparingTimelineSeekRef = useRef(false);
+  const pendingTimelineSeekRef = useRef<{ sessionId: string; seconds: number } | null>(null);
+  const preparingTimelineSessionIdRef = useRef<string | null>(null);
+  const timelineSeekGenerationRef = useRef(0);
   const [timelineDraftSeconds, setTimelineDraftSeconds] = useState<number | null>(null);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoritePending, setFavoritePending] = useState(true);
+  const [favoriteHint, setFavoriteHint] = useState<string | null>(null);
+  const [timelineHelpOpen, setTimelineHelpOpen] = useState(false);
+  const [accountAuthRevision, setAccountAuthRevision] = useState(0);
+  const displayedSessionIdRef = useRef(session.id);
+  useEffect(() => {
+    displayedSessionIdRef.current = session.id;
+  }, [session.id]);
   const isCurrent = currentSession?.id === session.id;
   const isPlaying = isCurrent && playbackState === "playing";
   const displayedState = isCurrent ? playbackState : "idle";
@@ -57,6 +82,61 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
       : [0.12, 0.22, 0.18, 0.36, 0.2, 0.48, 0.26, 0.16, 0.3, 0.2, 0.42, 0.24];
   const weatherItems = useMemo(() => buildWeatherItems(session), [session]);
 
+  useEffect(() => {
+    const handleAuthChange = () => setAccountAuthRevision((revision) => revision + 1);
+    window.addEventListener(ACCOUNT_AUTH_CHANGED_EVENT, handleAuthChange);
+    return () => window.removeEventListener(ACCOUNT_AUTH_CHANGED_EVENT, handleAuthChange);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setIsFavorite(false);
+    setFavoritePending(true);
+    setFavoriteHint(null);
+    if (isAccountAuthenticationUnavailable()) {
+      setFavoritePending(false);
+      return () => { active = false; };
+    }
+    void fetchFavorites().then((favorites) => {
+      if (active) setIsFavorite(favorites.some((favorite) => favorite.session.id === session.id));
+    }).catch((error: unknown) => {
+      if (active && !isApiError(error)) setFavoriteHint("Favorites are temporarily unavailable.");
+    }).finally(() => {
+      if (active) setFavoritePending(false);
+    });
+    return () => { active = false; };
+  }, [accountAuthRevision, session.id]);
+
+  const toggleFavorite = useCallback(async () => {
+    const targetSessionId = session.id;
+    const nextFavorite = !isFavorite;
+    if (isAccountAuthenticationUnavailable()) {
+      trackPlayerEvent("favorite_requires_login");
+      setFavoriteHint("Sign in or create a free account to save favorites.");
+      return;
+    }
+    setFavoritePending(true);
+    try {
+      if (nextFavorite) await addFavorite(targetSessionId);
+      else await removeFavorite(targetSessionId);
+      if (displayedSessionIdRef.current !== targetSessionId) return;
+      if (nextFavorite) trackPlayerEvent("favorite_add");
+      setIsFavorite(nextFavorite);
+      setFavoriteHint(nextFavorite ? "Saved to your account." : "Removed from your account.");
+    } catch (error) {
+      if (displayedSessionIdRef.current === targetSessionId) {
+        if (isApiError(error) && error.status === 401) {
+          trackPlayerEvent("favorite_requires_login");
+          setFavoriteHint("Sign in or create a free account to save favorites.");
+        } else {
+          setFavoriteHint("Favorites are temporarily unavailable.");
+        }
+      }
+    } finally {
+      if (displayedSessionIdRef.current === targetSessionId) setFavoritePending(false);
+    }
+  }, [isFavorite, session.id]);
+
   const secondsFromTimelineClientX = useCallback(
     (clientX: number) => {
       const timeline = timelineRef.current;
@@ -77,19 +157,27 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
       const nextSeconds = Math.min(Math.max(seconds, 0), playbackDurationSeconds);
       setTimelineDraftSeconds(nextSeconds);
 
-      if (!isCurrent || isPreparingTimelineSeekRef.current) {
-        pendingTimelineSeekRef.current = nextSeconds;
-        if (!isPreparingTimelineSeekRef.current) {
-          isPreparingTimelineSeekRef.current = true;
+      if (!isCurrent || preparingTimelineSessionIdRef.current != null) {
+        pendingTimelineSeekRef.current = { sessionId: session.id, seconds: nextSeconds };
+        if (preparingTimelineSessionIdRef.current !== session.id) {
+          const generation = timelineSeekGenerationRef.current + 1;
+          timelineSeekGenerationRef.current = generation;
+          preparingTimelineSessionIdRef.current = session.id;
+          const targetSessionId = session.id;
           void play(session)
             .then(() => {
-              const pendingSeconds = pendingTimelineSeekRef.current;
-              if (pendingSeconds != null) {
-                seek(pendingSeconds);
+              const pending = pendingTimelineSeekRef.current;
+              if (
+                timelineSeekGenerationRef.current === generation
+                && displayedSessionIdRef.current === targetSessionId
+                && pending?.sessionId === targetSessionId
+              ) {
+                seek(pending.seconds);
               }
             })
             .finally(() => {
-              isPreparingTimelineSeekRef.current = false;
+              if (timelineSeekGenerationRef.current !== generation) return;
+              preparingTimelineSessionIdRef.current = null;
               pendingTimelineSeekRef.current = null;
               setTimelineDraftSeconds(null);
             });
@@ -126,9 +214,10 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
-      if (isCurrent && !isPreparingTimelineSeekRef.current) {
+      if (isCurrent && preparingTimelineSessionIdRef.current == null) {
         setTimelineDraftSeconds(null);
       }
+      trackPlayerEvent("player_seek");
     },
     [isCurrent],
   );
@@ -159,8 +248,22 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
   return (
     <section className="session-listening-console" aria-label="Session player">
       <div className="session-scenic-listener">
+        {session.photo_url ? (
+          <Image
+            className="session-field-photo"
+            src={session.photo_url}
+            alt={`Field view at ${session.location.name}`}
+            width={1200}
+            height={675}
+            unoptimized
+          />
+        ) : (
+          <div className="session-field-photo-placeholder" role="img" aria-label="No field photo available">
+            No field photo available
+          </div>
+        )}
         {onClose ? (
-          <button type="button" className="session-panel-back" aria-label="Hide player" onClick={onClose}>
+          <button type="button" className="session-panel-back" aria-label="Hide player" onClick={() => { trackPlayerEvent("session_close"); onClose(); }}>
             ‹
           </button>
         ) : (
@@ -197,6 +300,22 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
         <div className="session-timeline-heading">
           <h2>Dawn Chorus</h2>
           <p>Timeline</p>
+          <div className="session-timeline-help">
+            <button
+              type="button"
+              aria-label="Timeline help"
+              aria-expanded={timelineHelpOpen}
+              aria-controls="timeline-help-copy"
+              aria-describedby={timelineHelpOpen ? "timeline-help-copy" : undefined}
+              onClick={() => setTimelineHelpOpen((open) => !open)}
+            >?</button>
+            {timelineHelpOpen ? (
+              <p id="timeline-help-copy" role="tooltip">
+                Each line marks a model-assisted candidate interval of detected bird activity.
+                Select a line to seek; detections may require editorial review.
+              </p>
+            ) : null}
+          </div>
         </div>
         <div className="session-timeline-ruler" aria-hidden="true">
           {timelineTicks.map((tick, index) => (
@@ -221,26 +340,39 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
         />
         {birdTracks.length > 0 ? (
           <ol className="session-bird-timeline">
-            {birdTracks.map((track) => (
-              <li key={track.key}>
-                <span className="session-species-dot" aria-hidden="true" />
-                <strong>{track.label}</strong>
-                {track.parts.map((part) => (
-                  <Fragment key={part.id}>
-                    <i
-                      style={{
-                        left: `${timelineLeft(part.starts_at_seconds, timelineDuration)}%`,
-                        width: `${timelineWidth(part, timelineDuration)}%`,
-                      }}
-                      title={`${part.species_common_name}: ${formatOffset(part.starts_at_seconds)}-${formatOffset(
-                        part.ends_at_seconds,
-                      )}`}
-                    />
-                    <em style={{ left: `${timelineLeft(part.ends_at_seconds, timelineDuration)}%` }} />
-                  </Fragment>
-                ))}
-              </li>
-            ))}
+            {birdTracks.map((track) => {
+              const isActiveTrack = isCurrent && track.parts.some((part) => (
+                playbackCurrentSeconds >= part.starts_at_seconds
+                && playbackCurrentSeconds <= part.ends_at_seconds
+              ));
+              return (
+                <li key={track.key} className={isActiveTrack ? "is-active" : undefined}>
+                  <span className="session-species-dot" aria-hidden="true" />
+                  <strong>{track.label}</strong>
+                  {track.parts.map((part) => (
+                    <Fragment key={part.id}>
+                      <button
+                        type="button"
+                        className="session-species-interval"
+                        style={{
+                          left: `${timelineLeft(part.starts_at_seconds, timelineDuration)}%`,
+                          width: `${timelineWidth(part, timelineDuration)}%`,
+                        }}
+                        aria-label={`Seek to ${part.species_common_name} at ${formatOffset(part.starts_at_seconds)}`}
+                        title={`${part.species_common_name}: ${formatOffset(part.starts_at_seconds)}-${formatOffset(
+                          part.ends_at_seconds,
+                        )}`}
+                        onClick={() => {
+                          trackPlayerEvent("timeline_species_click");
+                          seekTimeline(part.starts_at_seconds);
+                        }}
+                      />
+                      <em style={{ left: `${timelineLeft(part.ends_at_seconds, timelineDuration)}%` }} />
+                    </Fragment>
+                  ))}
+                </li>
+              );
+            })}
           </ol>
         ) : (
           <p className="session-timeline-empty">Bird vocal parts will appear after analysis writes intervals to the database.</p>
@@ -253,7 +385,7 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
       </div>
 
       <div className="session-orbital-player">
-        <button type="button" aria-label="Previous recording" disabled title="Playlist navigation is not available yet">
+        <button className="session-previous-button" type="button" aria-label="Previous recording" disabled={!onPrevious} onClick={() => { trackPlayerEvent("player_prev"); onPrevious?.(); }}>
           ‹
         </button>
         <div className="session-soundline" aria-hidden="true">
@@ -290,8 +422,15 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
             <span key={`${peak}-${index}`} style={{ height: `${Math.max(4, peak * 28)}px` }} />
           ))}
         </div>
-        <button type="button" aria-label="Save recording" disabled title="Saving recordings is not available yet">
-          ♡
+        <button
+          className="session-favorite-button"
+          type="button"
+          aria-label={isFavorite ? "Remove from favorites" : "Save recording"}
+          aria-pressed={isFavorite}
+          disabled={favoritePending}
+          onClick={() => void toggleFavorite()}
+        >
+          {isFavorite ? "♥" : "♡"}
         </button>
         <div className="session-player-caption">
           <strong>{session.location.name}</strong>
@@ -300,7 +439,15 @@ export function SessionPlayer({ session, onClose }: SessionPlayerProps) {
           </span>
           {grant && isCurrent ? <small>Grant expires {formatClockTime(grant.expires_at)}</small> : null}
           {error && isCurrent ? <small className="error-text" role="alert">{error}</small> : null}
+          {favoriteHint ? (
+            <small role="status">
+              {favoriteHint}{" "}
+              {favoriteHint.startsWith("Sign in") ? <Link href={`/membership?mode=login&returnTo=${encodeURIComponent(`/sessions/${session.slug}`)}`}>Sign in</Link> : null}
+              {favoriteHint.startsWith("Saved") ? <Link href="/library">View your library</Link> : null}
+            </small>
+          ) : null}
         </div>
+        <button className="session-next-button" type="button" aria-label="Next recording" disabled={!onNext} onClick={() => { trackPlayerEvent("player_next"); onNext?.(); }}>›</button>
       </div>
     </section>
   );

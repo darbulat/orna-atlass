@@ -1,5 +1,6 @@
 import hmac
 import logging
+import secrets
 from typing import Literal
 from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -18,11 +19,13 @@ from orna_atlas.app.core.rate_limit import auth_rate_limit
 from orna_atlas.app.core.security import ACCESS_COOKIE, REFRESH_COOKIE
 from orna_atlas.app.db.session import get_db_session
 from orna_atlas.app.modules.admin.repository import add_audit_event
-from orna_atlas.app.modules.auth import oauth, service
+from orna_atlas.app.modules.auth import magic, oauth, service
 from orna_atlas.app.modules.auth.oauth import OAuthProvider
 from orna_atlas.app.modules.auth.schemas import (
     LoginRequest,
     LogoutResponse,
+    MagicLinkAccepted,
+    MagicLinkRequest,
     OAuthProvidersResponse,
     RegisterRequest,
     TokenResponse,
@@ -69,6 +72,19 @@ def _frontend_redirect(return_to: str, *, provider: str, error: str | None = Non
     )
 
 
+def _magic_frontend_redirect(return_to: str, *, error: str | None = None) -> str:
+    settings = get_settings()
+    configured = urlsplit(settings.oauth_frontend_url)
+    target = urlsplit(magic.safe_return_to(return_to))
+    query = dict(parse_qsl(target.query, keep_blank_values=True))
+    query["magic"] = "error" if error else "success"
+    if error:
+        query["magic_error"] = error
+    return urlunsplit(
+        (configured.scheme, configured.netloc, target.path, urlencode(query), "")
+    )
+
+
 def _set_auth_cookies(response: Response, payload: TokenResponse, refresh_token: str) -> None:
     settings = get_settings()
     common = {"httponly": True, "secure": settings.auth_cookie_secure, "samesite": "lax"}
@@ -89,6 +105,103 @@ def _set_auth_cookies(response: Response, payload: TokenResponse, refresh_token:
 async def oauth_providers(response: Response) -> OAuthProvidersResponse:
     response.headers["Cache-Control"] = "no-store"
     return OAuthProvidersResponse(providers=oauth.configured_providers(get_settings()))
+
+
+@router.post(
+    "/magic-link/request",
+    response_model=MagicLinkAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(auth_rate_limit)],
+)
+async def request_magic_link(data: MagicLinkRequest, response: Response) -> MagicLinkAccepted:
+    settings = get_settings()
+    browser_nonce = secrets.token_urlsafe(32)
+    await magic.send_magic_link(
+        settings=settings,
+        email=str(data.email),
+        return_to=data.return_to,
+        browser_nonce=browser_nonce,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.set_cookie(
+        magic.MAGIC_LINK_BROWSER_COOKIE,
+        browser_nonce,
+        max_age=magic.MAGIC_LINK_TTL_SECONDS,
+        path=f"{settings.api_prefix}/auth/magic-link/consume",
+        secure=settings.auth_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
+    return MagicLinkAccepted()
+
+
+def _clear_magic_browser_cookie(response: Response, settings: Settings) -> None:
+    response.delete_cookie(
+        magic.MAGIC_LINK_BROWSER_COOKIE,
+        path=f"{settings.api_prefix}/auth/magic-link/consume",
+        secure=settings.auth_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+async def _rollback_magic_session(session: AsyncSession) -> None:
+    try:
+        await session.rollback()
+    except Exception:  # The terminal cookie response must survive a broken DB connection.
+        logger.exception("Magic-link rollback failed")
+
+
+def _magic_unavailable_response(settings: Settings) -> RedirectResponse:
+    response = RedirectResponse(
+        _magic_frontend_redirect("/membership", error="unavailable"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    _clear_magic_browser_cookie(response, settings)
+    return response
+
+
+@router.get(
+    "/magic-link/consume",
+    response_class=RedirectResponse,
+    status_code=status.HTTP_303_SEE_OTHER,
+    responses={status.HTTP_303_SEE_OTHER: {"description": "Consume one-time link"}},
+    dependencies=[Depends(auth_rate_limit)],
+)
+async def consume_magic_link(
+    request: Request,
+    token: str = Query(min_length=32, max_length=256),
+    session: AsyncSession = Depends(get_db_session),
+) -> RedirectResponse:
+    settings = get_settings()
+    try:
+        claims = await magic.consume_magic_link(
+            token, request.cookies.get(magic.MAGIC_LINK_BROWSER_COOKIE)
+        )
+        if claims is None:
+            response = RedirectResponse(
+                _magic_frontend_redirect("/membership", error="invalid_or_expired"),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+            _clear_magic_browser_cookie(response, settings)
+            return response
+        payload, refresh_token = await service.authenticate_magic_link(session, claims["email"])
+        response = RedirectResponse(
+            _magic_frontend_redirect(claims["return_to"]),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+        _set_auth_cookies(response, payload, refresh_token)
+        _clear_magic_browser_cookie(response, settings)
+        return response
+    except (AuthenticationError, ServiceUnavailableError):
+        response = _magic_unavailable_response(settings)
+        await _rollback_magic_session(session)
+        return response
+    except Exception:
+        logger.exception("Magic-link terminal operation failed")
+        response = _magic_unavailable_response(settings)
+        await _rollback_magic_session(session)
+        return response
 
 
 @router.get(

@@ -5,7 +5,9 @@ import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { apiErrorMessage } from "../../lib/api/client";
+import { apiErrorMessage, isApiError } from "../../lib/api/client";
+import { isAccountAuthenticationUnavailable } from "../../lib/api/account-auth-state";
+import { updateListeningProgress } from "../../lib/api/library";
 import { apiUrl, requestPlaybackGrant, type PlaybackGrant, type SessionDetail } from "../../lib/api/sessions";
 import { initialPlayerState, playerReducer, type PlaybackState } from "./playerMachine";
 import { detachAudio, disposePlayerResources, isHlsStream } from "./playerResources";
@@ -45,6 +47,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const grantRequestRef = useRef(0);
   const grantAbortRef = useRef<AbortController | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
+  const historyRef = useRef({
+    inFlight: false,
+    lastSentAt: 0,
+    pendingBySession: new Map<string, { sessionId: string; position: number; completed: boolean }>(),
+
+  });
   const engagementRef = useRef({
     sessionId: null as string | null,
     previousMediaTime: 0,
@@ -53,6 +61,36 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   });
   const [player, dispatch] = useReducer(playerReducer, initialPlayerState);
   const [isGlobalPlayerSuppressed, setIsGlobalPlayerSuppressed] = useState(false);
+
+  const writeListeningProgress = useCallback((sessionId: string, position: number, completed: boolean, force = false) => {
+    const history = historyRef.current;
+    if (isAccountAuthenticationUnavailable()) return;
+    const now = Date.now();
+    if (!force && now - history.lastSentAt < 15_000) return;
+    const next = { sessionId, position: Number.isFinite(position) ? Math.max(0, position) : 0, completed };
+    if (history.inFlight) {
+      history.pendingBySession.set(sessionId, next);
+      return;
+    }
+    history.inFlight = true;
+    history.lastSentAt = now;
+    void updateListeningProgress(next.sessionId, {
+      position_seconds: next.position,
+      completed: next.completed,
+    }).catch((error: unknown) => {
+      if (isApiError(error) && error.status === 401) {
+        history.pendingBySession.clear();
+      }
+    }).finally(() => {
+      history.inFlight = false;
+      const pendingEntry = history.pendingBySession.entries().next();
+      if (!pendingEntry.done) {
+        const [pendingSessionId, pending] = pendingEntry.value;
+        history.pendingBySession.delete(pendingSessionId);
+        writeListeningProgress(pending.sessionId, pending.position, pending.completed, true);
+      }
+    });
+  }, []);
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current !== null) {
@@ -107,6 +145,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     }
     engagement.previousMediaTime = mediaTime;
+    if (session && !audio.paused) writeListeningProgress(session.id, mediaTime, false);
     dispatch({
       type: "progress",
       currentTimeSeconds: mediaTime,
@@ -115,7 +154,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           ? audio.duration
           : currentSessionRef.current?.duration_seconds ?? null,
     });
-  }, []);
+  }, [writeListeningProgress]);
 
   const scheduleGrantRefresh = useCallback(
     (session: SessionDetail, nextGrant: PlaybackGrant) => {
@@ -209,6 +248,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           await audioRef.current.play();
           updatePlaybackProgress();
           dispatch({ type: "playing" });
+          window.dispatchEvent(new CustomEvent("orna:analytics", {
+            detail: { name: "player_play", placement: "global_player" },
+          }));
           return true;
         } catch (error) {
           dispatch({
@@ -225,6 +267,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const controller = new AbortController();
       grantAbortRef.current = controller;
       clearRefreshTimer();
+      const previousSession = currentSessionRef.current;
+      if (previousSession && previousSession.id !== session.id && audioRef.current) {
+        writeListeningProgress(previousSession.id, audioRef.current.currentTime, false, true);
+      }
       if (audioRef.current) {
         hlsRef.current?.destroy();
         hlsRef.current = null;
@@ -256,6 +302,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         audio.onloadedmetadata = updatePlaybackProgress;
         audio.ondurationchange = updatePlaybackProgress;
         audio.onended = () => {
+          const completedSession = currentSessionRef.current;
+          if (completedSession) writeListeningProgress(completedSession.id, audio.currentTime, true, true);
           const sessionDuration = currentSessionRef.current?.duration_seconds;
           const audioDuration = audioRef.current?.duration;
           dispatch({
@@ -273,9 +321,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         audio.onplaying = () => dispatch({ type: "playing" });
         scheduleGrantRefresh(session, nextGrant);
         await audio.play();
+        if (requestId !== grantRequestRef.current || currentSessionRef.current?.id !== session.id) {
+          return false;
+        }
+        writeListeningProgress(session.id, audio.currentTime, false, true);
         updatePlaybackProgress();
         if (requestId === grantRequestRef.current && currentSessionRef.current?.id === session.id) {
           dispatch({ type: "playing" });
+          const storedPreviewCount = Number(window.sessionStorage.getItem("orna:preview-count") ?? "0");
+          const previewCount = Number.isSafeInteger(storedPreviewCount) && storedPreviewCount >= 0
+            ? storedPreviewCount
+            : 0;
+          window.sessionStorage.setItem("orna:preview-count", String(previewCount + 1));
+          const previewMilestones = previewCount === 0
+            ? ["session_preview_start"]
+            : previewCount === 1
+              ? ["session_preview_second"]
+              : [];
+          const events = [
+            ...previewMilestones,
+            "player_play",
+            ...(session.access_level === "members_only" ? ["member_session_play"] : []),
+          ];
+          for (const name of events) {
+            window.dispatchEvent(new CustomEvent("orna:analytics", {
+              detail: { name, placement: "session_overlay" },
+            }));
+          }
         }
         return true;
       } catch (error) {
@@ -292,14 +364,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [attachStream, clearRefreshTimer, player.grant, scheduleGrantRefresh, updatePlaybackProgress],
+    [attachStream, clearRefreshTimer, player.grant, scheduleGrantRefresh, updatePlaybackProgress, writeListeningProgress],
   );
 
   const pause = useCallback(() => {
+    const activeSession = currentSessionRef.current;
+    if (activeSession && audioRef.current) {
+      writeListeningProgress(activeSession.id, audioRef.current.currentTime, false, true);
+    }
     audioRef.current?.pause();
     updatePlaybackProgress();
     dispatch({ type: "paused" });
-  }, [updatePlaybackProgress]);
+    window.dispatchEvent(new CustomEvent("orna:analytics", {
+      detail: { name: "player_pause", placement: "global_player" },
+    }));
+  }, [updatePlaybackProgress, writeListeningProgress]);
 
   const resume = useCallback(async () => {
     const session = currentSessionRef.current;
@@ -329,6 +408,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     engagementRef.current.previousMediaTime = nextTime;
 
     dispatch({ type: "seek", currentTimeSeconds: nextTime, durationSeconds: resolvedDuration });
+    window.dispatchEvent(new CustomEvent("orna:analytics", {
+      detail: { name: "player_seek", placement: "global_player" },
+    }));
   }, []);
 
   useEffect(() => () => {

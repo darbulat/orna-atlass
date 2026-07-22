@@ -524,6 +524,14 @@
       },
       "AtlasSessionSummary": {
         "properties": {
+          "access_level": {
+            "enum": [
+              "public",
+              "members_only"
+            ],
+            "title": "Access Level",
+            "type": "string"
+          },
           "duration_seconds": {
             "anyOf": [
               {
@@ -558,7 +566,8 @@
           "id",
           "slug",
           "title",
-          "recorded_at"
+          "recorded_at",
+          "access_level"
         ],
         "title": "AtlasSessionSummary",
         "type": "object"
@@ -1090,6 +1099,50 @@
       },
       "ConversionEventName": {
         "enum": [
+          "globe_view",
+          "session_preview_start",
+          "session_preview_second",
+          "locked_point_hit",
+          "paywall_shown",
+          "signup_started",
+          "signup_completed",
+          "member_session_play",
+          "subscription_intent",
+          "collections_view",
+          "search_opened",
+          "login_opened",
+          "membership_cta_click",
+          "marker_click",
+          "reset_view_click",
+          "time_filter_dawn",
+          "time_filter_day",
+          "time_filter_dusk",
+          "time_filter_night",
+          "carousel_scroll",
+          "location_search",
+          "card_inline_play",
+          "card_open",
+          "see_all_click",
+          "player_play",
+          "player_pause",
+          "player_seek",
+          "favorite_add",
+          "favorite_requires_login",
+          "player_next",
+          "player_prev",
+          "timeline_species_click",
+          "session_close",
+          "paywall_signup_click",
+          "paywall_learn_more",
+          "paywall_dismissed",
+          "signup_email_submit",
+          "membership_reserve_click",
+          "point_opened",
+          "play_started",
+          "favorite_clicked",
+          "lock_clicked",
+          "registration_started",
+          "membership_interest_submitted",
           "sample_play_started",
           "listening_30_seconds",
           "listening_5_minutes",
@@ -1104,6 +1157,18 @@
       },
       "ConversionPlacement": {
         "enum": [
+          "globe",
+          "globe_controls",
+          "time_filter",
+          "location_search",
+          "location_carousel",
+          "popular_locations",
+          "collections",
+          "globe_marker",
+          "location_card",
+          "session_overlay",
+          "soft_paywall",
+          "header",
           "global_player",
           "hero_sample",
           "hero_primary",
@@ -1382,6 +1447,24 @@
         "title": "DependencyStatus",
         "type": "object"
       },
+      "FavoriteRead": {
+        "properties": {
+          "favorited_at": {
+            "format": "date-time",
+            "title": "Favorited At",
+            "type": "string"
+          },
+          "session": {
+            "$ref": "#/components/schemas/LibrarySessionSummary"
+          }
+        },
+        "required": [
+          "session",
+          "favorited_at"
+        ],
+        "title": "FavoriteRead",
+        "type": "object"
+      },
       "FeaturedSessionRead": {
         "properties": {
           "description": {
@@ -1509,6 +1592,164 @@
         ],
         "title": "JobType",
         "type": "string"
+      },
+      "LibraryLocationSummary": {
+        "properties": {
+          "habitat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Habitat"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name"
+        ],
+        "title": "LibraryLocationSummary",
+        "type": "object"
+      },
+      "LibrarySessionSummary": {
+        "properties": {
+          "access_level": {
+            "title": "Access Level",
+            "type": "string"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/LibraryLocationSummary"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "recorded_at",
+          "access_level",
+          "location"
+        ],
+        "title": "LibrarySessionSummary",
+        "type": "object"
+      },
+      "ListeningHistoryRead": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "first_listened_at": {
+            "format": "date-time",
+            "title": "First Listened At",
+            "type": "string"
+          },
+          "last_listened_at": {
+            "format": "date-time",
+            "title": "Last Listened At",
+            "type": "string"
+          },
+          "last_position_seconds": {
+            "minimum": 0.0,
+            "title": "Last Position Seconds",
+            "type": "number"
+          },
+          "session": {
+            "$ref": "#/components/schemas/LibrarySessionSummary"
+          }
+        },
+        "required": [
+          "session",
+          "first_listened_at",
+          "last_listened_at",
+          "last_position_seconds"
+        ],
+        "title": "ListeningHistoryRead",
+        "type": "object"
+      },
+      "ListeningProgressUpdate": {
+        "properties": {
+          "completed": {
+            "default": false,
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "position_seconds": {
+            "minimum": 0.0,
+            "title": "Position Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "position_seconds"
+        ],
+        "title": "ListeningProgressUpdate",
+        "type": "object"
       },
       "LocationCreate": {
         "properties": {
@@ -1959,6 +2200,44 @@
           }
         },
         "title": "LogoutResponse",
+        "type": "object"
+      },
+      "MagicLinkAccepted": {
+        "properties": {
+          "accepted": {
+            "default": true,
+            "title": "Accepted",
+            "type": "boolean"
+          }
+        },
+        "title": "MagicLinkAccepted",
+        "type": "object"
+      },
+      "MagicLinkRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "return_to": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return To"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "MagicLinkRequest",
         "type": "object"
       },
       "MediaAssetCreate": {
@@ -3216,6 +3495,19 @@
           "access_level": {
             "$ref": "#/components/schemas/SessionAccess"
           },
+          "altitude_meters": {
+            "anyOf": [
+              {
+                "maximum": 9000.0,
+                "minimum": -500.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Meters"
+          },
           "annotations": {
             "items": {
               "$ref": "#/components/schemas/PublicSessionAnnotationRead"
@@ -3267,6 +3559,19 @@
             ],
             "title": "Featured Sort Order"
           },
+          "humidity_percent": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humidity Percent"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -3291,6 +3596,32 @@
             },
             "title": "Media Assets",
             "type": "array"
+          },
+          "moon_phase": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moon Phase"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "maxLength": 2083,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
           },
           "processing_status": {
             "$ref": "#/components/schemas/ProcessingStatus",
@@ -3323,6 +3654,19 @@
             "title": "Slug",
             "type": "string"
           },
+          "temperature_celsius": {
+            "anyOf": [
+              {
+                "maximum": 70.0,
+                "minimum": -100.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature Celsius"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -3340,6 +3684,19 @@
               }
             ],
             "title": "Weather"
+          },
+          "wind_speed_kph": {
+            "anyOf": [
+              {
+                "maximum": 500.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wind Speed Kph"
           }
         },
         "required": [
@@ -3834,6 +4191,17 @@
         },
         "title": "WaveformRead",
         "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyCookie": {
+        "in": "cookie",
+        "name": "orna_access",
+        "type": "apiKey"
+      },
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -5965,6 +6333,84 @@
         ]
       }
     },
+    "/api/v1/auth/magic-link/consume": {
+      "get": {
+        "operationId": "consume_magic_link_api_v1_auth_magic_link_consume_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 32,
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Consume one-time link"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Consume Magic Link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/magic-link/request": {
+      "post": {
+        "operationId": "request_magic_link_api_v1_auth_magic_link_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MagicLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MagicLinkAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Magic Link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/oauth/apple/callback": {
       "post": {
         "operationId": "apple_oauth_callback_api_v1_auth_oauth_apple_callback_post",
@@ -7140,6 +7586,615 @@
         "summary": "Read Me",
         "tags": [
           "users"
+        ]
+      }
+    },
+    "/api/v1/users/me/favorites": {
+      "get": {
+        "operationId": "read_favorites_api_v1_users_me_favorites_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FavoriteRead"
+                  },
+                  "title": "Response Read Favorites Api V1 Users Me Favorites Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Favorites",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/v1/users/me/favorites/{session_id}": {
+      "delete": {
+        "operationId": "delete_favorite_api_v1_users_me_favorites__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Delete Favorite",
+        "tags": [
+          "library"
+        ]
+      },
+      "put": {
+        "operationId": "put_favorite_api_v1_users_me_favorites__session_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FavoriteRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Favorite",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/v1/users/me/listening-history": {
+      "delete": {
+        "operationId": "delete_listening_history_api_v1_users_me_listening_history_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Delete Listening History",
+        "tags": [
+          "library"
+        ]
+      },
+      "get": {
+        "operationId": "read_listening_history_api_v1_users_me_listening_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ListeningHistoryRead"
+                  },
+                  "title": "Response Read Listening History Api V1 Users Me Listening History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Listening History",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/v1/users/me/listening-history/{session_id}": {
+      "delete": {
+        "operationId": "delete_listening_history_item_api_v1_users_me_listening_history__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Delete Listening History Item",
+        "tags": [
+          "library"
+        ]
+      },
+      "put": {
+        "operationId": "put_listening_progress_api_v1_users_me_listening_history__session_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListeningProgressUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListeningHistoryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Listening Progress",
+        "tags": [
+          "library"
         ]
       }
     },

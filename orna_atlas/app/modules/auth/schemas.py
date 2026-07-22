@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from orna_atlas.app.modules.users.schemas import UserRead
 
@@ -14,6 +14,17 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+
+
+class MagicLinkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    return_to: str | None = Field(default=None, max_length=512)
+
+
+class MagicLinkAccepted(BaseModel):
+    accepted: bool = True
 
 
 class TokenResponse(BaseModel):

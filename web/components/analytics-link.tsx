@@ -4,6 +4,12 @@ import Link from "next/link";
 import type { ComponentProps, MouseEvent, ReactNode } from "react";
 
 type AnalyticsEventName =
+  | "collections_view"
+  | "login_opened"
+  | "membership_cta_click"
+  | "see_all_click"
+  | "membership_reserve_click"
+  | "subscription_intent"
   | "hero_cta_clicked"
   | "listening_path_selected"
   | "membership_cta_clicked"
