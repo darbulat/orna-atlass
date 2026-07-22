@@ -12,6 +12,8 @@ import { apiUrl, requestPlaybackGrant, type PlaybackGrant, type SessionDetail } 
 import { initialPlayerState, playerReducer, type PlaybackState } from "./playerMachine";
 import { detachAudio, disposePlayerResources, isHlsStream } from "./playerResources";
 
+type PlayerAnalyticsPlacement = "global_player" | "session_overlay" | "popular_locations" | "hero_sample";
+
 type PlayerContextValue = {
   currentSession: SessionDetail | null;
   playbackState: PlaybackState;
@@ -19,9 +21,9 @@ type PlayerContextValue = {
   currentTimeSeconds: number;
   durationSeconds: number | null;
   error: string | null;
-  play: (session: SessionDetail) => Promise<boolean>;
-  pause: () => void;
-  resume: () => Promise<boolean>;
+  play: (session: SessionDetail, placement?: PlayerAnalyticsPlacement) => Promise<boolean>;
+  pause: (placement?: PlayerAnalyticsPlacement) => void;
+  resume: (placement?: PlayerAnalyticsPlacement) => Promise<boolean>;
   seek: (seconds: number) => void;
 };
 
@@ -236,7 +238,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const play = useCallback(
-    async (session: SessionDetail) => {
+    async (session: SessionDetail, placement: PlayerAnalyticsPlacement = "session_overlay") => {
       const grantExpiresAt = player.grant ? new Date(player.grant.expires_at).getTime() : 0;
       if (
         currentSessionRef.current?.id === session.id
@@ -249,7 +251,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           updatePlaybackProgress();
           dispatch({ type: "playing" });
           window.dispatchEvent(new CustomEvent("orna:analytics", {
-            detail: { name: "player_play", placement: "global_player" },
+            detail: { name: "player_play", placement },
           }));
           return true;
         } catch (error) {
@@ -345,7 +347,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           ];
           for (const name of events) {
             window.dispatchEvent(new CustomEvent("orna:analytics", {
-              detail: { name, placement: "session_overlay" },
+              detail: { name, placement },
             }));
           }
         }
@@ -367,7 +369,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [attachStream, clearRefreshTimer, player.grant, scheduleGrantRefresh, updatePlaybackProgress, writeListeningProgress],
   );
 
-  const pause = useCallback(() => {
+  const pause = useCallback((placement: PlayerAnalyticsPlacement = "global_player") => {
     const activeSession = currentSessionRef.current;
     if (activeSession && audioRef.current) {
       writeListeningProgress(activeSession.id, audioRef.current.currentTime, false, true);
@@ -376,16 +378,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     updatePlaybackProgress();
     dispatch({ type: "paused" });
     window.dispatchEvent(new CustomEvent("orna:analytics", {
-      detail: { name: "player_pause", placement: "global_player" },
+      detail: { name: "player_pause", placement },
     }));
   }, [updatePlaybackProgress, writeListeningProgress]);
 
-  const resume = useCallback(async () => {
+  const resume = useCallback(async (placement: PlayerAnalyticsPlacement = "global_player") => {
     const session = currentSessionRef.current;
     if (!session) {
       return false;
     }
-    return play(session);
+    return play(session, placement);
   }, [play]);
 
   const seek = useCallback((seconds: number) => {
@@ -490,7 +492,7 @@ function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
         className="global-player-playback"
         type="button"
         aria-label={isPlaying ? "Pause playback" : "Resume playback"}
-        onClick={isPlaying ? pause : () => void resume()}
+        onClick={isPlaying ? () => pause("global_player") : () => void resume("global_player")}
       >
         <span aria-hidden="true">{isPlaying ? "Ⅱ" : "▶"}</span>
       </button>

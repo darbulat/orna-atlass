@@ -25,7 +25,7 @@ export function PopularLocations({ locations }: { locations: AtlasPoint[] }) {
     const slug = location.latest_session?.slug;
     if (!slug) return;
     if (currentSession?.slug === slug && playbackState === "playing") {
-      pause();
+      pause("popular_locations");
       return;
     }
     setLoadingSlug(slug);
@@ -37,7 +37,7 @@ export function PopularLocations({ locations }: { locations: AtlasPoint[] }) {
     try {
       const session = await fetchSessionDetail(slug);
       if (requestId !== previewRequestRef.current) return;
-      await play(session);
+      await play(session, "popular_locations");
     } catch {
       if (requestId === previewRequestRef.current) {
         setPreviewError("Preview unavailable. Try opening the location in the atlas.");

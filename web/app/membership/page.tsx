@@ -54,10 +54,10 @@ function ProviderIcon({ provider }: { provider: OAuthProvider }) {
   );
 }
 
-function SocialLink({ provider }: { provider: OAuthProvider }) {
+function SocialLink({ provider, returnTo }: { provider: OAuthProvider; returnTo: string }) {
   const label = providerLabels[provider];
   return (
-    <a className="auth-social-link" href={oauthStartUrl(provider)} aria-label={`Continue with ${label}`}>
+    <a className="auth-social-link" href={oauthStartUrl(provider, returnTo)} aria-label={`Continue with ${label}`}>
       <ProviderIcon provider={provider} />
       <span>{label}</span>
     </a>
@@ -173,10 +173,12 @@ export default function MembershipPage() {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [configuredProviders, setConfiguredProviders] = useState<OAuthProvider[] | null>(null);
   const [providerLoadError, setProviderLoadError] = useState(false);
+  const [authReturnTo, setAuthReturnTo] = useState("/membership");
   const authGeneration = useRef(0);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    setAuthReturnTo(internalReturnTo(params.get("returnTo")));
     const requestedMode = params.get("mode");
     if (requestedMode === "register" || requestedMode === "login") setMode(requestedMode);
   }, []);
@@ -249,7 +251,7 @@ export default function MembershipPage() {
         if (provider && oauthStatus === "success") {
           setOauthMessage({ text: `Signed in with ${providerLabels[provider]}.`, error: false });
         }
-        if (magicStatus === "success") {
+        if (magicStatus === "success" || magicStatus === "signup" || magicStatus === "login") {
           setOauthMessage({ text: "Signed in with your email link.", error: false });
         }
         setIsLoadingMembership(true);
@@ -473,7 +475,9 @@ export default function MembershipPage() {
           <>
             <div className="auth-divider"><span>or</span></div>
             <div className="auth-social" role="group" aria-label="Continue with a social account">
-              {configuredProviders.map((provider) => <SocialLink key={provider} provider={provider} />)}
+              {configuredProviders.map((provider) => (
+                <SocialLink key={provider} provider={provider} returnTo={authReturnTo} />
+              ))}
             </div>
           </>
         ) : null}

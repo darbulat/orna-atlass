@@ -388,3 +388,30 @@ test("playback returns from stalled to playing when media resumes", async ({ pag
   });
   await expect(page.getByRole("button", { name: "Pause playback" })).toBeVisible();
 });
+
+test("session overlay pause analytics use the visible overlay placement", async ({ page }) => {
+  await installFakeAudio(page);
+  await page.addInitScript(() => {
+    (window as typeof window & { __analytics?: Array<{ name: string; placement: string }> }).__analytics = [];
+    window.addEventListener("orna:analytics", (event) => {
+      (window as typeof window & { __analytics?: Array<{ name: string; placement: string }> }).__analytics
+        ?.push((event as CustomEvent<{ name: string; placement: string }>).detail);
+    });
+  });
+
+  await page.goto("/sessions/first-session");
+  await page.getByRole("button", { name: "Play session" }).click();
+  await page.getByRole("button", { name: "Pause playback" }).click();
+  await page.getByRole("button", { name: "Play session" }).click();
+
+  const analytics = await page.evaluate(() => (
+    window as typeof window & { __analytics?: Array<{ name: string; placement: string }> }
+  ).__analytics ?? []);
+  expect(analytics.filter((event) => event.name === "player_pause")).toEqual([
+    { name: "player_pause", placement: "session_overlay" },
+  ]);
+  expect(analytics.filter((event) => event.name === "player_play")).toEqual([
+    { name: "player_play", placement: "session_overlay" },
+    { name: "player_play", placement: "session_overlay" },
+  ]);
+});

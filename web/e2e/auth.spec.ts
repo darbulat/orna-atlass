@@ -121,6 +121,57 @@ test("OAuth success is only announced after the authenticated account is confirm
 });
 
 
+test("magic-link signup and login outcomes are announced after account confirmation", async ({ page }) => {
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "early_access", status: "active", is_entitled: true }),
+    });
+  });
+
+  for (const outcome of ["signup", "login"]) {
+    await page.goto(`/membership?magic=${outcome}`);
+    await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Signed in with your email link" })).toBeVisible();
+    await expect(page).toHaveURL(/\/membership$/);
+    await page.goto("/about");
+  }
+});
+
+
+test("social sign-in preserves a sanitized internal return path", async ({ page }) => {
+  await page.goto("/membership?returnTo=%2Fsessions%2Ffirst-session");
+
+  const social = page.getByRole("group", { name: "Continue with a social account" });
+  for (const provider of ["Google", "Apple", "Facebook"]) {
+    await expect(social.getByRole("link", { name: `Continue with ${provider}` })).toHaveAttribute(
+      "href",
+      /return_to=%2Fsessions%2Ffirst-session/,
+    );
+  }
+
+  await page.goto("/membership?returnTo=%2F%2Fevil.example%2Fsteal");
+  await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute(
+    "href",
+    /return_to=%2Fmembership/,
+  );
+});
+
+
 test("OAuth success survives a membership status outage", async ({ page }) => {
   await page.route("**/api/v1/auth/logout", async (route) => {
     await route.fulfill({

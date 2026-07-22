@@ -288,7 +288,7 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
         <button
           type="button"
           className="session-listening-bar"
-          onClick={isPlaying ? pause : () => void play(session)}
+          onClick={isPlaying ? () => pause("session_overlay") : () => void play(session)}
         >
           <span aria-hidden="true" />
           <strong>{isPlaying ? "Listening" : displayedState === "requesting_grant" ? "Connecting" : "Listen"}</strong>
@@ -411,7 +411,7 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
           <button
             type="button"
             className="session-player-core"
-            onClick={isPlaying ? pause : () => void play(session)}
+            onClick={isPlaying ? () => pause("session_overlay") : () => void play(session)}
             aria-label={isPlaying ? "Pause playback" : "Play session"}
           >
             <span className={isPlaying ? "is-playing" : ""} />

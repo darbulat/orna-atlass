@@ -82,7 +82,7 @@ export function AnalyticsBridge() {
         detail: { name: "signup_completed", placement: "membership_form" },
       }));
     }
-    if (magicOutcome === "signup" || magicOutcome === "login") {
+    if ((magicOutcome === "signup" || magicOutcome === "login") && window.location.pathname !== "/membership") {
       params.delete("magic");
       params.delete("magic_error");
       const query = params.toString();
