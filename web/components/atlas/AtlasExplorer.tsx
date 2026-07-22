@@ -556,11 +556,15 @@ export function AtlasExplorer({
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [currentDawn, setCurrentDawn] = useState(dawn);
   const [view] = useState<AtlasView>(initialView);
+  const requestedInitialLocation = preferredInitialSlug
+    ? points.find((item): item is AtlasPoint => isPoint(item) && item.slug === preferredInitialSlug) ?? null
+    : null;
+  const initialDawnSlugs = new Set(
+    [...dawn.active_locations, ...dawn.next_locations].map((item) => item.location.slug),
+  );
   const [selectedMode, setSelectedMode] = useState<ListeningMode>(
-    preferredInitialSlug
-      && [...dawn.active_locations, ...dawn.next_locations]
-        .some((item) => item.location.slug === preferredInitialSlug)
-      ? "Dawn"
+    requestedInitialLocation
+      ? listeningModeForLocation(requestedInitialLocation, dawn.generated_at, initialDawnSlugs)
       : initialView === "list"
         ? "Night"
         : "Dawn",
@@ -607,11 +611,13 @@ export function AtlasExplorer({
   const previewIntentSlugRef = useRef<string | null>(null);
   const softPaywallRef = useRef<HTMLElement | null>(null);
   const paywallTriggerRef = useRef<HTMLElement | null>(null);
-  const selected = locations.find((point) => point.slug === selectedSlug)
-    ?? allLocations.find((point) => point.slug === selectedSlug)
-    ?? locations[0]
-    ?? allLocations[0]
-    ?? null;
+  const selected = selectedSlug
+    ? locations.find((point) => point.slug === selectedSlug)
+      ?? allLocations.find((point) => point.slug === selectedSlug)
+      ?? locations[0]
+      ?? allLocations[0]
+      ?? null
+    : null;
   const selectedDawn = [...currentDawn.active_locations, ...currentDawn.next_locations]
     .find((item) => item.location.slug === selected?.slug);
   const isLocalPlayerVisible = isSidePanelOpen
@@ -759,7 +765,10 @@ export function AtlasExplorer({
     if (selectedSlug && allLocations.some((point) => point.slug === selectedSlug)) {
       return;
     }
-    setSelectedSlug(locations[0]?.slug ?? allLocations[0]?.slug ?? null);
+    setSelectedSlug(
+      locations[0]?.slug
+      ?? (selectedSlug ? allLocations[0]?.slug ?? null : null),
+    );
   }, [allLocations, locations, selectedSlug]);
 
   useEffect(() => {
@@ -942,6 +951,27 @@ export function AtlasExplorer({
   }
 
   function selectSearchResult(result: SearchResult) {
+    const existingLocation = allLocations.find((location) => location.slug === result.slug);
+    const resultLocation = existingLocation ?? result.atlas_point;
+    if (resultLocation) {
+      const resultMode = listeningModeForLocation(resultLocation, currentDawn.generated_at, dawnModeSlugs);
+      setSelectedMode(resultMode);
+      if (!existingLocation) {
+        setAtlasPoints((currentPoints) => [resultLocation, ...currentPoints]);
+        setCarouselStart(0);
+      } else {
+        const modeLocations = filterLocationsByMode(
+          allLocations,
+          resultMode,
+          currentDawn.generated_at,
+          dawnModeSlugs,
+        );
+        const resultIndex = modeLocations.findIndex((location) => location.slug === result.slug);
+        const resultMaxStart = Math.max(0, modeLocations.length - locationCardCount);
+        setCarouselStart(resultIndex === -1 ? 0 : Math.min(resultIndex, resultMaxStart));
+      }
+      setSelectedSlug(result.slug);
+    }
     if (result.type === "session" && result.session_slug) {
       setSidePanelSessionSlug(result.session_slug);
       setIsSidePanelOpen(true);
@@ -949,32 +979,9 @@ export function AtlasExplorer({
       setSearchResults([]);
       return;
     }
-    const existingLocation = allLocations.find((location) => location.slug === result.slug);
-    const resultLocation = existingLocation ?? result.atlas_point;
     if (!resultLocation) {
       return;
     }
-    const resultMode = listeningModeForLocation(resultLocation, currentDawn.generated_at, dawnModeSlugs);
-    setSelectedMode(resultMode);
-    if (!existingLocation) {
-      const atlasPoint = result.atlas_point;
-      if (!atlasPoint) {
-        return;
-      }
-      setAtlasPoints((currentPoints) => [atlasPoint, ...currentPoints]);
-      setCarouselStart(0);
-    } else {
-      const modeLocations = filterLocationsByMode(
-        allLocations,
-        resultMode,
-        currentDawn.generated_at,
-        dawnModeSlugs,
-      );
-      const resultIndex = modeLocations.findIndex((location) => location.slug === result.slug);
-      const resultMaxStart = Math.max(0, modeLocations.length - locationCardCount);
-      setCarouselStart(resultIndex === -1 ? 0 : Math.min(resultIndex, resultMaxStart));
-    }
-    setSelectedSlug(result.slug);
     setQuery("");
   }
 

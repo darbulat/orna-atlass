@@ -270,6 +270,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       grantAbortRef.current = controller;
       clearRefreshTimer();
       const previousSession = currentSessionRef.current;
+      const resumeAt = previousSession?.id === session.id && audioRef.current
+        ? audioRef.current.currentTime
+        : 0;
       if (previousSession && previousSession.id !== session.id && audioRef.current) {
         writeListeningProgress(previousSession.id, audioRef.current.currentTime, false, true);
       }
@@ -281,7 +284,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       currentSessionRef.current = session;
       engagementRef.current = {
         sessionId: session.id,
-        previousMediaTime: 0,
+        previousMediaTime: resumeAt,
         listenedSeconds: 0,
         emitted: new Set<number>(),
       };
@@ -301,7 +304,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const audio = audioRef.current;
         attachStream(audio, nextGrant.stream_url);
         audio.ontimeupdate = updatePlaybackProgress;
-        audio.onloadedmetadata = updatePlaybackProgress;
+        const restorePosition = () => {
+          if (requestId !== grantRequestRef.current || currentSessionRef.current?.id !== session.id) {
+            return;
+          }
+          try {
+            audio.currentTime = resumeAt;
+          } catch {
+            // Metadata will provide another opportunity to restore the same-session position.
+          }
+        };
+        audio.onloadedmetadata = () => {
+          restorePosition();
+          updatePlaybackProgress();
+          if (requestId === grantRequestRef.current && currentSessionRef.current?.id === session.id) {
+            audio.onloadedmetadata = updatePlaybackProgress;
+          }
+        };
         audio.ondurationchange = updatePlaybackProgress;
         audio.onended = () => {
           const completedSession = currentSessionRef.current;
@@ -322,6 +341,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         audio.onstalled = () => dispatch({ type: "stalled" });
         audio.onplaying = () => dispatch({ type: "playing" });
         scheduleGrantRefresh(session, nextGrant);
+        restorePosition();
         await audio.play();
         if (requestId !== grantRequestRef.current || currentSessionRef.current?.id !== session.id) {
           return false;

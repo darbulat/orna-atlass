@@ -47,7 +47,10 @@ async function installFakeAudio(page: Page) {
       }
 
       removeAttribute(name: string) {
-        if (name === "src") this.src = "";
+        if (name === "src") {
+          this.src = "";
+          this.currentTime = 0;
+        }
       }
     }
 
@@ -128,25 +131,42 @@ test("mobile global player stays compact and exposes details on demand", async (
 test("global player refreshes an expiring grant before resuming and surfaces errors while collapsed", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installFakeAudio(page);
+  await page.addInitScript(() => {
+    const realNow = Date.now.bind(Date);
+    let offset = 0;
+    Date.now = () => realNow() + offset;
+    (window as typeof window & { __advanceDateNow?: (milliseconds: number) => void }).__advanceDateNow = (milliseconds) => {
+      offset += milliseconds;
+    };
+  });
   let grantRequests = 0;
   await page.route("**/playback-grants", async (route) => {
     grantRequests += 1;
     const nextGrant = grant(firstSessionId, grantRequests);
-    nextGrant.expires_at = new Date(Date.now() + (grantRequests === 1 ? 29_000 : 60_000)).toISOString();
+    nextGrant.expires_at = new Date(Date.now() + 60_000).toISOString();
+    nextGrant.refresh_after_seconds = 60;
     await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(nextGrant) });
   });
 
   await page.goto("/sessions/first-session");
   await page.getByRole("button", { name: "Play session" }).click();
+  await page.getByRole("slider", { name: "Playback position" }).press("ArrowRight");
+  await expect(page.getByRole("slider", { name: "Playback position" })).toHaveAttribute("aria-valuenow", "5");
   await page.getByRole("link", { name: "Back to atlas" }).click();
 
   const player = page.getByRole("complementary", { name: "Global audio player" });
   await player.getByRole("button", { name: "Pause playback" }).click();
+  await page.evaluate(() => {
+    (window as typeof window & { __advanceDateNow?: (milliseconds: number) => void }).__advanceDateNow?.(31_000);
+  });
   await player.getByRole("button", { name: "Resume playback" }).click();
   await expect.poll(() => grantRequests).toBe(2);
   await expect.poll(async () => page.evaluate(() => (
     window as typeof window & { __lastAudio?: { src: string } }
   ).__lastAudio?.src ?? "")).toContain(`/test-stream/${firstSessionId}/2.mp3`);
+  await expect.poll(async () => page.evaluate(() => (
+    window as typeof window & { __lastAudio?: { currentTime: number } }
+  ).__lastAudio?.currentTime ?? -1)).toBe(5);
 
   await page.evaluate(() => {
     const audio = (window as typeof window & {

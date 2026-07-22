@@ -607,6 +607,39 @@ test("enter recenters the resized globe on the selected location at a closer zoo
   })).toEqual({ sidePanelVisible: true, canvasMatchesHost: true });
 });
 
+test("an empty time filter clears the unrelated selected location", async ({ page }) => {
+  await page.goto("/atlas");
+  await page.getByRole("tab", { name: "Day", exact: true }).click();
+
+  await expect(page.getByText("No locations in this time window.")).toBeVisible();
+  await expect(page.locator(".dawn-copy").getByText("No location selected", { exact: true })).toBeVisible();
+  await expect(page.locator(".dawn-copy").getByRole("button", { name: "Listen", exact: true })).toBeDisabled();
+  await expect(page.locator(".dawn-copy").getByText("Pine Marsh", { exact: true })).toHaveCount(0);
+});
+
+test("session search synchronizes the atlas to the result location", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  expect((await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=multiple-dawn`)).ok()).toBeTruthy();
+  expect((await request.post(`${mockApiUrl}/__e2e/search-response?mode=session-pine-marsh`)).ok()).toBeTruthy();
+  await page.goto("/atlas?location=ridge-dawn");
+  await expect(page.locator(".dawn-copy").getByText("Ridge Dawn", { exact: true })).toBeVisible();
+
+  await page.locator("#atlas-search").fill("Second");
+  await page.getByRole("button", { name: /Second Session/ }).click();
+
+  await expect(page.locator(".dawn-copy").getByText("Pine Marsh", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Session player" })).toBeVisible();
+});
+
+test("requested atlas location selects its actual listening mode", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  expect((await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=carousel-boundaries`)).ok()).toBeTruthy();
+  await page.goto("/atlas?location=ridge-dawn");
+
+  await expect(page.getByRole("tab", { name: "Night", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".dawn-copy").getByText("Ridge Dawn", { exact: true })).toBeVisible();
+});
+
 test("membership route exposes login and registration controls", async ({ page }) => {
   await page.goto("/membership");
   await expect(

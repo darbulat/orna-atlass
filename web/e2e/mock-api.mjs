@@ -255,7 +255,7 @@ const server = createServer((request, response) => {
   }
   if (request.method === "POST" && path === "/__e2e/search-response") {
     const mode = url.searchParams.get("mode");
-    if (!["hidden-public", "next-only-dawn"].includes(mode)) {
+    if (!["hidden-public", "next-only-dawn", "session-pine-marsh"].includes(mode)) {
       send(response, 400, { detail: "Unsupported search response mode" });
       return;
     }
@@ -531,6 +531,21 @@ const server = createServer((request, response) => {
         longitude: ridgePoint.longitude,
         session_slug: null,
         atlas_point: ridgePoint,
+      }]);
+      return;
+    }
+    if (responseMode === "session-pine-marsh") {
+      send(response, 200, [{
+        type: "session",
+        id: secondSessionId,
+        slug: atlasPoint.slug,
+        title: "Second Session",
+        subtitle: atlasPoint.name,
+        habitat: atlasPoint.habitat,
+        latitude: atlasPoint.latitude,
+        longitude: atlasPoint.longitude,
+        session_slug: "second-session",
+        atlas_point: atlasPoint,
       }]);
       return;
     }
