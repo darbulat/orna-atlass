@@ -6340,10 +6340,9 @@
           {
             "in": "query",
             "name": "token",
-            "required": true,
+            "required": false,
             "schema": {
-              "maxLength": 256,
-              "minLength": 32,
+              "default": "",
               "title": "Token",
               "type": "string"
             }

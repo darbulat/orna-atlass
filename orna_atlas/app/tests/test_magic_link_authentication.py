@@ -1,6 +1,8 @@
+import inspect
 import json
 import ssl
 from http.cookies import SimpleCookie
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
@@ -48,6 +50,60 @@ def settings(**overrides: object) -> Settings:
     }
     values.update(overrides)
     return Settings.model_validate(values)
+
+
+def test_magic_link_consume_query_does_not_preempt_terminal_redirect() -> None:
+    query = inspect.signature(router.consume_magic_link).parameters["token"].default
+
+    assert query.default == ""
+    assert not hasattr(query, "min_length")
+    assert not hasattr(query, "max_length")
+
+
+@pytest.mark.asyncio
+async def test_malformed_magic_link_uses_terminal_redirect_and_clears_cookie(monkeypatch) -> None:
+    configured = settings()
+    monkeypatch.setattr(router, "get_settings", lambda: configured)
+    consume = AsyncMock()
+    monkeypatch.setattr(router.magic, "consume_magic_link", consume)
+
+    response = await router.consume_magic_link(
+        Request({"type": "http", "headers": []}), "", AsyncMock()
+    )
+
+    assert response.status_code == 303
+    assert parse_qs(urlparse(response.headers["location"]).query) == {
+        "magic": ["error"],
+        "magic_error": ["invalid_or_expired"],
+    }
+    assert f"{magic.MAGIC_LINK_BROWSER_COOKIE}=" in response.headers["set-cookie"]
+    assert "Max-Age=0" in response.headers["set-cookie"]
+    consume.assert_not_awaited()
+
+
+@pytest.mark.parametrize(("created", "outcome"), [(True, "signup"), (False, "login")])
+@pytest.mark.asyncio
+async def test_magic_link_redirect_distinguishes_signup_from_login(
+    monkeypatch, created: bool, outcome: str
+) -> None:
+    configured = settings()
+    monkeypatch.setattr(router, "get_settings", lambda: configured)
+    monkeypatch.setattr(
+        router.magic,
+        "consume_magic_link",
+        AsyncMock(return_value={"email": "listener@example.com", "return_to": "/membership"}),
+    )
+    monkeypatch.setattr(
+        router.service,
+        "authenticate_magic_link",
+        AsyncMock(return_value=(SimpleNamespace(access_token="access"), "refresh", created)),
+    )
+
+    response = await router.consume_magic_link(
+        Request({"type": "http", "headers": []}), "x" * 32, AsyncMock()
+    )
+
+    assert parse_qs(urlparse(response.headers["location"]).query)["magic"] == [outcome]
 
 
 def test_magic_link_return_path_is_internal_only() -> None:

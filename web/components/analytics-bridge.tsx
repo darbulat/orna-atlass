@@ -76,10 +76,13 @@ export function AnalyticsBridge() {
     window.addEventListener("orna:analytics", persistEvent);
 
     const params = new URLSearchParams(window.location.search);
-    if (params.get("magic") === "success") {
+    const magicOutcome = params.get("magic");
+    if (magicOutcome === "signup") {
       persistEvent(new CustomEvent("orna:analytics", {
         detail: { name: "signup_completed", placement: "membership_form" },
       }));
+    }
+    if (magicOutcome === "signup" || magicOutcome === "login") {
       params.delete("magic");
       params.delete("magic_error");
       const query = params.toString();

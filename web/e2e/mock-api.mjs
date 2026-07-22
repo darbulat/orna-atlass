@@ -199,6 +199,10 @@ const server = createServer((request, response) => {
     send(response, 200, { status: "ok" });
     return;
   }
+  if (request.method === "POST" && path === "/api/v1/auth/refresh") {
+    send(response, 401, { detail: "Authentication is required" });
+    return;
+  }
   if (request.method === "POST" && path === "/__e2e/atlas-response") {
     const mode = url.searchParams.get("mode");
     if (!["valid-optional-point", "valid-boundary-fields", "locked-point", "session-navigation", "carousel-boundaries", "dawn-only-location", "multiple-dawn", "next-only-dawn", "next-only-dawn-list", "dawn-refresh-location", "invalid-date", "malformed-atlas", "malformed-point", "malformed-dawn", "malformed-dawn-refresh", "unavailable"].includes(mode)) {
@@ -539,6 +543,10 @@ const server = createServer((request, response) => {
   }
   const sessionMatch = path.match(/^\/api\/v1\/sessions\/([^/]+)$/);
   if (request.method === "GET" && sessionMatch) {
+    if (decodeURIComponent(sessionMatch[1]) === "members-cove-long-form") {
+      send(response, 404, { detail: "Session not found" });
+      return;
+    }
     const selected = sessions.get(decodeURIComponent(sessionMatch[1]));
     send(response, selected ? 200 : 404, selected ?? { detail: "Session not found" });
     return;

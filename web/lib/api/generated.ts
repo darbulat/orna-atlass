@@ -3265,8 +3265,8 @@ export interface operations {
     };
     consume_magic_link_api_v1_auth_magic_link_consume_get: {
         parameters: {
-            query: {
-                token: string;
+            query?: {
+                token?: string;
             };
             header?: never;
             path?: never;

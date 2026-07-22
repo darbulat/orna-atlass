@@ -7,6 +7,7 @@ from pydantic import (
     ConfigDict,
     Field,
     HttpUrl,
+    TypeAdapter,
     ValidationError,
     field_validator,
     model_validator,
@@ -32,10 +33,17 @@ def _bounded_metadata_number(
     return number if minimum <= number <= maximum else None
 
 
+_HTTP_URL_ADAPTER = TypeAdapter(HttpUrl)
+
+
 def _safe_photo_url(value: object) -> str | None:
     if not isinstance(value, str) or len(value) > 2048:
         return None
-    parsed = urlsplit(value)
+    try:
+        parsed = urlsplit(value)
+        _HTTP_URL_ADAPTER.validate_python(value)
+    except (TypeError, ValidationError, ValueError):
+        return None
     if (
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc

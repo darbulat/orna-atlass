@@ -2,11 +2,12 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from orna_atlas.app.main import app
 from orna_atlas.app.modules.sessions import service
-from orna_atlas.app.modules.sessions.schemas import SessionDetailRead
+from orna_atlas.app.modules.sessions.schemas import SessionDetailRead, _safe_photo_url
 
 
 def test_sprint3_public_audio_routes_are_registered() -> None:
@@ -101,6 +102,14 @@ def test_session_detail_schema_contains_location_integrity_and_safe_media() -> N
     assert detail["waveform"]["peaks"] == [0.1, 0.5]
     assert detail["annotations"][0]["label"] == "First bird call"
     assert "storage_key" not in detail["media_assets"][0]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["https://example.com:bad/x", "https://host name.example/x"],
+)
+def test_session_photo_url_drops_malformed_http_urls(value: str) -> None:
+    assert _safe_photo_url(value) is None
 
 
 def test_playback_grant_schema_documents_protected_lifecycle() -> None:

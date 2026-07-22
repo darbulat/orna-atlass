@@ -748,6 +748,34 @@ test("members-only atlas point is visibly locked and opens a truthful soft paywa
   ))).toContain("paywall_dismissed");
 });
 
+test("entitled atlas listener can open a members-only session", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=locked-point`);
+  expect(control.ok()).toBeTruthy();
+  const publicSession = await (await request.get(`${mockApiUrl}/api/v1/sessions/first-session`)).json();
+  await page.route("**/api/v1/sessions/members-cove-long-form", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ...publicSession,
+      id: "20000000-0000-4000-8000-000000000011",
+      slug: "members-cove-long-form",
+      title: "Members Cove Long Form",
+      access_level: "members_only",
+      location: { ...publicSession.location, name: "Members Cove", slug: "members-cove" },
+    }),
+  }));
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Night" }).click();
+  await page.locator(".location-card", { hasText: "Members Cove" }).click();
+
+  await expect(
+    page.getByRole("region", { name: "Session player" }).getByRole("heading", { name: "Members Cove" }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog", { name: /Members-only soundscape/i })).toHaveCount(0);
+});
+
 test("globe exposes accessible bounded zoom and reset controls", async ({ page, request }) => {
   if (!process.env.E2E_API_URL) {
     const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=valid-optional-point`);
@@ -872,6 +900,75 @@ test("password sign-in clears anonymous account cache and restores the session r
   await expect(page.getByRole("button", { name: "Save recording" })).toBeEnabled();
 });
 
+test("account library refreshes an expired access cookie before becoming anonymous", async ({ page }) => {
+  let favoriteReads = 0;
+  let refreshes = 0;
+  await page.route("**/api/v1/users/me/favorites*", async (route) => {
+    favoriteReads += 1;
+    if (favoriteReads === 1) {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Expired" }),
+      });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await page.route("**/api/v1/auth/refresh", async (route) => {
+    refreshes += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "refreshed",
+        token_type: "bearer",
+        expires_at: "2026-07-23T00:00:00Z",
+      }),
+    });
+  });
+
+  await page.goto("/sessions/first-session");
+
+  await expect.poll(() => refreshes).toBe(1);
+  await expect.poll(() => favoriteReads).toBeGreaterThanOrEqual(2);
+  await expect(page.getByRole("button", { name: "Save recording" })).toBeEnabled();
+});
+
+test("parallel library reads share one refresh-token rotation", async ({ page }) => {
+  let refreshes = 0;
+  let favoritesReads = 0;
+  let historyReads = 0;
+  await page.route("**/api/v1/auth/refresh", async (route) => {
+    refreshes += 1;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "renewed" }) });
+  });
+  await page.route("**/api/v1/users/me/favorites**", (route) => {
+    favoritesReads += 1;
+    return route.fulfill({
+      status: favoritesReads === 1 ? 401 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(favoritesReads === 1 ? { detail: "Access token expired" } : []),
+    });
+  });
+  await page.route("**/api/v1/users/me/listening-history**", (route) => {
+    historyReads += 1;
+    return route.fulfill({
+      status: historyReads === 1 ? 401 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(historyReads === 1 ? { detail: "Access token expired" } : []),
+    });
+  });
+
+  await page.goto("/library");
+
+  await expect(page.getByRole("heading", { name: "Your Library" })).toBeVisible();
+  await expect.poll(() => refreshes).toBe(1);
+  await expect.poll(() => favoritesReads).toBe(2);
+  await expect.poll(() => historyReads).toBe(2);
+});
+
 test("email magic-link signup preserves the internal listening return path", async ({ page }) => {
   await page.goto("/membership?mode=register&returnTo=%2Fsessions%2Ffirst-session");
   await page.getByLabel("Email address", { exact: true }).fill("listener@example.com");
@@ -887,17 +984,30 @@ test("email magic-link signup preserves the internal listening return path", asy
   );
 });
 
-test("magic-link completion is recorded after returning to a session", async ({ page }) => {
+test("magic-link signup completion is recorded after returning to a session", async ({ page }) => {
   const analytics: Array<Record<string, unknown>> = [];
   await page.route("**/api/v1/analytics/events", async (route) => {
     analytics.push(route.request().postDataJSON());
     await route.fulfill({ status: 202, headers: { "Content-Type": "application/json" }, body: "{}" });
   });
-  await page.goto("/sessions/first-session?magic=success");
+  await page.goto("/sessions/first-session?magic=signup");
   await expect.poll(() => analytics).toEqual([
     { name: "signup_completed", placement: "membership_form" },
   ]);
   await expect(page).toHaveURL(/\/sessions\/first-session$/);
+});
+
+test("magic-link login is not counted as a signup", async ({ page }) => {
+  const analytics: Array<Record<string, unknown>> = [];
+  await page.route("**/api/v1/analytics/events", async (route) => {
+    analytics.push(route.request().postDataJSON());
+    await route.fulfill({ status: 202, headers: { "Content-Type": "application/json" }, body: "{}" });
+  });
+
+  await page.goto("/sessions/first-session?magic=login");
+
+  await expect(page).toHaveURL(/\/sessions\/first-session$/);
+  expect(analytics).toEqual([]);
 });
 
 test("atlas session overlay keeps globe context across timeline, next, close, and mini-player", async ({ page, request }) => {

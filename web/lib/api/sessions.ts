@@ -252,6 +252,7 @@ export function fetchSessionDetail(
 ): Promise<SessionDetail> {
   return fetchJson<SessionDetail>(apiUrl(`/api/v1/sessions/${slug}`), {
     cache: "no-store",
+    credentials: "include",
     headers: { Accept: "application/json", ...forwardedHeaders },
   });
 }

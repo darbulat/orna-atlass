@@ -72,12 +72,14 @@ def _frontend_redirect(return_to: str, *, provider: str, error: str | None = Non
     )
 
 
-def _magic_frontend_redirect(return_to: str, *, error: str | None = None) -> str:
+def _magic_frontend_redirect(
+    return_to: str, *, outcome: str = "login", error: str | None = None
+) -> str:
     settings = get_settings()
     configured = urlsplit(settings.oauth_frontend_url)
     target = urlsplit(magic.safe_return_to(return_to))
     query = dict(parse_qsl(target.query, keep_blank_values=True))
-    query["magic"] = "error" if error else "success"
+    query["magic"] = "error" if error else outcome
     if error:
         query["magic_error"] = error
     return urlunsplit(
@@ -170,10 +172,17 @@ def _magic_unavailable_response(settings: Settings) -> RedirectResponse:
 )
 async def consume_magic_link(
     request: Request,
-    token: str = Query(min_length=32, max_length=256),
+    token: str = Query(default=""),
     session: AsyncSession = Depends(get_db_session),
 ) -> RedirectResponse:
     settings = get_settings()
+    if not 32 <= len(token) <= 256:
+        response = RedirectResponse(
+            _magic_frontend_redirect("/membership", error="invalid_or_expired"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+        _clear_magic_browser_cookie(response, settings)
+        return response
     try:
         claims = await magic.consume_magic_link(
             token, request.cookies.get(magic.MAGIC_LINK_BROWSER_COOKIE)
@@ -185,9 +194,13 @@ async def consume_magic_link(
             )
             _clear_magic_browser_cookie(response, settings)
             return response
-        payload, refresh_token = await service.authenticate_magic_link(session, claims["email"])
+        payload, refresh_token, created = await service.authenticate_magic_link(
+            session, claims["email"]
+        )
         response = RedirectResponse(
-            _magic_frontend_redirect(claims["return_to"]),
+            _magic_frontend_redirect(
+                claims["return_to"], outcome="signup" if created else "login"
+            ),
             status_code=status.HTTP_303_SEE_OTHER,
         )
         _set_auth_cookies(response, payload, refresh_token)

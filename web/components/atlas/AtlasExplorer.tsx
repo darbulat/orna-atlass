@@ -665,18 +665,6 @@ export function AtlasExplorer({
         modeLocations.findIndex((candidate) => candidate.slug === location.slug),
       );
       setCarouselStart(Math.min(index, Math.max(0, modeLocations.length - locationCardCount)));
-      if (isLockedPoint(location)) {
-        paywallTriggerRef.current = document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-        setIsSoftPaywallOpen(true);
-        for (const name of ["locked_point_hit", "paywall_shown"]) {
-          window.dispatchEvent(new CustomEvent("orna:analytics", {
-            detail: { name, placement: "soft_paywall" },
-          }));
-        }
-        return;
-      }
       const sessionSlug = detail?.sessionSlug ?? location.latest_session?.slug;
       if (!sessionSlug) return;
       setGlobeFocusRequest((current) => current + 1);
@@ -890,6 +878,22 @@ export function AtlasExplorer({
       .catch((error) => {
         if (!isCurrent) return;
         const status = error instanceof ApiError ? error.status : null;
+        const lockedLocation = allLocations.find(
+          (location) => location.latest_session?.slug === sidePanelSessionSlug,
+        );
+        if ((status === 403 || status === 404) && isLockedPoint(lockedLocation)) {
+          paywallTriggerRef.current = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+          setIsSidePanelOpen(false);
+          setIsSoftPaywallOpen(true);
+          for (const name of ["locked_point_hit", "paywall_shown"]) {
+            window.dispatchEvent(new CustomEvent("orna:analytics", {
+              detail: { name, placement: "soft_paywall" },
+            }));
+          }
+          return;
+        }
         setSidePanelState(
           status === 404
             ? "not_found"
@@ -905,7 +909,7 @@ export function AtlasExplorer({
     return () => {
       isCurrent = false;
     };
-  }, [isSidePanelOpen, play, sidePanelSession, sidePanelSessionSlug]);
+  }, [allLocations, isSidePanelOpen, play, sidePanelSession, sidePanelSessionSlug]);
 
   function revealLocationInCarousel(slug: string) {
     if (locations.length <= locationCardCount) {
@@ -1059,23 +1063,7 @@ export function AtlasExplorer({
     );
   }
 
-  function showLockedPaywall() {
-    paywallTriggerRef.current = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-    setIsSoftPaywallOpen(true);
-    for (const name of ["locked_point_hit", "paywall_shown"]) {
-      window.dispatchEvent(new CustomEvent("orna:analytics", {
-        detail: { name, placement: "soft_paywall" },
-      }));
-    }
-  }
-
   function openLocationSession(location: AtlasPoint) {
-    if (isLockedPoint(location)) {
-      showLockedPaywall();
-      return;
-    }
     const sessionSlug = location.latest_session?.slug;
     if (!sessionSlug) return;
     setGlobeFocusRequest((current) => current + 1);
@@ -1085,10 +1073,6 @@ export function AtlasExplorer({
 
   function openSelectedSession() {
     if (!selectedSessionSlug) {
-      return;
-    }
-    if (isLockedPoint(selected)) {
-      showLockedPaywall();
       return;
     }
     setGlobeFocusRequest((current) => current + 1);

@@ -7,16 +7,43 @@ export type Favorite = components["schemas"]["FavoriteRead"];
 export type ListeningHistoryItem = components["schemas"]["ListeningHistoryRead"];
 export type ListeningProgressUpdate = components["schemas"]["ListeningProgressUpdate"];
 
+let refreshPromise: Promise<void> | null = null;
+
+function refreshAuthentication(): Promise<void> {
+  if (!refreshPromise) {
+    refreshPromise = fetchJson<unknown>(apiUrl("/api/v1/auth/refresh"), {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    }).then(() => undefined).finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
+  const perform = () => fetchJson<T>(apiUrl(path), {
+    ...init,
+    credentials: "include",
+    cache: "no-store",
+    headers,
+  });
+
   try {
-    const response = await fetchJson<T>(apiUrl(path), {
-      ...init,
-      credentials: "include",
-      cache: "no-store",
-      headers,
-    });
+    const response = await perform();
+    markAccountAuthenticated();
+    return response;
+  } catch (error) {
+    if (!isApiError(error) || error.status !== 401) throw error;
+  }
+
+  try {
+    await refreshAuthentication();
+    const response = await perform();
     markAccountAuthenticated();
     return response;
   } catch (error) {
