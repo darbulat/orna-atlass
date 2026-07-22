@@ -397,6 +397,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/magic-link/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Consume Magic Link */
+        get: operations["consume_magic_link_api_v1_auth_magic_link_consume_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/magic-link/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Magic Link */
+        post: operations["request_magic_link_api_v1_auth_magic_link_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/oauth/apple/callback": {
         parameters: {
             query?: never;
@@ -754,6 +788,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/me/favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Favorites */
+        get: operations["read_favorites_api_v1_users_me_favorites_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/favorites/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Favorite */
+        put: operations["put_favorite_api_v1_users_me_favorites__session_id__put"];
+        post?: never;
+        /** Delete Favorite */
+        delete: operations["delete_favorite_api_v1_users_me_favorites__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/listening-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Listening History */
+        get: operations["read_listening_history_api_v1_users_me_listening_history_get"];
+        put?: never;
+        post?: never;
+        /** Delete Listening History */
+        delete: operations["delete_listening_history_api_v1_users_me_listening_history_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/listening-history/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Listening Progress */
+        put: operations["put_listening_progress_api_v1_users_me_listening_history__session_id__put"];
+        post?: never;
+        /** Delete Listening History Item */
+        delete: operations["delete_listening_history_item_api_v1_users_me_listening_history__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -958,6 +1063,11 @@ export interface components {
         };
         /** AtlasSessionSummary */
         AtlasSessionSummary: {
+            /**
+             * Access Level
+             * @enum {string}
+             */
+            access_level: "public" | "members_only";
             /** Duration Seconds */
             duration_seconds?: number | null;
             /**
@@ -1172,12 +1282,12 @@ export interface components {
          * ConversionEventName
          * @enum {string}
          */
-        ConversionEventName: "sample_play_started" | "listening_30_seconds" | "listening_5_minutes" | "registration_completed" | "hero_cta_clicked" | "listening_path_selected" | "membership_cta_clicked" | "final_cta_clicked";
+        ConversionEventName: "globe_view" | "session_preview_start" | "session_preview_second" | "locked_point_hit" | "paywall_shown" | "signup_started" | "signup_completed" | "member_session_play" | "subscription_intent" | "collections_view" | "search_opened" | "login_opened" | "membership_cta_click" | "marker_click" | "reset_view_click" | "time_filter_dawn" | "time_filter_day" | "time_filter_dusk" | "time_filter_night" | "carousel_scroll" | "location_search" | "card_inline_play" | "card_open" | "see_all_click" | "player_play" | "player_pause" | "player_seek" | "favorite_add" | "favorite_requires_login" | "player_next" | "player_prev" | "timeline_species_click" | "session_close" | "paywall_signup_click" | "paywall_learn_more" | "paywall_dismissed" | "signup_email_submit" | "membership_reserve_click" | "point_opened" | "play_started" | "favorite_clicked" | "lock_clicked" | "registration_started" | "membership_interest_submitted" | "sample_play_started" | "listening_30_seconds" | "listening_5_minutes" | "registration_completed" | "hero_cta_clicked" | "listening_path_selected" | "membership_cta_clicked" | "final_cta_clicked";
         /**
          * ConversionPlacement
          * @enum {string}
          */
-        ConversionPlacement: "global_player" | "hero_sample" | "hero_primary" | "hero_secondary" | "intent_focus" | "intent_restore" | "intent_unwind" | "intent_explore" | "pricing_card" | "footer_atlas" | "footer_membership" | "membership_form";
+        ConversionPlacement: "globe" | "globe_controls" | "time_filter" | "location_search" | "location_carousel" | "popular_locations" | "collections" | "globe_marker" | "location_card" | "session_overlay" | "soft_paywall" | "header" | "global_player" | "hero_sample" | "hero_primary" | "hero_secondary" | "intent_focus" | "intent_restore" | "intent_unwind" | "intent_explore" | "pricing_card" | "footer_atlas" | "footer_membership" | "membership_form";
         /**
          * CoordinateVisibility
          * @enum {string}
@@ -1262,6 +1372,15 @@ export interface components {
              */
             status: "ok" | "error";
         };
+        /** FavoriteRead */
+        FavoriteRead: {
+            /**
+             * Favorited At
+             * Format: date-time
+             */
+            favorited_at: string;
+            session: components["schemas"]["LibrarySessionSummary"];
+        };
         /** FeaturedSessionRead */
         FeaturedSessionRead: {
             /** Description */
@@ -1312,6 +1431,72 @@ export interface components {
          * @enum {string}
          */
         JobType: "audio_pipeline";
+        /** LibraryLocationSummary */
+        LibraryLocationSummary: {
+            /** Habitat */
+            habitat?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Region */
+            region?: string | null;
+            /** Slug */
+            slug: string;
+        };
+        /** LibrarySessionSummary */
+        LibrarySessionSummary: {
+            /** Access Level */
+            access_level: string;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            location: components["schemas"]["LibraryLocationSummary"];
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+        };
+        /** ListeningHistoryRead */
+        ListeningHistoryRead: {
+            /** Completed At */
+            completed_at?: string | null;
+            /**
+             * First Listened At
+             * Format: date-time
+             */
+            first_listened_at: string;
+            /**
+             * Last Listened At
+             * Format: date-time
+             */
+            last_listened_at: string;
+            /** Last Position Seconds */
+            last_position_seconds: number;
+            session: components["schemas"]["LibrarySessionSummary"];
+        };
+        /** ListeningProgressUpdate */
+        ListeningProgressUpdate: {
+            /**
+             * Completed
+             * @default false
+             */
+            completed: boolean;
+            /** Position Seconds */
+            position_seconds: number;
+        };
         /** LocationCreate */
         LocationCreate: {
             /** @default exact_public */
@@ -1429,6 +1614,24 @@ export interface components {
              * @default logged_out
              */
             status: string;
+        };
+        /** MagicLinkAccepted */
+        MagicLinkAccepted: {
+            /**
+             * Accepted
+             * @default true
+             */
+            accepted: boolean;
+        };
+        /** MagicLinkRequest */
+        MagicLinkRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Return To */
+            return_to?: string | null;
         };
         /** MediaAssetCreate */
         MediaAssetCreate: {
@@ -1916,6 +2119,8 @@ export interface components {
         /** SessionDetailRead */
         SessionDetailRead: {
             access_level: components["schemas"]["SessionAccess"];
+            /** Altitude Meters */
+            altitude_meters?: number | null;
             /** Annotations */
             annotations?: components["schemas"]["PublicSessionAnnotationRead"][];
             bird_parts?: components["schemas"]["BirdPartsResponse"] | null;
@@ -1925,6 +2130,8 @@ export interface components {
             duration_seconds?: number | null;
             /** Featured Sort Order */
             featured_sort_order?: number | null;
+            /** Humidity Percent */
+            humidity_percent?: number | null;
             /**
              * Id
              * Format: uuid
@@ -1943,6 +2150,10 @@ export interface components {
             location_id: string;
             /** Media Assets */
             media_assets?: components["schemas"]["PublicMediaAssetRead"][];
+            /** Moon Phase */
+            moon_phase?: string | null;
+            /** Photo Url */
+            photo_url?: string | null;
             /** @default pending */
             processing_status: components["schemas"]["ProcessingStatus"];
             /** @default published */
@@ -1957,11 +2168,15 @@ export interface components {
             recording_integrity?: components["schemas"]["RecordingIntegrityRead"];
             /** Slug */
             slug: string;
+            /** Temperature Celsius */
+            temperature_celsius?: number | null;
             /** Title */
             title: string;
             waveform?: components["schemas"]["WaveformRead"];
             /** Weather */
             weather?: string | null;
+            /** Wind Speed Kph */
+            wind_speed_kph?: number | null;
         };
         /** SessionRead */
         SessionRead: {
@@ -3048,6 +3263,68 @@ export interface operations {
             };
         };
     };
+    consume_magic_link_api_v1_auth_magic_link_consume_get: {
+        parameters: {
+            query?: {
+                token?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Consume one-time link */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_magic_link_api_v1_auth_magic_link_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MagicLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MagicLinkAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     apple_oauth_callback_api_v1_auth_oauth_apple_callback_post: {
         parameters: {
             query?: never;
@@ -3698,6 +3975,298 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UserRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_favorites_api_v1_users_me_favorites_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FavoriteRead"][];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_favorite_api_v1_users_me_favorites__session_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FavoriteRead"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_favorite_api_v1_users_me_favorites__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_listening_history_api_v1_users_me_listening_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListeningHistoryRead"][];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_listening_history_api_v1_users_me_listening_history_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_listening_progress_api_v1_users_me_listening_history__session_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ListeningProgressUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListeningHistoryRead"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_listening_history_item_api_v1_users_me_listening_history__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -7,7 +7,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from orna_atlas.app.core.logging import JsonFormatter, RequestLoggingMiddleware
@@ -30,12 +30,13 @@ def test_request_middleware_preserves_valid_correlation_id(caplog) -> None:
     app.add_middleware(RequestLoggingMiddleware)
 
     @app.get("/probe")
-    async def probe() -> dict[str, bool]:
-        return {"ok": True}
+    async def probe(request: Request) -> dict[str, str]:
+        return {"received_at": request.state.received_at.isoformat()}
 
     with caplog.at_level(logging.INFO, logger="orna_atlas.request"):
         response = TestClient(app).get("/probe", headers={"X-Request-ID": "trace-123"})
     assert response.status_code == 200
+    assert response.json()["received_at"].endswith("+00:00")
     assert response.headers["X-Request-ID"] == "trace-123"
     record = next(item for item in caplog.records if item.message == "request_complete")
     assert record.request_id == "trace-123"

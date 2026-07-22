@@ -158,6 +158,16 @@ class Settings(BaseSettings):
         default="http://localhost:3000/membership",
         validation_alias="OAUTH_FRONTEND_URL",
     )
+    magic_link_callback_url: str = Field(
+        default="http://localhost:8000/api/v1/auth/magic-link/consume",
+        validation_alias="MAGIC_LINK_CALLBACK_URL",
+    )
+    smtp_host: str | None = Field(default=None, validation_alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, ge=1, le=65535, validation_alias="SMTP_PORT")
+    smtp_username: str | None = Field(default=None, validation_alias="SMTP_USERNAME")
+    smtp_password: str | None = Field(default=None, validation_alias="SMTP_PASSWORD")
+    smtp_from_email: str | None = Field(default=None, validation_alias="SMTP_FROM_EMAIL")
+    smtp_starttls: bool = Field(default=True, validation_alias="SMTP_STARTTLS")
     google_client_id: str | None = Field(default=None, validation_alias="GOOGLE_CLIENT_ID")
     google_client_secret: str | None = Field(default=None, validation_alias="GOOGLE_CLIENT_SECRET")
     apple_client_id: str | None = Field(default=None, validation_alias="APPLE_CLIENT_ID")
@@ -244,7 +254,49 @@ class Settings(BaseSettings):
             raise ValueError(
                 "LOCAL_ADMIN_ENABLED may only be true in development or local environments"
             )
+        smtp_values = {
+            "SMTP_HOST": self.smtp_host,
+            "SMTP_FROM_EMAIL": self.smtp_from_email,
+            "SMTP_USERNAME": self.smtp_username,
+            "SMTP_PASSWORD": self.smtp_password,
+        }
+        for name, value in smtp_values.items():
+            if value is not None and not value.strip():
+                raise ValueError(f"{name} must not be blank")
+        smtp_fields_present = any(value is not None for value in smtp_values.values())
+        if smtp_fields_present and (not self.smtp_host or not self.smtp_from_email):
+            raise ValueError("SMTP_HOST and SMTP_FROM_EMAIL must be configured together")
+        if bool(self.smtp_username) != bool(self.smtp_password):
+            raise ValueError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
         if normalized_environment == "production":
+            if smtp_fields_present:
+                callback = urlsplit(self.magic_link_callback_url)
+                expected_path = f"{self.api_prefix}/auth/magic-link/consume"
+                if callback.scheme != "https" or not callback.netloc:
+                    raise ValueError(
+                        "MAGIC_LINK_CALLBACK_URL must be an absolute HTTPS URL in production"
+                    )
+                if callback.username is not None or callback.password is not None:
+                    raise ValueError("MAGIC_LINK_CALLBACK_URL must not contain credentials")
+                if not _is_valid_production_oauth_url(self.magic_link_callback_url):
+                    raise ValueError(
+                        "MAGIC_LINK_CALLBACK_URL must be a valid production HTTPS URL"
+                    )
+                if callback.query or callback.fragment:
+                    raise ValueError("MAGIC_LINK_CALLBACK_URL must not contain query or fragment")
+                if callback.path.rstrip("/") != expected_path:
+                    raise ValueError(
+                        f"MAGIC_LINK_CALLBACK_URL must use the callback path {expected_path}"
+                    )
+                if not self.smtp_starttls:
+                    raise ValueError(
+                        "SMTP_STARTTLS must be true for production magic-link delivery"
+                    )
+                if not _is_valid_production_oauth_url(self.oauth_frontend_url):
+                    raise ValueError(
+                        "OAUTH_FRONTEND_URL must be an absolute HTTPS URL without "
+                        "credentials, query, or fragment in production"
+                    )
             if oauth_enabled:
                 if not _is_valid_production_oauth_url(self.oauth_callback_base_url):
                     raise ValueError(

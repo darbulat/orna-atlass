@@ -1,5 +1,6 @@
 import type { components } from "./generated";
 import { ApiError, fetchJson } from "./client";
+import { refreshAuthentication } from "./auth-refresh";
 
 export type LocationRead = components["schemas"]["LocationRead"];
 export type MediaAssetRead = components["schemas"]["PublicMediaAssetRead"];
@@ -45,6 +46,18 @@ const serverApiBaseUrl = process.env.API_SERVER_URL
 export function apiUrl(path: string): string {
   const baseUrl = typeof window === "undefined" ? serverApiBaseUrl : browserApiBaseUrl;
   return `${baseUrl}${path}`;
+}
+
+function refreshAccessCookie(signal?: AbortSignal): Promise<void> {
+  return refreshAuthentication(() => fetchJson<components["schemas"]["TokenResponse"]>(
+    apiUrl("/api/v1/auth/refresh"),
+    {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    },
+  ), signal);
 }
 
 function invalidResponse(detail: string): ApiError {
@@ -105,6 +118,7 @@ function isAtlasSessionSummary(value: unknown): value is AtlasSessionSummary {
     && typeof value.slug === "string"
     && typeof value.title === "string"
     && isDateTime(value.recorded_at)
+    && (value.access_level === "public" || value.access_level === "members_only")
     && (value.duration_seconds === undefined
       || value.duration_seconds === null
       || Number.isInteger(value.duration_seconds));
@@ -245,14 +259,46 @@ export function fetchBirdParts(sessionId: string): Promise<BirdPartsResponse> {
   });
 }
 
-export function fetchSessionDetail(
+function requestSessionDetail(
   slug: string,
   forwardedHeaders: HeadersInit = {},
 ): Promise<SessionDetail> {
   return fetchJson<SessionDetail>(apiUrl(`/api/v1/sessions/${slug}`), {
     cache: "no-store",
+    credentials: "include",
     headers: { Accept: "application/json", ...forwardedHeaders },
   });
+}
+
+export async function fetchSessionDetail(
+  slug: string,
+  forwardedHeaders: HeadersInit = {},
+): Promise<SessionDetail> {
+  const requestDetail = () => requestSessionDetail(slug, forwardedHeaders);
+
+  try {
+    return await requestDetail();
+  } catch (error) {
+    if (typeof window === "undefined" || !(error instanceof ApiError) || error.status !== 401) {
+      throw error;
+    }
+  }
+
+  await refreshAccessCookie();
+  return requestDetail();
+}
+
+export async function recoverBrowserSessionDetail(slug: string): Promise<SessionDetail> {
+  try {
+    return await fetchSessionDetail(slug);
+  } catch (error) {
+    if (typeof window === "undefined" || !(error instanceof ApiError) || error.status !== 404) {
+      throw error;
+    }
+  }
+
+  await refreshAccessCookie();
+  return requestSessionDetail(slug);
 }
 
 export function fetchAtlasPoints(
@@ -321,11 +367,6 @@ export async function requestPlaybackGrant(sessionId: string, signal?: AbortSign
     }
   }
 
-  await fetchJson<components["schemas"]["TokenResponse"]>(apiUrl("/api/v1/auth/refresh"), {
-    method: "POST",
-    credentials: "include",
-    signal,
-    headers: { Accept: "application/json" },
-  });
+  await refreshAccessCookie(signal);
   return requestGrant();
 }

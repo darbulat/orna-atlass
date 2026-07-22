@@ -1,12 +1,11 @@
 import Link from "next/link";
 
+import { SiteHeader } from "../../components/site-header";
+
 export default function AboutPage() {
   return (
     <main className="about-page" id="main-content">
-      <nav className="site-nav about-nav" aria-label="About navigation">
-        <Link className="site-wordmark about-wordmark" href="/">ORNA Atlas</Link>
-        <Link href="/atlas">Enter the atlas <span aria-hidden="true">↗</span></Link>
-      </nav>
+      <SiteHeader className="about-nav" active="about" />
 
       <header className="about-hero">
         <p className="eyebrow">The sound of our planet</p>
@@ -47,8 +46,29 @@ export default function AboutPage() {
         </div>
       </section>
 
+      <section className="about-principles" aria-labelledby="listening-intentions-heading">
+        <p className="about-section-number">03 / Listen with intention</p>
+        <div>
+          <h2 id="listening-intentions-heading">Where can the sound take you?</h2>
+          <div className="about-principle-grid">
+            <article><span>Focus</span><h3>Stay with one landscape.</h3><p>Choose a long session with minimal human noise instead of switching between short tracks.</p></article>
+            <article><span>Restore</span><h3>Let natural time set the pace.</h3><p>Follow a real recording from darkness into first light, without edits that hurry the moment.</p></article>
+            <article><span>Explore</span><h3>Hear the context, not only the chorus.</h3><p>Travel by geography, habitat, season, and local time, with field context alongside the recording.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section className="about-manifesto" aria-labelledby="archive-commitments-heading">
+        <p className="about-section-number">04 / Archive commitments</p>
+        <div>
+          <h2 id="archive-commitments-heading">Real places. Unbroken time.</h2>
+          <p>Every public catalogue count is drawn from the live archive. Infrastructure failure never produces an invented recording or fallback result.</p>
+          <p>Automated analysis may annotate bird activity, but ORNA Atlas does not generate the soundscape. Sensitive coordinates are generalized or withheld.</p>
+        </div>
+      </section>
+
       <section className="about-closing" aria-labelledby="closing-heading">
-        <p className="about-section-number">03 / Begin</p>
+        <p className="about-section-number">05 / Begin</p>
         <h2 id="closing-heading">Somewhere on Earth,<br />a chorus is beginning.</h2>
         <Link className="about-enter" href="/atlas">Enter ORNA Atlas <span aria-hidden="true">→</span></Link>
       </section>

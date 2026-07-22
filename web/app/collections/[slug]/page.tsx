@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { SiteHeader } from "../../../components/site-header";
 import { ApiError, apiErrorMessage } from "../../../lib/api/client";
 import { fetchCollectionDetail, type CollectionDetail } from "../../../lib/api/collections";
 
@@ -14,6 +15,7 @@ export default async function CollectionPage({ params }: { params: Promise<{ slu
     const notFound = error instanceof ApiError && error.status === 404;
     return (
       <main className="shell" id="main-content">
+        <SiteHeader active="collections" />
         <section className="panel unavailable-panel" role={notFound ? "status" : "alert"}>
           <p className="eyebrow">Collection</p>
           <h1>{notFound ? "Collection not found" : "Collection unavailable"}</h1>
@@ -30,6 +32,7 @@ export default async function CollectionPage({ params }: { params: Promise<{ slu
 
   return (
     <main className="shell collection-shell" id="main-content">
+      <SiteHeader active="collections" />
       <section className="session-hero">
         <p className="eyebrow">Collection</p>
         <h1>{collection.title}</h1>

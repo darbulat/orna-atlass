@@ -102,20 +102,23 @@ def _dawn_candidate_limit(limit: int) -> int:
     )
 
 
-def point_from_location(location: Location) -> AtlasPoint | None:
+def point_from_location(location: Location, *, include_locked: bool = False) -> AtlasPoint | None:
     if location.latitude is None or location.longitude is None:
         return None
-    public_sessions = sorted(
+    discoverable_sessions = sorted(
         (
             session
             for session in location.sessions
-            if session.access_level == "public"
+            if session.access_level in ({"public", "members_only"} if include_locked else {"public"})
             and getattr(session, "publication_status", "published") == "published"
         ),
         key=lambda item: item.recorded_at,
         reverse=True,
     )
-    latest = public_sessions[0] if public_sessions else None
+    latest = next(
+        (session for session in discoverable_sessions if session.access_level == "public"),
+        discoverable_sessions[0] if discoverable_sessions else None,
+    )
     return AtlasPoint(
         id=location.id,
         slug=location.slug,
@@ -131,7 +134,7 @@ def point_from_location(location: Location) -> AtlasPoint | None:
             getattr(location, "coordinate_visibility", "exact_public")
         ),
         sensitivity_level=location.sensitivity_level,
-        session_count=len(public_sessions),
+        session_count=len(discoverable_sessions),
         latest_session=None
         if latest is None
         else AtlasSessionSummary(
@@ -140,6 +143,7 @@ def point_from_location(location: Location) -> AtlasPoint | None:
             title=latest.title,
             recorded_at=latest.recorded_at,
             duration_seconds=latest.duration_seconds,
+            access_level=latest.access_level,
         ),
     )
 
@@ -184,7 +188,7 @@ async def get_atlas_points(
         payload_points = [
             point
             for location in locations
-            if (point := point_from_location(location)) is not None
+            if (point := point_from_location(location, include_locked=True)) is not None
         ]
     return AtlasPointsResponse(
         bbox=None

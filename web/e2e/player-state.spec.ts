@@ -47,7 +47,10 @@ async function installFakeAudio(page: Page) {
       }
 
       removeAttribute(name: string) {
-        if (name === "src") this.src = "";
+        if (name === "src") {
+          this.src = "";
+          this.currentTime = 0;
+        }
       }
     }
 
@@ -128,25 +131,42 @@ test("mobile global player stays compact and exposes details on demand", async (
 test("global player refreshes an expiring grant before resuming and surfaces errors while collapsed", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installFakeAudio(page);
+  await page.addInitScript(() => {
+    const realNow = Date.now.bind(Date);
+    let offset = 0;
+    Date.now = () => realNow() + offset;
+    (window as typeof window & { __advanceDateNow?: (milliseconds: number) => void }).__advanceDateNow = (milliseconds) => {
+      offset += milliseconds;
+    };
+  });
   let grantRequests = 0;
   await page.route("**/playback-grants", async (route) => {
     grantRequests += 1;
     const nextGrant = grant(firstSessionId, grantRequests);
-    nextGrant.expires_at = new Date(Date.now() + (grantRequests === 1 ? 29_000 : 60_000)).toISOString();
+    nextGrant.expires_at = new Date(Date.now() + 60_000).toISOString();
+    nextGrant.refresh_after_seconds = 60;
     await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(nextGrant) });
   });
 
   await page.goto("/sessions/first-session");
   await page.getByRole("button", { name: "Play session" }).click();
+  await page.getByRole("slider", { name: "Playback position" }).press("ArrowRight");
+  await expect(page.getByRole("slider", { name: "Playback position" })).toHaveAttribute("aria-valuenow", "5");
   await page.getByRole("link", { name: "Back to atlas" }).click();
 
   const player = page.getByRole("complementary", { name: "Global audio player" });
   await player.getByRole("button", { name: "Pause playback" }).click();
+  await page.evaluate(() => {
+    (window as typeof window & { __advanceDateNow?: (milliseconds: number) => void }).__advanceDateNow?.(31_000);
+  });
   await player.getByRole("button", { name: "Resume playback" }).click();
   await expect.poll(() => grantRequests).toBe(2);
   await expect.poll(async () => page.evaluate(() => (
     window as typeof window & { __lastAudio?: { src: string } }
   ).__lastAudio?.src ?? "")).toContain(`/test-stream/${firstSessionId}/2.mp3`);
+  await expect.poll(async () => page.evaluate(() => (
+    window as typeof window & { __lastAudio?: { currentTime: number } }
+  ).__lastAudio?.currentTime ?? -1)).toBe(5);
 
   await page.evaluate(() => {
     const audio = (window as typeof window & {
@@ -185,7 +205,10 @@ test("session details keep technical assets collapsed and controls use descripti
   await expect(page.locator("summary", { hasText: "Technical details" })).toBeVisible();
   await expect(page.getByText("source_audio", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Back to atlas" })).toHaveText("Back to atlas");
-  await expect(page.getByRole("button", { name: "Timeline help" })).toHaveCount(0);
+  const timelineHelp = page.getByRole("button", { name: "Timeline help" });
+  await expect(timelineHelp).toBeVisible();
+  await timelineHelp.click();
+  await expect(page.getByText(/Each line marks a model-assisted candidate interval/)).toBeVisible();
 });
 
 test("mobile seek controls flank the player core without overlapping it", async ({ page }) => {
@@ -259,7 +282,6 @@ test("switching sessions aborts a stale grant and ignores its late response", as
   await page.getByRole("link", { name: "Back to atlas" }).click();
   await page.getByRole("button", { name: "Listen", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Pine Marsh" })).toBeVisible();
-  await page.getByRole("button", { name: "Play session" }).click();
 
   await expect(page.getByRole("button", { name: "Pause playback" })).toBeVisible();
   releaseFirstResponse?.();
@@ -315,6 +337,8 @@ test("playback emits bounded engagement milestones once per session", async ({ p
   await expect.poll(() => page.evaluate(() => (
     window as typeof window & { __analytics?: Array<{ name: string }> }
   ).__analytics?.map((event) => event.name) ?? [])).toEqual([
+    "session_preview_start",
+    "player_play",
     "listening_30_seconds",
     "listening_5_minutes",
   ]);
@@ -345,9 +369,13 @@ test("short keyboard seeks do not count toward listening milestones", async ({ p
     });
   }
 
-  expect(await page.evaluate(() => (
-    window as typeof window & { __analytics?: unknown[] }
-  ).__analytics ?? [])).toEqual([]);
+  const analytics = await page.evaluate<Array<{ name: string; placement: string }>>(() => (
+    window as typeof window & { __analytics?: Array<{ name: string; placement: string }> }
+  ).__analytics ?? []);
+  expect(analytics).toContainEqual({ name: "session_preview_start", placement: "session_overlay" });
+  expect(analytics).toContainEqual({ name: "player_play", placement: "session_overlay" });
+  expect(analytics.filter((event) => event.name === "player_seek")).toHaveLength(6);
+  expect(analytics.some((event) => String(event.name).startsWith("listening_"))).toBe(false);
 });
 
 test("playback returns from stalled to playing when media resumes", async ({ page }) => {
@@ -358,6 +386,9 @@ test("playback returns from stalled to playing when media resumes", async ({ pag
 
   await page.goto("/sessions/first-session");
   await page.getByRole("button", { name: "Play session" }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as typeof window & {
+    __lastAudio?: { onstalled: ((event: Event) => void) | null };
+  }).__lastAudio?.onstalled === "function")).toBe(true);
   await page.evaluate(() => {
     const audio = (window as typeof window & {
       __lastAudio?: { onstalled: ((event: Event) => void) | null };
@@ -365,6 +396,9 @@ test("playback returns from stalled to playing when media resumes", async ({ pag
     audio?.onstalled?.(new Event("stalled"));
   });
   await expect(page.locator(".session-player-caption")).toContainText("stalled");
+  await expect.poll(() => page.evaluate(() => typeof (window as typeof window & {
+    __lastAudio?: { onplaying: ((event: Event) => void) | null };
+  }).__lastAudio?.onplaying === "function")).toBe(true);
 
   await page.evaluate(() => {
     const audio = (window as typeof window & {
@@ -373,4 +407,31 @@ test("playback returns from stalled to playing when media resumes", async ({ pag
     audio?.onplaying?.(new Event("playing"));
   });
   await expect(page.getByRole("button", { name: "Pause playback" })).toBeVisible();
+});
+
+test("session overlay pause analytics use the visible overlay placement", async ({ page }) => {
+  await installFakeAudio(page);
+  await page.addInitScript(() => {
+    (window as typeof window & { __analytics?: Array<{ name: string; placement: string }> }).__analytics = [];
+    window.addEventListener("orna:analytics", (event) => {
+      (window as typeof window & { __analytics?: Array<{ name: string; placement: string }> }).__analytics
+        ?.push((event as CustomEvent<{ name: string; placement: string }>).detail);
+    });
+  });
+
+  await page.goto("/sessions/first-session");
+  await page.getByRole("button", { name: "Play session" }).click();
+  await page.getByRole("button", { name: "Pause playback" }).click();
+  await page.getByRole("button", { name: "Play session" }).click();
+
+  const analytics = await page.evaluate(() => (
+    window as typeof window & { __analytics?: Array<{ name: string; placement: string }> }
+  ).__analytics ?? []);
+  expect(analytics.filter((event) => event.name === "player_pause")).toEqual([
+    { name: "player_pause", placement: "session_overlay" },
+  ]);
+  expect(analytics.filter((event) => event.name === "player_play")).toEqual([
+    { name: "player_play", placement: "session_overlay" },
+    { name: "player_play", placement: "session_overlay" },
+  ]);
 });

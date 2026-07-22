@@ -57,7 +57,7 @@ def _published_location_query(bbox: BoundingBox | None, habitats: list[str] | No
         .join(RecordingSession)
         .options(selectinload(Location.sessions))
         .where(
-            RecordingSession.access_level == "public",
+            RecordingSession.access_level.in_(("public", "members_only")),
             RecordingSession.publication_status == "published",
             *_coordinate_filters(bbox),
         )
@@ -176,7 +176,7 @@ async def list_atlas_clusters(
         )
         .join(RecordingSession)
         .where(
-            RecordingSession.access_level == "public",
+            RecordingSession.access_level.in_(("public", "members_only")),
             RecordingSession.publication_status == "published",
             *_coordinate_filters(bbox),
         )

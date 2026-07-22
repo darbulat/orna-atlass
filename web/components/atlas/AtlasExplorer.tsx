@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Entity, ScreenSpaceEventHandler, Viewer as CesiumViewer } from "cesium";
+import type { Cartesian2, Entity, ScreenSpaceEventHandler, Viewer as CesiumViewer } from "cesium";
 import type {
   AtlasCluster,
   AtlasPoint,
@@ -12,7 +12,7 @@ import type {
 } from "../../lib/api/sessions";
 import { ApiError, apiErrorMessage } from "../../lib/api/client";
 import { fetchCurrentDawn, fetchSessionDetail, includeDawnLocations, searchAtlas } from "../../lib/api/sessions";
-import { useGlobalPlayerSuppression } from "../audio/PlayerProvider";
+import { useGlobalPlayerSuppression, usePlayer } from "../audio/PlayerProvider";
 import { SessionPlayer } from "../audio/SessionPlayer";
 import {
   filterLocationsByMode,
@@ -29,6 +29,7 @@ type Props = {
   points: Array<AtlasPoint | AtlasCluster>;
   dawn: DawnCurrentResponse;
   initialSelectedSlug?: string | null;
+  initialSearchQuery?: string;
   sidePanelSession: SessionDetail | null;
   showInternalNavigation?: boolean;
 };
@@ -45,9 +46,16 @@ const satelliteImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/servi
 const desktopLocationCardCount = 5;
 const mobileLocationCardCount = 2;
 const focusedLocationHeight = 1500000;
+const minimumGlobeZoomDistance = 350000;
+const maximumGlobeZoomDistance = 52000000;
+const markerDragThresholdPixels = 8;
 
 function isPoint(item: AtlasPoint | AtlasCluster): item is AtlasPoint {
   return item.type === "point";
+}
+
+function isLockedPoint(point: AtlasPoint | null | undefined) {
+  return point?.latest_session?.access_level === "members_only";
 }
 
 function markerStyle(point: AtlasPoint | AtlasCluster) {
@@ -128,6 +136,8 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
   const onSelectRef = useRef(onSelectPoint);
   const [isWebglUnavailable, setIsWebglUnavailable] = useState(false);
   const [isViewerReady, setIsViewerReady] = useState(false);
+  const [hoveredPoint, setHoveredPoint] = useState<{ point: AtlasPoint; x: number; y: number } | null>(null);
+  const [zoomBounds, setZoomBounds] = useState({ atMinimum: false, atMaximum: false });
 
   useEffect(() => {
     onSelectRef.current = onSelectPoint;
@@ -141,6 +151,23 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
     let isDisposed = false;
     let clickHandler: ScreenSpaceEventHandler | null = null;
     let viewer: CesiumViewer | null = null;
+    let removeCameraMoveListener: (() => void) | null = null;
+    let removeCameraChangedListener: (() => void) | null = null;
+    let zoomAnimationFrame: number | null = null;
+    let wheelHandler: ((event: WheelEvent) => void) | null = null;
+    let pointerStart: { x: number; y: number } | null = null;
+    let pointerExceededDragThreshold = false;
+    const trackPointerStart = (event: PointerEvent) => {
+      pointerStart = { x: event.clientX, y: event.clientY };
+      pointerExceededDragThreshold = false;
+    };
+    const trackPointerMovement = (event: PointerEvent) => {
+      if (!pointerStart) return;
+      const distance = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
+      if (distance > markerDragThresholdPixels) pointerExceededDragThreshold = true;
+    };
+    host.addEventListener("pointerdown", trackPointerStart);
+    host.addEventListener("pointermove", trackPointerMovement);
     setIsViewerReady(false);
     const pointByEntityId = pointByEntityIdRef.current;
 
@@ -151,6 +178,8 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
         cesiumRef.current = cesium;
         const {
           ArcGisMapServerImageryProvider,
+          CameraEventType,
+          Cartesian2,
           Cartesian3,
           EllipsoidTerrainProvider,
           ImageryLayer,
@@ -193,11 +222,79 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
           viewer.scene.skyAtmosphere.show = true;
         }
         viewer.scene.screenSpaceCameraController.enableTilt = true;
-        viewer.scene.screenSpaceCameraController.minimumZoomDistance = 350000;
-        viewer.scene.screenSpaceCameraController.maximumZoomDistance = 52000000;
+        viewer.scene.screenSpaceCameraController.enableCollisionDetection = true;
+        viewer.scene.screenSpaceCameraController.inertiaSpin = 0.9;
+        viewer.scene.screenSpaceCameraController.inertiaTranslate = 0.9;
+        viewer.scene.screenSpaceCameraController.inertiaZoom = 0.8;
+        viewer.scene.screenSpaceCameraController.zoomEventTypes = [CameraEventType.PINCH];
+        viewer.scene.screenSpaceCameraController.minimumZoomDistance = minimumGlobeZoomDistance;
+        viewer.scene.screenSpaceCameraController.maximumZoomDistance = maximumGlobeZoomDistance;
+        viewer.camera.constrainedAxis = Cartesian3.UNIT_Z;
         viewer.camera.setView({
           destination: Cartesian3.fromDegrees(74, 27, 16000000),
         });
+        const syncZoomBounds = () => {
+          const height = viewer?.camera.positionCartographic.height ?? 16000000;
+          setZoomBounds({
+            atMinimum: height <= minimumGlobeZoomDistance * 1.01,
+            atMaximum: height >= maximumGlobeZoomDistance * 0.99,
+          });
+        };
+        removeCameraMoveListener = viewer.camera.moveEnd.addEventListener(syncZoomBounds);
+        const syncDistanceScaledRotation = () => {
+          if (!viewer || viewer.isDestroyed()) return;
+          const normalizedDistance = Math.min(
+            Math.max(viewer.camera.positionCartographic.height / maximumGlobeZoomDistance, 0),
+            1,
+          );
+          viewer.scene.screenSpaceCameraController.maximumMovementRatio = 0.03 + normalizedDistance * 0.17;
+        };
+        removeCameraChangedListener = viewer.camera.changed.addEventListener(syncDistanceScaledRotation);
+        syncZoomBounds();
+        syncDistanceScaledRotation();
+
+        wheelHandler = (event: WheelEvent) => {
+          if (!viewer || viewer.isDestroyed()) return;
+          event.preventDefault();
+          const ray = viewer.camera.getPickRay(new Cartesian2(event.offsetX, event.offsetY));
+          const cursorTarget = ray ? viewer.scene.globe.pick(ray, viewer.scene) : undefined;
+          if (!cursorTarget) return;
+          const currentHeight = viewer.camera.positionCartographic.height;
+          const targetHeight = Math.min(
+            maximumGlobeZoomDistance,
+            Math.max(
+              minimumGlobeZoomDistance,
+              currentHeight * (event.deltaY < 0 ? 0.76 : 1.24),
+            ),
+          );
+          const start = Cartesian3.clone(viewer.camera.position);
+          const fromTarget = Cartesian3.subtract(start, cursorTarget, new Cartesian3());
+          const end = Cartesian3.add(
+            cursorTarget,
+            Cartesian3.multiplyByScalar(
+              fromTarget,
+              targetHeight / currentHeight,
+              new Cartesian3(),
+            ),
+            new Cartesian3(),
+          );
+          if (zoomAnimationFrame !== null) window.cancelAnimationFrame(zoomAnimationFrame);
+          const step = () => {
+            if (!viewer || viewer.isDestroyed()) return;
+            const next = Cartesian3.lerp(viewer.camera.position, end, 0.18, new Cartesian3());
+            viewer.camera.position = next;
+            viewer.scene.requestRender();
+            if (Cartesian3.distance(next, end) > 100) {
+              zoomAnimationFrame = window.requestAnimationFrame(step);
+            } else {
+              viewer.camera.position = end;
+              zoomAnimationFrame = null;
+              syncZoomBounds();
+            }
+          };
+          zoomAnimationFrame = window.requestAnimationFrame(step);
+        };
+        viewer.scene.canvas.addEventListener("wheel", wheelHandler, { passive: false });
 
         const localProvider = await TileMapServiceImageryProvider.fromUrl(
           buildModuleUrl("Assets/Textures/NaturalEarthII"),
@@ -209,6 +306,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
         viewer.imageryLayers.addImageryProvider(localProvider);
         clickHandler = new ScreenSpaceEventHandler(viewer.scene.canvas);
         clickHandler.setInputAction((event: ScreenSpaceEventHandler.PositionedEvent) => {
+          if (pointerExceededDragThreshold) return;
           if (!viewer || viewer.isDestroyed()) return;
           const picked = viewer.scene.pick(event.position);
           const entity = picked?.id as Entity | undefined;
@@ -217,6 +315,13 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
             onSelectRef.current(point);
           }
         }, ScreenSpaceEventType.LEFT_CLICK);
+        clickHandler.setInputAction((event: { endPosition: Cartesian2 }) => {
+          if (!viewer || viewer.isDestroyed()) return;
+          const picked = viewer.scene.pick(event.endPosition);
+          const entity = picked?.id as Entity | undefined;
+          const point = entity?.id ? pointByEntityIdRef.current.get(entity.id) : undefined;
+          setHoveredPoint(point ? { point, x: event.endPosition.x, y: event.endPosition.y } : null);
+        }, ScreenSpaceEventType.MOUSE_MOVE);
         setIsViewerReady(true);
 
         try {
@@ -245,6 +350,14 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
 
     return () => {
       isDisposed = true;
+      host.removeEventListener("pointerdown", trackPointerStart);
+      host.removeEventListener("pointermove", trackPointerMovement);
+      removeCameraMoveListener?.();
+      removeCameraChangedListener?.();
+      if (zoomAnimationFrame !== null) window.cancelAnimationFrame(zoomAnimationFrame);
+      if (wheelHandler && viewer && !viewer.isDestroyed()) {
+        viewer.scene.canvas.removeEventListener("wheel", wheelHandler);
+      }
       clickHandler?.destroy();
       setIsViewerReady(false);
       if (viewerRef.current && !viewerRef.current.isDestroyed()) {
@@ -253,6 +366,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       viewerRef.current = null;
       cesiumRef.current = null;
       pointByEntityId.clear();
+      setHoveredPoint(null);
     };
   }, []);
 
@@ -268,13 +382,19 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
     points.forEach((item) => {
       const entityId = `${item.type}-${item.id}`;
       const selected = isPoint(item) && item.slug === selectedSlug;
+      const hovered = isPoint(item) && item.slug === hoveredPoint?.point.slug;
       const dawnActive = isPoint(item) && activeDawnSlugs.has(item.slug);
+      const locked = isPoint(item) && item.latest_session?.access_level === "members_only";
       const markerColor = selected
         ? Color.fromCssColorString("#f7f5ea")
-        : dawnActive || item.type === "cluster"
-          ? Color.fromCssColorString("#d6c69b")
-          : Color.fromCssColorString("#c9d7c1");
-      const markerText = isPoint(item) ? String(item.session_count) : String(item.count);
+        : locked
+          ? Color.fromCssColorString("#d8965b")
+          : dawnActive || item.type === "cluster"
+            ? Color.fromCssColorString("#d6c69b")
+            : Color.fromCssColorString("#c9d7c1");
+      const markerText = locked
+        ? "🔒"
+        : isPoint(item) ? String(item.session_count) : String(item.count);
 
       if (isPoint(item)) {
         pointByEntityIdRef.current.set(entityId, item);
@@ -285,7 +405,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
         name: isPoint(item) ? item.name : `${item.count} locations`,
         position: Cartesian3.fromDegrees(item.longitude, item.latitude, selected ? 110000 : 85000),
         point: {
-          pixelSize: selected ? 18 : item.type === "cluster" ? 16 : 12,
+          pixelSize: selected ? 20 : hovered ? 17 : item.type === "cluster" ? 16 : 12,
           color: markerColor,
           outlineColor: Color.WHITE.withAlpha(0.86),
           outlineWidth: 2,
@@ -304,7 +424,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
     });
 
     viewer.scene.requestRender();
-  }, [activeDawnSlugs, isViewerReady, points, selectedSlug]);
+  }, [activeDawnSlugs, hoveredPoint?.point.slug, isViewerReady, points, selectedSlug]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -327,15 +447,65 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
     return () => window.cancelAnimationFrame(animationFrame);
   }, [focusRequest, isViewerReady, points, selectedSlug]);
 
+  function changeZoom(direction: "in" | "out") {
+    const viewer = viewerRef.current;
+    const cesium = cesiumRef.current;
+    if (!viewer || viewer.isDestroyed() || !cesium) return;
+    const position = viewer.camera.positionCartographic;
+    const multiplier = direction === "in" ? 0.76 : 1.24;
+    const targetHeight = Math.min(
+      maximumGlobeZoomDistance,
+      Math.max(minimumGlobeZoomDistance, position.height * multiplier),
+    );
+    viewer.camera.flyTo({
+      destination: cesium.Cartesian3.fromRadians(position.longitude, position.latitude, targetHeight),
+      duration: 0.28,
+    });
+  }
+
+  function resetGlobe() {
+    window.dispatchEvent(new CustomEvent("orna:analytics", {
+      detail: { name: "reset_view_click", placement: "globe_controls" },
+    }));
+    const viewer = viewerRef.current;
+    const cesium = cesiumRef.current;
+    if (!viewer || viewer.isDestroyed() || !cesium) return;
+    viewer.camera.flyTo({
+      destination: cesium.Cartesian3.fromDegrees(74, 27, 16000000),
+      duration: 0.65,
+    });
+  }
+
   return (
     <div
       className="globe-stage cesium-stage"
       aria-label="Interactive Cesium globe"
       data-focus-request={focusRequest}
       data-focus-height={focusedLocationHeight}
+      data-inertia-spin="0.9"
+      data-inertia-zoom="0.8"
+      data-marker-drag-threshold={markerDragThresholdPixels}
+      data-pole-clamp="z-axis"
+      data-touch-controls="native"
+      data-zoom-to-cursor="native"
     >
       <div ref={containerRef} className="cesium-host" />
+      {hoveredPoint ? (
+        <div
+          className="globe-marker-tooltip"
+          role="tooltip"
+          style={{ left: hoveredPoint.x, top: hoveredPoint.y }}
+        >
+          <strong>{hoveredPoint.point.name}</strong>
+          <span>{hoveredPoint.point.session_count} recording{hoveredPoint.point.session_count === 1 ? "" : "s"}</span>
+        </div>
+      ) : null}
       {isWebglUnavailable ? <StaticGlobeFallback points={points} selectedSlug={selectedSlug} /> : null}
+      <div className="cesium-zoom-controls" role="group" aria-label="Globe zoom controls">
+        <button type="button" aria-label="Zoom in" disabled={zoomBounds.atMinimum} onClick={() => changeZoom("in")}>+</button>
+        <button type="button" aria-label="Zoom out" disabled={zoomBounds.atMaximum} onClick={() => changeZoom("out")}>−</button>
+        <button type="button" aria-label="Reset globe" onClick={resetGlobe}>↺</button>
+      </div>
       <div className="globe-hint">Drag to rotate / scroll to zoom / click a marker</div>
     </div>
   );
@@ -377,23 +547,29 @@ export function AtlasExplorer({
   points,
   dawn,
   initialSelectedSlug: preferredInitialSlug = null,
+  initialSearchQuery = "",
   sidePanelSession,
   showInternalNavigation = true,
 }: Props) {
+  const { currentSession: globalPlayerSession, play } = usePlayer();
   const locationCardCount = useLocationCardCount();
   const [atlasPoints, setAtlasPoints] = useState(points);
   const [currentDawn, setCurrentDawn] = useState(dawn);
   const [view] = useState<AtlasView>(initialView);
+  const requestedInitialLocation = preferredInitialSlug
+    ? points.find((item): item is AtlasPoint => isPoint(item) && item.slug === preferredInitialSlug) ?? null
+    : null;
+  const initialDawnSlugs = new Set(
+    [...dawn.active_locations, ...dawn.next_locations].map((item) => item.location.slug),
+  );
   const [selectedMode, setSelectedMode] = useState<ListeningMode>(
-    preferredInitialSlug
-      && [...dawn.active_locations, ...dawn.next_locations]
-        .some((item) => item.location.slug === preferredInitialSlug)
-      ? "Dawn"
+    requestedInitialLocation
+      ? listeningModeForLocation(requestedInitialLocation, dawn.generated_at, initialDawnSlugs)
       : initialView === "list"
         ? "Night"
         : "Dawn",
   );
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialSearchQuery.trim());
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -424,6 +600,7 @@ export function AtlasExplorer({
       : locations[0]?.slug ?? null;
   const [selectedSlug, setSelectedSlug] = useState(initialSelectedSlug);
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
+  const [isSoftPaywallOpen, setIsSoftPaywallOpen] = useState(false);
   const [sidePanelSessionSlug, setSidePanelSessionSlug] = useState<string | null>(sidePanelSession?.slug ?? null);
   const [currentSidePanelSession, setCurrentSidePanelSession] = useState(sidePanelSession);
   const [sidePanelState, setSidePanelState] = useState<
@@ -431,10 +608,21 @@ export function AtlasExplorer({
   >(sidePanelSession ? "ready" : "idle");
   const [sidePanelError, setSidePanelError] = useState<string | null>(null);
   const currentSidePanelSessionRef = useRef<SessionDetail | null>(sidePanelSession);
-  const selected = locations.find((point) => point.slug === selectedSlug) ?? locations[0] ?? null;
+  const previewIntentSlugRef = useRef<string | null>(null);
+  const softPaywallRef = useRef<HTMLElement | null>(null);
+  const paywallTriggerRef = useRef<HTMLElement | null>(null);
+  const selected = selectedSlug
+    ? locations.find((point) => point.slug === selectedSlug)
+      ?? allLocations.find((point) => point.slug === selectedSlug)
+      ?? locations[0]
+      ?? allLocations[0]
+      ?? null
+    : null;
   const selectedDawn = [...currentDawn.active_locations, ...currentDawn.next_locations]
     .find((item) => item.location.slug === selected?.slug);
-  const isLocalPlayerVisible = isSidePanelOpen && currentSidePanelSession !== null;
+  const isLocalPlayerVisible = isSidePanelOpen
+    && currentSidePanelSession !== null
+    && (!globalPlayerSession || globalPlayerSession.id === currentSidePanelSession.id);
   const displayedLocations = useMemo(() => {
     const count = Math.min(locationCardCount, locations.length);
     if (count === 0) {
@@ -443,27 +631,153 @@ export function AtlasExplorer({
     if (locations.length <= locationCardCount) {
       return locations;
     }
-    return Array.from({ length: count }, (_, index) => locations[(carouselStart + index) % locations.length]);
+    return locations.slice(carouselStart, carouselStart + count);
   }, [carouselStart, locationCardCount, locations]);
+  const maxCarouselStart = Math.max(0, locations.length - Math.min(locationCardCount, locations.length));
   const canPageLocations = locations.length > locationCardCount;
   const selectedSessionSlug = selected?.latest_session?.slug ?? null;
+  const navigableLocations = locations.filter(
+    (location) => location.latest_session?.access_level === "public",
+  );
+  const sidePanelLocationIndex = sidePanelSessionSlug
+    ? navigableLocations.findIndex((location) => location.latest_session?.slug === sidePanelSessionSlug)
+    : -1;
 
   useGlobalPlayerSuppression(isLocalPlayerVisible);
 
   useEffect(() => {
-    if (selectedSlug && locations.some((point) => point.slug === selectedSlug)) {
+    const openSession = (event: Event) => {
+      const detail = (event as CustomEvent<{ locationSlug?: string; sessionSlug?: string }>).detail;
+      const location = detail?.locationSlug
+        ? allLocations.find((candidate) => candidate.slug === detail.locationSlug)
+        : allLocations.find((candidate) => candidate.latest_session?.slug === detail?.sessionSlug);
+      if (!location) {
+        if (detail?.sessionSlug) {
+          window.location.assign(`/sessions/${encodeURIComponent(detail.sessionSlug)}`);
+        }
+        return;
+      }
+      const mode = listeningModeForLocation(location, currentDawn.generated_at, dawnModeSlugs);
+      const modeLocations = filterLocationsByMode(
+        allLocations,
+        mode,
+        currentDawn.generated_at,
+        dawnModeSlugs,
+      );
+      setSelectedMode(mode);
+      setSelectedSlug(location.slug);
+      const index = Math.max(
+        0,
+        modeLocations.findIndex((candidate) => candidate.slug === location.slug),
+      );
+      setCarouselStart(Math.min(index, Math.max(0, modeLocations.length - locationCardCount)));
+      const sessionSlug = detail?.sessionSlug ?? location.latest_session?.slug;
+      if (!sessionSlug) return;
+      setGlobeFocusRequest((current) => current + 1);
+      setSidePanelSessionSlug(sessionSlug);
+      setIsSidePanelOpen(true);
+    };
+    window.addEventListener("orna:open-session", openSession);
+    return () => window.removeEventListener("orna:open-session", openSession);
+  }, [allLocations, currentDawn.generated_at, dawnModeSlugs, locationCardCount]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("orna:analytics", {
+      detail: { name: "globe_view", placement: "globe" },
+    }));
+  }, []);
+
+  useEffect(() => {
+    const openSearch = (event: Event) => {
+      const detail = (event as CustomEvent<{ query?: string }>).detail;
+      const nextQuery = detail?.query?.trim() ?? "";
+      setQuery(nextQuery);
+      window.setTimeout(() => {
+        const input = document.querySelector<HTMLInputElement>("#atlas-search");
+        input?.scrollIntoView({ behavior: "smooth", block: "center" });
+        input?.focus();
+      }, 0);
+    };
+    window.addEventListener("orna:open-search", openSearch);
+    return () => window.removeEventListener("orna:open-search", openSearch);
+  }, []);
+
+  function dismissSoftPaywall() {
+    window.dispatchEvent(new CustomEvent("orna:analytics", {
+      detail: { name: "paywall_dismissed", placement: "soft_paywall" },
+    }));
+    setIsSoftPaywallOpen(false);
+  }
+
+  useEffect(() => {
+    if (!isSoftPaywallOpen) return;
+    const dialog = softPaywallRef.current;
+    const backdrop = dialog?.parentElement;
+    const backgroundElements = Array.from(backdrop?.parentElement?.children ?? [])
+      .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== backdrop);
+    const previousOverflow = document.body.style.overflow;
+    const previousBackgroundState = backgroundElements.map((element) => ({
+      element,
+      inert: element.inert,
+      ariaHidden: element.getAttribute("aria-hidden"),
+    }));
+    document.body.style.overflow = "hidden";
+    for (const element of backgroundElements) {
+      element.inert = true;
+      element.setAttribute("aria-hidden", "true");
+    }
+    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
+      "a[href], button:not([disabled]), [tabindex]:not([tabindex='-1'])",
+    ) ?? []);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        dismissSoftPaywall();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      for (const { element, inert, ariaHidden } of previousBackgroundState) {
+        element.inert = inert;
+        if (ariaHidden === null) element.removeAttribute("aria-hidden");
+        else element.setAttribute("aria-hidden", ariaHidden);
+      }
+      paywallTriggerRef.current?.focus();
+    };
+  }, [isSoftPaywallOpen]);
+
+  useEffect(() => {
+    if (selectedSlug && allLocations.some((point) => point.slug === selectedSlug)) {
       return;
     }
-    setSelectedSlug(locations[0]?.slug ?? null);
-  }, [locations, selectedSlug]);
+    setSelectedSlug(
+      locations[0]?.slug
+      ?? (selectedSlug ? allLocations[0]?.slug ?? null : null),
+    );
+  }, [allLocations, locations, selectedSlug]);
 
   useEffect(() => {
     if (locations.length === 0) {
       setCarouselStart(0);
       return;
     }
-    setCarouselStart((current) => (current >= locations.length ? 0 : current));
-  }, [locations.length]);
+    setCarouselStart((current) => Math.min(current, maxCarouselStart));
+  }, [locations.length, maxCarouselStart]);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -539,12 +853,20 @@ export function AtlasExplorer({
     }
     if (currentSidePanelSessionRef.current?.slug === sidePanelSessionSlug) {
       setSidePanelState("ready");
+      if (previewIntentSlugRef.current === sidePanelSessionSlug) {
+        previewIntentSlugRef.current = null;
+        void play(currentSidePanelSessionRef.current);
+      }
       return;
     }
     if (sidePanelSession?.slug === sidePanelSessionSlug) {
       setCurrentSidePanelSession(sidePanelSession);
       setSidePanelState("ready");
       setSidePanelError(null);
+      if (previewIntentSlugRef.current === sidePanelSessionSlug) {
+        previewIntentSlugRef.current = null;
+        void play(sidePanelSession);
+      }
       return;
     }
 
@@ -557,10 +879,30 @@ export function AtlasExplorer({
         if (!isCurrent) return;
         setCurrentSidePanelSession(session);
         setSidePanelState("ready");
+        if (previewIntentSlugRef.current === sidePanelSessionSlug) {
+          previewIntentSlugRef.current = null;
+          void play(session);
+        }
       })
       .catch((error) => {
         if (!isCurrent) return;
         const status = error instanceof ApiError ? error.status : null;
+        const lockedLocation = allLocations.find(
+          (location) => location.latest_session?.slug === sidePanelSessionSlug,
+        );
+        if ((status === 403 || status === 404) && isLockedPoint(lockedLocation)) {
+          paywallTriggerRef.current = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+          setIsSidePanelOpen(false);
+          setIsSoftPaywallOpen(true);
+          for (const name of ["locked_point_hit", "paywall_shown"]) {
+            window.dispatchEvent(new CustomEvent("orna:analytics", {
+              detail: { name, placement: "soft_paywall" },
+            }));
+          }
+          return;
+        }
         setSidePanelState(
           status === 404
             ? "not_found"
@@ -576,7 +918,7 @@ export function AtlasExplorer({
     return () => {
       isCurrent = false;
     };
-  }, [isSidePanelOpen, sidePanelSession, sidePanelSessionSlug]);
+  }, [allLocations, isSidePanelOpen, play, sidePanelSession, sidePanelSessionSlug]);
 
   function revealLocationInCarousel(slug: string) {
     if (locations.length <= locationCardCount) {
@@ -584,11 +926,17 @@ export function AtlasExplorer({
     }
     const index = locations.findIndex((location) => location.slug === slug);
     if (index !== -1) {
-      setCarouselStart(index);
+      setCarouselStart(Math.min(index, maxCarouselStart));
     }
   }
 
   function selectLocation(point: AtlasPoint, options: { revealInCarousel?: boolean } = {}) {
+    window.dispatchEvent(new CustomEvent("orna:analytics", {
+      detail: {
+        name: options.revealInCarousel ? "marker_click" : "card_open",
+        placement: options.revealInCarousel ? "globe_marker" : "location_card",
+      },
+    }));
     if (!allLocations.some((location) => location.slug === point.slug)) {
       setAtlasPoints((currentPoints) =>
         currentPoints.some((item) => isPoint(item) && item.slug === point.slug)
@@ -603,34 +951,37 @@ export function AtlasExplorer({
   }
 
   function selectSearchResult(result: SearchResult) {
-    if (result.type === "session" && result.session_slug) {
-      return;
-    }
     const existingLocation = allLocations.find((location) => location.slug === result.slug);
     const resultLocation = existingLocation ?? result.atlas_point;
+    if (resultLocation) {
+      const resultMode = listeningModeForLocation(resultLocation, currentDawn.generated_at, dawnModeSlugs);
+      setSelectedMode(resultMode);
+      if (!existingLocation) {
+        setAtlasPoints((currentPoints) => [resultLocation, ...currentPoints]);
+        setCarouselStart(0);
+      } else {
+        const modeLocations = filterLocationsByMode(
+          allLocations,
+          resultMode,
+          currentDawn.generated_at,
+          dawnModeSlugs,
+        );
+        const resultIndex = modeLocations.findIndex((location) => location.slug === result.slug);
+        const resultMaxStart = Math.max(0, modeLocations.length - locationCardCount);
+        setCarouselStart(resultIndex === -1 ? 0 : Math.min(resultIndex, resultMaxStart));
+      }
+      setSelectedSlug(result.slug);
+    }
+    if (result.type === "session" && result.session_slug) {
+      setSidePanelSessionSlug(result.session_slug);
+      setIsSidePanelOpen(true);
+      setQuery("");
+      setSearchResults([]);
+      return;
+    }
     if (!resultLocation) {
       return;
     }
-    const resultMode = listeningModeForLocation(resultLocation, currentDawn.generated_at, dawnModeSlugs);
-    setSelectedMode(resultMode);
-    if (!existingLocation) {
-      const atlasPoint = result.atlas_point;
-      if (!atlasPoint) {
-        return;
-      }
-      setAtlasPoints((currentPoints) => [atlasPoint, ...currentPoints]);
-      setCarouselStart(0);
-    } else {
-      const modeLocations = filterLocationsByMode(
-        allLocations,
-        resultMode,
-        currentDawn.generated_at,
-        dawnModeSlugs,
-      );
-      const resultIndex = modeLocations.findIndex((location) => location.slug === result.slug);
-      setCarouselStart(resultIndex === -1 ? 0 : resultIndex);
-    }
-    setSelectedSlug(result.slug);
     setQuery("");
   }
 
@@ -638,11 +989,24 @@ export function AtlasExplorer({
     if (!canPageLocations) {
       return;
     }
-    setCarouselStart((current) => (current + delta + locations.length) % locations.length);
+    window.dispatchEvent(new CustomEvent("orna:analytics", {
+      detail: { name: "carousel_scroll", placement: "location_carousel" },
+    }));
+    setCarouselStart((current) => Math.min(Math.max(current + delta, 0), maxCarouselStart));
   }
 
   function selectMode(mode: ListeningMode) {
+    window.dispatchEvent(new CustomEvent("orna:analytics", {
+      detail: { name: `time_filter_${mode.toLowerCase()}`, placement: "time_filter" },
+    }));
+    const nextLocations = filterLocationsByMode(
+      allLocations,
+      mode,
+      currentDawn.generated_at,
+      dawnModeSlugs,
+    );
     setSelectedMode(mode);
+    setSelectedSlug(nextLocations[0]?.slug ?? null);
     setCarouselStart(0);
   }
 
@@ -678,7 +1042,17 @@ export function AtlasExplorer({
           dawnModeSlugs,
         );
         setSelectedMode(mode);
-        setCarouselStart(Math.max(0, modeLocations.findIndex((location) => location.slug === nearest.slug)));
+        const nearestIndex = Math.max(
+          0,
+          modeLocations.findIndex((location) => location.slug === nearest.slug),
+        );
+        const visibleCardCount = window.matchMedia("(max-width: 720px)").matches
+          ? mobileLocationCardCount
+          : desktopLocationCardCount;
+        setCarouselStart(Math.min(
+          nearestIndex,
+          Math.max(0, modeLocations.length - visibleCardCount),
+        ));
         setSelectedSlug(nearest.slug);
         setLocationStatus(`Nearest listening location: ${nearest.name}.`);
         setIsLocating(false);
@@ -696,12 +1070,31 @@ export function AtlasExplorer({
     );
   }
 
+  function openLocationSession(location: AtlasPoint) {
+    const sessionSlug = location.latest_session?.slug;
+    if (!sessionSlug) return;
+    setGlobeFocusRequest((current) => current + 1);
+    setSidePanelSessionSlug(sessionSlug);
+    setIsSidePanelOpen(true);
+  }
+
   function openSelectedSession() {
     if (!selectedSessionSlug) {
       return;
     }
     setGlobeFocusRequest((current) => current + 1);
+    previewIntentSlugRef.current = selectedSessionSlug;
     setSidePanelSessionSlug(selectedSessionSlug);
+    setIsSidePanelOpen(true);
+  }
+
+  function openAdjacentSession(offset: -1 | 1) {
+    if (sidePanelLocationIndex === -1) return;
+    const nextLocation = navigableLocations[sidePanelLocationIndex + offset];
+    if (!nextLocation?.latest_session) return;
+    setSelectedMode(listeningModeForLocation(nextLocation, currentDawn.generated_at, dawnModeSlugs));
+    setSelectedSlug(nextLocation.slug);
+    setSidePanelSessionSlug(nextLocation.latest_session.slug);
     setIsSidePanelOpen(true);
   }
 
@@ -720,7 +1113,10 @@ export function AtlasExplorer({
               selectedSlug={selectedSlug}
               focusRequest={globeFocusRequest}
               activeDawnSlugs={activeDawnSlugs}
-              onSelectPoint={(point) => selectLocation(point, { revealInCarousel: true })}
+              onSelectPoint={(point) => {
+                selectLocation(point, { revealInCarousel: true });
+                openLocationSession(point);
+              }}
             />
           ) : view === "map" ? (
             <div className="globe-stage" aria-label="Static atlas map">
@@ -735,9 +1131,12 @@ export function AtlasExplorer({
                     <button
                       type="button"
                       className={location.slug === selectedSlug ? "selected" : ""}
-                      onClick={() => selectLocation(location)}
+                      onClick={() => {
+                        selectLocation(location);
+                        openLocationSession(location);
+                      }}
                     >
-                      <strong>{location.name}</strong>
+                      <strong>{isLockedPoint(location) ? `🔒 ${location.name}` : location.name}</strong>
                       <span>{[location.region, location.country_code].filter(Boolean).join(" · ")}</span>
                     </button>
                   </li>
@@ -756,6 +1155,11 @@ export function AtlasExplorer({
             <span>{listeningModeKicker[selectedMode]}</span>
             <strong>{selected?.name ?? "No location selected"}</strong>
             <small>{selected?.region ?? selected?.country_code ?? "Published atlas site"}</small>
+            {selected ? (
+              <small className="dawn-coordinates">
+                {selected.latitude.toFixed(3)}°, {selected.longitude.toFixed(3)}°
+              </small>
+            ) : null}
             <time>{formatLocalTime(selected?.timezone, currentDawn.generated_at)}</time>
             <small>local time</small>
             {selected?.latest_session ? (
@@ -766,7 +1170,7 @@ export function AtlasExplorer({
                 aria-expanded={isSidePanelOpen}
                 onClick={openSelectedSession}
               >
-                Listen
+                {isLockedPoint(selected) ? "Unlock full session" : "Listen"}
                 <span aria-hidden="true">›</span>
               </button>
             ) : (
@@ -775,6 +1179,7 @@ export function AtlasExplorer({
                 <span aria-hidden="true">›</span>
               </button>
             )}
+            {isLockedPoint(selected) ? <span className="atlas-members-label">Members only</span> : null}
           </div>
           {showInternalNavigation ? (
             <Link className="about-link" href="/about">
@@ -838,7 +1243,7 @@ export function AtlasExplorer({
               type="button"
               className="carousel-arrow"
               aria-label="Previous locations"
-              disabled={!canPageLocations}
+              disabled={!canPageLocations || carouselStart === 0}
               onClick={() => pageLocations(-1)}
             >
               ‹
@@ -855,9 +1260,12 @@ export function AtlasExplorer({
                   ]
                     .filter(Boolean)
                     .join(" ")}
-                  onClick={() => selectLocation(location)}
+                  onClick={() => {
+                    selectLocation(location);
+                    openLocationSession(location);
+                  }}
                 >
-                  <span>{location.name}</span>
+                  <span>{isLockedPoint(location) ? `🔒 ${location.name}` : location.name}</span>
                   <small>{location.country_code ?? location.region ?? "Atlas site"}</small>
                   <i aria-hidden="true" />
                 </button>
@@ -869,7 +1277,7 @@ export function AtlasExplorer({
               type="button"
               className="carousel-arrow"
               aria-label="Next locations"
-              disabled={!canPageLocations}
+              disabled={!canPageLocations || carouselStart === maxCarouselStart}
               onClick={() => pageLocations(1)}
             >
               ›
@@ -882,30 +1290,34 @@ export function AtlasExplorer({
               type="search"
               value={query}
               placeholder="Search location"
-              onChange={(event) => setQuery(event.target.value)}
+              onFocus={() => window.dispatchEvent(new CustomEvent("orna:analytics", {
+                detail: { name: "search_opened", placement: "location_search" },
+              }))}
+              onChange={(event) => {
+                const value = event.target.value;
+                setQuery(value);
+                if (value.trim().length === 2) {
+                  window.dispatchEvent(new CustomEvent("orna:analytics", {
+                    detail: { name: "location_search", placement: "location_search" },
+                  }));
+                }
+              }}
             />
             {query.trim().length >= 2 ? (
               <div className="search-results" aria-live="polite">
                 {isSearching ? <p>Searching...</p> : null}
                 {searchError ? <p role="alert">{searchError}</p> : null}
                 {!isSearching && !searchError && searchResults.length === 0 ? <p>No public results found.</p> : null}
-                {searchResults.map((result) =>
-                  result.type === "session" && result.session_slug ? (
-                    <Link key={`${result.type}-${result.id}`} href={`/sessions/${result.session_slug}`}>
-                      <strong>{result.title}</strong>
-                      <span>{[result.subtitle, result.habitat].filter(Boolean).join(" / ")}</span>
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      key={`${result.type}-${result.id}`}
-                      onClick={() => selectSearchResult(result)}
-                    >
-                      <strong>{result.title}</strong>
-                      <span>{[result.subtitle, result.habitat].filter(Boolean).join(" / ")}</span>
-                    </button>
-                  ),
-                )}
+                {searchResults.map((result) => (
+                  <button
+                    type="button"
+                    key={`${result.type}-${result.id}`}
+                    onClick={() => selectSearchResult(result)}
+                  >
+                    <strong>{result.title}</strong>
+                    <span>{[result.subtitle, result.habitat].filter(Boolean).join(" / ")}</span>
+                  </button>
+                ))}
               </div>
             ) : null}
           </div>
@@ -915,7 +1327,16 @@ export function AtlasExplorer({
       {isSidePanelOpen ? (
         <aside className="atlas-side-panel" id="atlas-session-player">
           {currentSidePanelSession ? (
-            <SessionPlayer session={currentSidePanelSession} onClose={() => setIsSidePanelOpen(false)} />
+            <SessionPlayer
+              session={currentSidePanelSession}
+              onClose={() => setIsSidePanelOpen(false)}
+              onPrevious={sidePanelLocationIndex > 0 ? () => openAdjacentSession(-1) : undefined}
+              onNext={
+                sidePanelLocationIndex >= 0 && sidePanelLocationIndex < navigableLocations.length - 1
+                  ? () => openAdjacentSession(1)
+                  : undefined
+              }
+            />
           ) : (
             <section className="atlas-side-empty" aria-live="polite">
               <h2>
@@ -940,6 +1361,58 @@ export function AtlasExplorer({
             </section>
           )}
         </aside>
+      ) : null}
+      {isSoftPaywallOpen && selected?.latest_session ? (
+        <div className="soft-paywall-backdrop" role="presentation" onMouseDown={dismissSoftPaywall}>
+          <section
+            ref={softPaywallRef}
+            className="soft-paywall"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="soft-paywall-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              className="soft-paywall-close"
+              type="button"
+              aria-label="Close"
+              autoFocus
+              onClick={dismissSoftPaywall}
+            >
+              ×
+            </button>
+            <span>Members-only field recording</span>
+            <h2 id="soft-paywall-title">Members-only soundscape</h2>
+            <p>
+              Membership is planned to include complete long-form sessions and the full members catalog.
+              Enrollment is not open yet, and a free ORNA account does not unlock this recording;
+              public recordings remain free to explore.
+            </p>
+            <div className="soft-paywall-actions">
+              <Link
+                className="button-link"
+                href="/membership?mode=register"
+                onClick={() => {
+                  for (const name of ["paywall_signup_click", "signup_started"]) {
+                    window.dispatchEvent(new CustomEvent("orna:analytics", {
+                      detail: { name, placement: "soft_paywall" },
+                    }));
+                  }
+                }}
+              >
+                Create a free account
+              </Link>
+              <Link
+                href="/membership"
+                onClick={() => window.dispatchEvent(new CustomEvent("orna:analytics", {
+                  detail: { name: "paywall_learn_more", placement: "soft_paywall" },
+                }))}
+              >
+                Learn about membership
+              </Link>
+            </div>
+          </section>
+        </div>
       ) : null}
     </section>
   );

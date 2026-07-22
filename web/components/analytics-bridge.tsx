@@ -4,6 +4,19 @@ import { useEffect } from "react";
 import { apiUrl } from "../lib/api/sessions";
 
 const eventNames = new Set([
+  "globe_view", "session_preview_start", "session_preview_second", "locked_point_hit", "paywall_shown",
+  "signup_started", "signup_completed", "member_session_play", "subscription_intent", "collections_view",
+  "search_opened", "login_opened", "membership_cta_click", "marker_click", "reset_view_click", "time_filter_dawn", "time_filter_day",
+  "time_filter_dusk", "time_filter_night", "carousel_scroll", "location_search", "card_inline_play", "card_open",
+  "see_all_click", "player_play", "player_pause", "player_seek", "favorite_add", "favorite_requires_login",
+  "player_next", "player_prev", "timeline_species_click", "session_close", "paywall_signup_click",
+  "paywall_learn_more", "paywall_dismissed", "signup_email_submit", "membership_reserve_click",
+  "point_opened",
+  "play_started",
+  "favorite_clicked",
+  "lock_clicked",
+  "registration_started",
+  "membership_interest_submitted",
   "sample_play_started",
   "listening_30_seconds",
   "listening_5_minutes",
@@ -15,6 +28,13 @@ const eventNames = new Set([
 ]);
 
 const placements = new Set([
+  "globe", "globe_controls", "time_filter", "location_search", "location_carousel", "popular_locations",
+  "collections",
+  "globe_marker",
+  "location_card",
+  "session_overlay",
+  "soft_paywall",
+  "header",
   "global_player",
   "hero_sample",
   "hero_primary",
@@ -54,6 +74,25 @@ export function AnalyticsBridge() {
     };
 
     window.addEventListener("orna:analytics", persistEvent);
+
+    const params = new URLSearchParams(window.location.search);
+    const magicOutcome = params.get("magic");
+    if (magicOutcome === "signup") {
+      persistEvent(new CustomEvent("orna:analytics", {
+        detail: { name: "signup_completed", placement: "membership_form" },
+      }));
+    }
+    if ((magicOutcome === "signup" || magicOutcome === "login") && window.location.pathname !== "/membership") {
+      params.delete("magic");
+      params.delete("magic_error");
+      const query = params.toString();
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}`,
+      );
+    }
+
     return () => window.removeEventListener("orna:analytics", persistEvent);
   }, []);
 

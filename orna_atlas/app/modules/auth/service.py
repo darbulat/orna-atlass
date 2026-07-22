@@ -55,6 +55,42 @@ async def authenticate(session: AsyncSession, data: LoginRequest) -> User:
     return user
 
 
+async def authenticate_magic_link(
+    session: AsyncSession, email: str
+) -> tuple[TokenResponse, str, bool]:
+    user = await users_repository.get_by_email(session, email)
+    created = False
+    event_type = "auth.magic_link_login_succeeded"
+    if user is None:
+        try:
+            user = await users_repository.create(
+                session,
+                email=email,
+                password_hash=None,
+                email_verified=True,
+            )
+            created = True
+            event_type = "auth.magic_link_user_registered"
+        except IntegrityError:
+            await session.rollback()
+            user = await users_repository.get_by_email(session, email)
+            if user is None:
+                raise
+    if not user.is_active:
+        raise AuthenticationError("User is unavailable")
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(UTC)
+    await add_audit_event(
+        session,
+        event_type=event_type,
+        subject_type="user",
+        subject_id=str(user.id),
+        actor_user_id=user.id,
+    )
+    payload, refresh_token = await issue_token_pair(session, user)
+    return payload, refresh_token, created
+
+
 async def authenticate_oauth_identity(
     session: AsyncSession, identity: VerifiedIdentity
 ) -> tuple[TokenResponse, str]:

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { SiteHeader } from "./site-header";
 
 export function LegalPageLayout({
   eyebrow,
@@ -13,13 +13,7 @@ export function LegalPageLayout({
 }) {
   return (
     <main className="legal-page" id="main-content">
-      <nav className="site-nav legal-nav" aria-label={`${title} navigation`}>
-        <Link className="site-wordmark" href="/">ORNA Atlas</Link>
-        <div>
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/terms">Terms</Link>
-        </div>
-      </nav>
+      <SiteHeader className="legal-nav" />
       <header className="legal-hero">
         <p className="eyebrow">{eyebrow}</p>
         <h1>{title}</h1>

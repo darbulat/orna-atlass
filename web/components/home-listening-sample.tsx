@@ -19,7 +19,7 @@ export function HomeListeningSample({ session }: HomeListeningSampleProps) {
 
   async function togglePlayback() {
     if (isPlaying) {
-      pause();
+      pause("hero_sample");
       return;
     }
 
@@ -27,7 +27,7 @@ export function HomeListeningSample({ session }: HomeListeningSampleProps) {
     setError(null);
     try {
       const detail = await fetchSessionDetail(session.slug);
-      const started = await play(detail);
+      const started = await play(detail, "hero_sample");
       if (started) {
         window.dispatchEvent(new CustomEvent("orna:analytics", {
           detail: { name: "sample_play_started", placement: "hero_sample", session: session.slug },

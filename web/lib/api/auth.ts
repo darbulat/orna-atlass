@@ -1,6 +1,7 @@
 import type { components } from "./generated";
 import { fetchJson } from "./client";
 import { apiUrl } from "./sessions";
+import { markAccountAnonymous, markAccountAuthenticated } from "./account-auth-state";
 
 export type User = components["schemas"]["UserRead"];
 export type Membership = components["schemas"]["MembershipRead"];
@@ -44,11 +45,25 @@ export async function fetchOAuthProviders(): Promise<OAuthProvidersResponse> {
   };
 }
 
+export function requestMagicLink(email: string, returnTo: string): Promise<{ accepted: true }> {
+  return apiRequest<{ accepted: true }>("/api/v1/auth/magic-link/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, return_to: returnTo }),
+  }).then((payload) => {
+    if (payload.accepted !== true) throw new Error("Invalid magic-link response");
+    return payload;
+  });
+}
+
 export function register(email: string, password: string): Promise<User> {
   return apiRequest<User>("/api/v1/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
+  }).then((user) => {
+    markAccountAuthenticated();
+    return user;
   });
 }
 
@@ -57,15 +72,25 @@ export function login(email: string, password: string): Promise<TokenResponse> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
+  }).then((token) => {
+    markAccountAuthenticated();
+    return token;
   });
 }
 
 export function logout(): Promise<components["schemas"]["LogoutResponse"]> {
-  return apiRequest<components["schemas"]["LogoutResponse"]>("/api/v1/auth/logout", { method: "POST" });
+  return apiRequest<components["schemas"]["LogoutResponse"]>("/api/v1/auth/logout", { method: "POST" })
+    .then((response) => {
+      markAccountAnonymous();
+      return response;
+    });
 }
 
 export function fetchCurrentUser(): Promise<User> {
-  return apiRequest<User>("/api/v1/users/me");
+  return apiRequest<User>("/api/v1/users/me").then((user) => {
+    markAccountAuthenticated();
+    return user;
+  });
 }
 
 export function fetchMembership(): Promise<Membership> {

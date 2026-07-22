@@ -1,7 +1,17 @@
 from datetime import datetime
 from uuid import UUID
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from orna_atlas.app.core.domain_types import ProcessingStatus, PublicationStatus, SessionAccess
 from orna_atlas.app.core.schema_validation import reject_required_nulls
@@ -12,6 +22,43 @@ from orna_atlas.app.modules.media.schemas import MediaAssetRead, PublicMediaAsse
 def _metadata_from_obj(obj: object) -> dict:
     metadata = getattr(obj, "metadata_", {})
     return metadata if isinstance(metadata, dict) else {}
+
+
+def _bounded_metadata_number(
+    value: object, *, minimum: float, maximum: float
+) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if minimum <= number <= maximum else None
+
+
+_HTTP_URL_ADAPTER = TypeAdapter(HttpUrl)
+
+
+def _safe_photo_url(value: object) -> str | None:
+    if not isinstance(value, str) or len(value) > 2048:
+        return None
+    try:
+        parsed = urlsplit(value)
+        _HTTP_URL_ADAPTER.validate_python(value)
+    except (TypeError, ValidationError, ValueError):
+        return None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return None
+    return value
+
+
+def _bounded_metadata_text(value: object, *, maximum_length: int) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized if 0 < len(normalized) <= maximum_length else None
 
 
 class RecordingIntegrityRead(BaseModel):
@@ -271,6 +318,12 @@ class PublicSessionRead(BaseModel):
 
 class SessionDetailRead(PublicSessionRead):
     location: LocationRead
+    photo_url: HttpUrl | None = None
+    altitude_meters: float | None = Field(default=None, ge=-500, le=9000)
+    temperature_celsius: float | None = Field(default=None, ge=-100, le=70)
+    wind_speed_kph: float | None = Field(default=None, ge=0, le=500)
+    humidity_percent: float | None = Field(default=None, ge=0, le=100)
+    moon_phase: str | None = Field(default=None, max_length=64)
     recording_integrity: RecordingIntegrityRead = Field(default_factory=RecordingIntegrityRead)
     waveform: WaveformRead = Field(default_factory=WaveformRead)
     annotations: list[PublicSessionAnnotationRead] = Field(default_factory=list)
@@ -308,6 +361,24 @@ class SessionDetailRead(PublicSessionRead):
                 "media_assets": getattr(data, "media_assets", []),
                 "location": getattr(data, "location"),
             }
+        context = metadata.get("context", metadata)
+        context = context if isinstance(context, dict) else {}
+        data["photo_url"] = _safe_photo_url(context.get("photo_url"))
+        data["altitude_meters"] = _bounded_metadata_number(
+            context.get("altitude_meters"), minimum=-500, maximum=9000
+        )
+        data["temperature_celsius"] = _bounded_metadata_number(
+            context.get("temperature_celsius"), minimum=-100, maximum=70
+        )
+        data["wind_speed_kph"] = _bounded_metadata_number(
+            context.get("wind_speed_kph"), minimum=0, maximum=500
+        )
+        data["humidity_percent"] = _bounded_metadata_number(
+            context.get("humidity_percent"), minimum=0, maximum=100
+        )
+        data["moon_phase"] = _bounded_metadata_text(
+            context.get("moon_phase"), maximum_length=64
+        )
         integrity = metadata.get("recording_integrity", {})
         data["recording_integrity"] = integrity if isinstance(integrity, dict) else {}
         data["waveform"] = safe_waveform_projection(
