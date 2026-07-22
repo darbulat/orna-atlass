@@ -157,6 +157,7 @@ const sessions = new Map([
 const grantCounts = new Map();
 let nextAtlasResponse = "ok";
 let nextDawnResponse = "ok";
+let sessionDetailAuthState = "ok";
 let nextSearchResponse = "ok";
 
 function headers(extra = {}) {
@@ -200,7 +201,21 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.method === "POST" && path === "/api/v1/auth/refresh") {
+    if (sessionDetailAuthState === "expired-until-refresh") {
+      sessionDetailAuthState = "ok";
+      send(response, 200, { access_token: "refreshed" });
+      return;
+    }
     send(response, 401, { detail: "Authentication is required" });
+    return;
+  }
+  if (request.method === "POST" && path === "/__e2e/session-detail-auth") {
+    if (url.searchParams.get("mode") !== "expired-until-refresh") {
+      send(response, 400, { detail: "Unsupported session detail auth mode" });
+      return;
+    }
+    sessionDetailAuthState = "expired-until-refresh";
+    send(response, 204, null);
     return;
   }
   if (request.method === "POST" && path === "/__e2e/atlas-response") {
@@ -543,6 +558,10 @@ const server = createServer((request, response) => {
   }
   const sessionMatch = path.match(/^\/api\/v1\/sessions\/([^/]+)$/);
   if (request.method === "GET" && sessionMatch) {
+    if (sessionDetailAuthState === "expired-until-refresh") {
+      send(response, 401, { detail: "Access token expired" });
+      return;
+    }
     if (decodeURIComponent(sessionMatch[1]) === "members-cove-long-form") {
       send(response, 404, { detail: "Session not found" });
       return;

@@ -366,6 +366,9 @@ test("playback returns from stalled to playing when media resumes", async ({ pag
 
   await page.goto("/sessions/first-session");
   await page.getByRole("button", { name: "Play session" }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as typeof window & {
+    __lastAudio?: { onstalled: ((event: Event) => void) | null };
+  }).__lastAudio?.onstalled === "function")).toBe(true);
   await page.evaluate(() => {
     const audio = (window as typeof window & {
       __lastAudio?: { onstalled: ((event: Event) => void) | null };
@@ -373,6 +376,9 @@ test("playback returns from stalled to playing when media resumes", async ({ pag
     audio?.onstalled?.(new Event("stalled"));
   });
   await expect(page.locator(".session-player-caption")).toContainText("stalled");
+  await expect.poll(() => page.evaluate(() => typeof (window as typeof window & {
+    __lastAudio?: { onplaying: ((event: Event) => void) | null };
+  }).__lastAudio?.onplaying === "function")).toBe(true);
 
   await page.evaluate(() => {
     const audio = (window as typeof window & {

@@ -90,6 +90,7 @@ test("home globe merges newly active dawn locations after a client refresh", asy
 
   await page.goto("/");
   const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas.locator(".dawn-copy strong")).toHaveText("Pine Marsh");
   await expect(atlas.getByText("Ridge Dawn", { exact: true })).toHaveCount(0);
   await page.clock.runFor(1_100);
   await expect(atlas.getByText("Ridge Dawn", { exact: true }).first()).toBeVisible();
@@ -776,6 +777,54 @@ test("entitled atlas listener can open a members-only session", async ({ page, r
   await expect(page.getByRole("dialog", { name: /Members-only soundscape/i })).toHaveCount(0);
 });
 
+test("members-only detail refreshes an expired access cookie before authorization", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=locked-point`);
+  expect(control.ok()).toBeTruthy();
+  const publicSession = await (await request.get(`${mockApiUrl}/api/v1/sessions/first-session`)).json();
+  let details = 0;
+  let refreshes = 0;
+  await page.route("**/api/v1/auth/refresh", async (route) => {
+    refreshes += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "renewed" }) });
+  });
+  await page.route("**/api/v1/sessions/members-cove-long-form", (route) => {
+    details += 1;
+    return route.fulfill({
+      status: details === 1 ? 401 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(details === 1 ? { detail: "Access token expired" } : {
+        ...publicSession,
+        id: "20000000-0000-4000-8000-000000000011",
+        slug: "members-cove-long-form",
+        title: "Members Cove Long Form",
+        access_level: "members_only",
+        location: { ...publicSession.location, name: "Members Cove", slug: "members-cove" },
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Night" }).click();
+  await page.locator(".location-card", { hasText: "Members Cove" }).click();
+
+  await expect.poll(() => refreshes).toBe(1);
+  await expect.poll(() => details).toBe(2);
+  await expect(
+    page.getByRole("region", { name: "Session player" }).getByRole("heading", { name: "Members Cove" }),
+  ).toBeVisible();
+});
+
+test("direct session route refreshes expired access before rendering detail", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post("http://127.0.0.1:4010/__e2e/session-detail-auth?mode=expired-until-refresh");
+  expect(control.ok()).toBeTruthy();
+
+  await page.goto("/sessions/first-session");
+  await expect(page.getByRole("heading", { name: "First Session", level: 1 })).toBeVisible();
+  await expect(page.getByText("Session unavailable")).toHaveCount(0);
+});
+
 test("globe exposes accessible bounded zoom and reset controls", async ({ page, request }) => {
   if (!process.env.E2E_API_URL) {
     const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=valid-optional-point`);
@@ -1379,8 +1428,12 @@ test("browser funnel analytics remains bounded across globe, preview, collection
   await page.getByRole("button", { name: "Reset globe" }).click();
   await page.getByRole("button", { name: /Play preview for/ }).first().click();
   await expect(page.getByRole("complementary", { name: "Global audio player" })).toBeVisible();
-  await page.getByRole("link", { name: "See all collections" }).click();
-  await expect(page).toHaveURL(/\/collections$/);
+  const seeAllCollections = page.getByRole("link", { name: "See all collections" });
+  await expect(seeAllCollections).toHaveAttribute("href", "/collections");
+  await Promise.all([
+    page.waitForURL((url) => url.pathname === "/collections"),
+    seeAllCollections.click(),
+  ]);
   await page.goto("/membership?mode=register&returnTo=%2Fsessions%2Ffirst-session");
   await page.getByLabel("Email address", { exact: true }).fill("bounded@example.com");
   await page.getByRole("button", { name: "Email me a sign-in link" }).click();

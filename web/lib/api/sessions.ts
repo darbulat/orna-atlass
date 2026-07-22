@@ -1,5 +1,6 @@
 import type { components } from "./generated";
 import { ApiError, fetchJson } from "./client";
+import { refreshAuthentication } from "./auth-refresh";
 
 export type LocationRead = components["schemas"]["LocationRead"];
 export type MediaAssetRead = components["schemas"]["PublicMediaAssetRead"];
@@ -45,6 +46,18 @@ const serverApiBaseUrl = process.env.API_SERVER_URL
 export function apiUrl(path: string): string {
   const baseUrl = typeof window === "undefined" ? serverApiBaseUrl : browserApiBaseUrl;
   return `${baseUrl}${path}`;
+}
+
+function refreshAccessCookie(signal?: AbortSignal): Promise<void> {
+  return refreshAuthentication(() => fetchJson<components["schemas"]["TokenResponse"]>(
+    apiUrl("/api/v1/auth/refresh"),
+    {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    },
+  ), signal);
 }
 
 function invalidResponse(detail: string): ApiError {
@@ -246,15 +259,26 @@ export function fetchBirdParts(sessionId: string): Promise<BirdPartsResponse> {
   });
 }
 
-export function fetchSessionDetail(
+export async function fetchSessionDetail(
   slug: string,
   forwardedHeaders: HeadersInit = {},
 ): Promise<SessionDetail> {
-  return fetchJson<SessionDetail>(apiUrl(`/api/v1/sessions/${slug}`), {
+  const requestDetail = () => fetchJson<SessionDetail>(apiUrl(`/api/v1/sessions/${slug}`), {
     cache: "no-store",
     credentials: "include",
     headers: { Accept: "application/json", ...forwardedHeaders },
   });
+
+  try {
+    return await requestDetail();
+  } catch (error) {
+    if (typeof window === "undefined" || !(error instanceof ApiError) || error.status !== 401) {
+      throw error;
+    }
+  }
+
+  await refreshAccessCookie();
+  return requestDetail();
 }
 
 export function fetchAtlasPoints(
@@ -323,11 +347,6 @@ export async function requestPlaybackGrant(sessionId: string, signal?: AbortSign
     }
   }
 
-  await fetchJson<components["schemas"]["TokenResponse"]>(apiUrl("/api/v1/auth/refresh"), {
-    method: "POST",
-    credentials: "include",
-    signal,
-    headers: { Accept: "application/json" },
-  });
+  await refreshAccessCookie(signal);
   return requestGrant();
 }

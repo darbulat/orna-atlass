@@ -12,7 +12,7 @@
     "api:check": "npm run api:generate && git diff --exit-code -- openapi.json lib/api/generated.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:unit": "tsc components/audio/playerMachine.ts components/audio/playerResources.ts --outDir .next-codex-unit --target es2022 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --pretty false && node --test components/audio/*.test.cjs",
+    "test:unit": "tsc components/audio/playerMachine.ts components/audio/playerResources.ts lib/api/auth-refresh.ts --outDir .next-codex-unit --target es2022 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --pretty false && node --test components/audio/*.test.cjs lib/api/*.test.cjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

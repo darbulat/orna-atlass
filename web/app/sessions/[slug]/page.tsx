@@ -1,12 +1,10 @@
-import { SessionPlayer } from "../../../components/audio/SessionPlayer";
-import { SiteHeader } from "../../../components/site-header";
 import { cookies } from "next/headers";
-import { AnnotationTimeline } from "../../../components/sessions/AnnotationTimeline";
-import { BirdPartsTimeline } from "../../../components/sessions/BirdPartsTimeline";
-import { ProcessingStatusPanel } from "../../../components/sessions/ProcessingStatusPanel";
-import { RecordingIntegrityPanel } from "../../../components/sessions/RecordingIntegrityPanel";
+
+import { SiteHeader } from "../../../components/site-header";
 import { ApiError, apiErrorMessage } from "../../../lib/api/client";
-import { fetchSessionDetail, type SessionDetail } from "../../../lib/api/sessions";
+import { fetchSessionDetail } from "../../../lib/api/sessions";
+import { SessionDetailContent } from "./SessionDetailContent";
+import { SessionRefreshRecovery } from "./SessionRefreshRecovery";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +19,13 @@ export default async function SessionPage({ params }: { params: Promise<{ slug: 
       slug,
       cookieHeader ? { Cookie: cookieHeader } : {},
     );
-    return <SessionDetailView session={session} />;
+    return <SessionDetailContent session={session} />;
   } catch (error) {
-    return <SessionLoadState slug={slug} error={error} />;
+    const fallback = <SessionLoadState slug={slug} error={error} />;
+    if (error instanceof ApiError && error.status === 401) {
+      return <SessionRefreshRecovery slug={slug} fallback={fallback} />;
+    }
+    return fallback;
   }
 }
 
@@ -47,74 +49,8 @@ function SessionLoadState({ slug, error }: { slug: string; error: unknown }) {
         <p className="eyebrow">Session</p>
         <h1>{heading}</h1>
         <p>{message}</p>
-        <small>{formatSlug(slug)}</small>
+        <small>{slug.replaceAll("-", " ")}</small>
       </section>
     </main>
   );
-}
-
-function SessionDetailView({ session }: { session: SessionDetail }) {
-  return (
-    <main className="shell session-shell" id="main-content">
-      <SiteHeader />
-      <section className="session-hero">
-        <p className="eyebrow">ORNA Session</p>
-        <h1>{session.title}</h1>
-        <p>{session.description ?? "A long-form field recording from the atlas."}</p>
-        {session.location.coordinates_protected ? (
-          <p className="protected-badge" role="status">
-            Approximate location — exact coordinates are protected for this sensitive habitat.
-          </p>
-        ) : null}
-        <dl className="session-meta">
-          <div>
-            <dt>Location</dt>
-            <dd>{session.location.name}</dd>
-          </div>
-          <div>
-            <dt>Habitat</dt>
-            <dd>{session.location.habitat ?? "Unknown"}</dd>
-          </div>
-          <div>
-            <dt>Weather</dt>
-            <dd>{session.weather ?? "Not recorded"}</dd>
-          </div>
-          <div>
-            <dt>Duration</dt>
-            <dd>{formatDuration(session.duration_seconds)}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <SessionPlayer session={session} />
-      <BirdPartsTimeline session={session} />
-      {session.waveform ? (
-        <AnnotationTimeline annotations={session.annotations ?? []} waveform={session.waveform} />
-      ) : (
-        <p className="not-ready-state" role="status">Waveform data is still being prepared.</p>
-      )}
-      {session.recording_integrity ? (
-        <RecordingIntegrityPanel integrity={session.recording_integrity} />
-      ) : (
-        <p className="not-ready-state" role="status">Recording details have not been provided.</p>
-      )}
-      <ProcessingStatusPanel status={session.processing_status} assets={session.media_assets ?? []} />
-    </main>
-  );
-}
-
-function formatSlug(slug: string) {
-  return slug.replaceAll("-", " ");
-}
-
-function formatDuration(seconds: number | null | undefined) {
-  if (!seconds) {
-    return "Unknown";
-  }
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (hours === 0) {
-    return `${minutes} min`;
-  }
-  return `${hours}h ${minutes}m`;
 }

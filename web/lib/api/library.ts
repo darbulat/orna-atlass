@@ -1,26 +1,20 @@
 import type { components } from "./generated";
 import { fetchJson, isApiError } from "./client";
 import { markAccountAnonymous, markAccountAuthenticated } from "./account-auth-state";
+import { refreshAuthentication } from "./auth-refresh";
 import { apiUrl } from "./sessions";
 
 export type Favorite = components["schemas"]["FavoriteRead"];
 export type ListeningHistoryItem = components["schemas"]["ListeningHistoryRead"];
 export type ListeningProgressUpdate = components["schemas"]["ListeningProgressUpdate"];
 
-let refreshPromise: Promise<void> | null = null;
-
-function refreshAuthentication(): Promise<void> {
-  if (!refreshPromise) {
-    refreshPromise = fetchJson<unknown>(apiUrl("/api/v1/auth/refresh"), {
+function refreshAccessCookie(): Promise<void> {
+  return refreshAuthentication(() => fetchJson<unknown>(apiUrl("/api/v1/auth/refresh"), {
       method: "POST",
       credentials: "include",
       cache: "no-store",
       headers: { Accept: "application/json" },
-    }).then(() => undefined).finally(() => {
-      refreshPromise = null;
-    });
-  }
-  return refreshPromise;
+  }));
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -42,7 +36,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   try {
-    await refreshAuthentication();
+    await refreshAccessCookie();
     const response = await perform();
     markAccountAuthenticated();
     return response;
