@@ -739,7 +739,7 @@ test("members-only atlas point is visibly locked and opens a truthful soft paywa
   await expect(dialog).toContainText(/a free ORNA account does not unlock this recording/i);
   await expect(dialog.getByRole("link", { name: "Create a free account" })).toHaveAttribute(
     "href",
-    /\/membership\?mode=register&returnTo=/,
+    "/membership?mode=register",
   );
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
@@ -747,6 +747,41 @@ test("members-only atlas point is visibly locked and opens a truthful soft paywa
   await expect.poll(() => page.evaluate(() => (
     (window as typeof window & { __analytics?: Array<{ name?: string }> }).__analytics?.map((event) => event.name) ?? []
   ))).toContain("paywall_dismissed");
+});
+
+test("free signup from a locked recording stays on the membership explanation", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=locked-point`);
+  expect(control.ok()).toBeTruthy();
+  await page.route("**/api/v1/auth/register", async (route) => {
+    await route.fulfill({
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000003",
+        email: "free-listener@example.com",
+        role: "member",
+        is_active: true,
+        created_at: "2026-07-22T00:00:00Z",
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Night" }).click();
+  await page.locator(".location-card", { hasText: "Members Cove" }).click();
+  const signupLink = page.getByRole("dialog", { name: /Members-only soundscape/i })
+    .getByRole("link", { name: "Create a free account" });
+  await expect(signupLink).toHaveAttribute("href", "/membership?mode=register");
+  await page.goto("/membership?mode=register");
+  await expect(page).toHaveURL(/\/membership\?mode=register$/);
+
+  await page.getByLabel("Password account email", { exact: true }).fill("free-listener@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("correct horse battery staple");
+  await page.locator("form").getByRole("button", { name: "Continue" }).click();
+
+  await expect(page).toHaveURL(/\/membership\?mode=register$/);
+  await expect(page.getByText("Membership enrollment is not open yet.")).toBeVisible();
 });
 
 test("entitled atlas listener can open a members-only session", async ({ page, request }) => {
@@ -823,6 +858,24 @@ test("direct session route refreshes expired access before rendering detail", as
   await page.goto("/sessions/first-session");
   await expect(page.getByRole("heading", { name: "First Session", level: 1 })).toBeVisible();
   await expect(page.getByText("Session unavailable")).toHaveCount(0);
+});
+
+test("direct hidden member route retries a privacy-preserving SSR 404 after refresh", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/session-detail-auth?mode=hidden-until-refresh`);
+  expect(control.ok()).toBeTruthy();
+
+  await page.goto("/sessions/first-session");
+
+  await expect(page.getByRole("heading", { name: "First Session" })).toBeVisible();
+  await expect(page.getByText("Session not found")).toHaveCount(0);
+  const stateResponse = await request.get(`${mockApiUrl}/__e2e/session-detail-auth`);
+  expect(stateResponse.ok()).toBeTruthy();
+  expect(await stateResponse.json()).toEqual({
+    detail_reads: 3,
+    refresh_calls: 1,
+    state: "ok",
+  });
 });
 
 test("globe exposes accessible bounded zoom and reset controls", async ({ page, request }) => {

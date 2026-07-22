@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { SiteHeader } from "../../../components/site-header";
-import { fetchSessionDetail, type SessionDetail } from "../../../lib/api/sessions";
+import { recoverBrowserSessionDetail, type SessionDetail } from "../../../lib/api/sessions";
 import { SessionDetailContent } from "./SessionDetailContent";
 
 export function SessionRefreshRecovery({
@@ -19,7 +19,7 @@ export function SessionRefreshRecovery({
 
   useEffect(() => {
     let active = true;
-    void fetchSessionDetail(slug).then(
+    void recoverBrowserSessionDetail(slug).then(
       (detail) => {
         if (active) setSession(detail);
       },
@@ -39,8 +39,8 @@ export function SessionRefreshRecovery({
       <SiteHeader />
       <section className="panel unavailable-panel" role="status">
         <p className="eyebrow">Session</p>
-        <h1>Restoring your session</h1>
-        <p>Refreshing secure access before loading this recording.</p>
+        <h1>Checking session access</h1>
+        <p>Checking whether this recording is available to your browser.</p>
       </section>
     </main>
   );

@@ -158,6 +158,8 @@ const grantCounts = new Map();
 let nextAtlasResponse = "ok";
 let nextDawnResponse = "ok";
 let sessionDetailAuthState = "ok";
+let sessionDetailAuthReads = 0;
+let sessionDetailRefreshCalls = 0;
 let nextSearchResponse = "ok";
 
 function headers(extra = {}) {
@@ -201,7 +203,8 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.method === "POST" && path === "/api/v1/auth/refresh") {
-    if (sessionDetailAuthState === "expired-until-refresh") {
+    if (["expired-until-refresh", "hidden-until-refresh"].includes(sessionDetailAuthState)) {
+      sessionDetailRefreshCalls += 1;
       sessionDetailAuthState = "ok";
       send(response, 200, { access_token: "refreshed" });
       return;
@@ -210,12 +213,23 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.method === "POST" && path === "/__e2e/session-detail-auth") {
-    if (url.searchParams.get("mode") !== "expired-until-refresh") {
+    const mode = url.searchParams.get("mode");
+    if (!["expired-until-refresh", "hidden-until-refresh"].includes(mode)) {
       send(response, 400, { detail: "Unsupported session detail auth mode" });
       return;
     }
-    sessionDetailAuthState = "expired-until-refresh";
+    sessionDetailAuthState = mode;
+    sessionDetailAuthReads = 0;
+    sessionDetailRefreshCalls = 0;
     send(response, 204, null);
+    return;
+  }
+  if (request.method === "GET" && path === "/__e2e/session-detail-auth") {
+    send(response, 200, {
+      detail_reads: sessionDetailAuthReads,
+      refresh_calls: sessionDetailRefreshCalls,
+      state: sessionDetailAuthState,
+    });
     return;
   }
   if (request.method === "POST" && path === "/__e2e/atlas-response") {
@@ -558,10 +572,16 @@ const server = createServer((request, response) => {
   }
   const sessionMatch = path.match(/^\/api\/v1\/sessions\/([^/]+)$/);
   if (request.method === "GET" && sessionMatch) {
+    sessionDetailAuthReads += 1;
+    if (sessionDetailAuthState === "hidden-until-refresh") {
+      send(response, 404, { detail: "Session not found" });
+      return;
+    }
     if (sessionDetailAuthState === "expired-until-refresh") {
       send(response, 401, { detail: "Access token expired" });
       return;
     }
+
     if (decodeURIComponent(sessionMatch[1]) === "members-cove-long-form") {
       send(response, 404, { detail: "Session not found" });
       return;

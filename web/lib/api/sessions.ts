@@ -259,15 +259,22 @@ export function fetchBirdParts(sessionId: string): Promise<BirdPartsResponse> {
   });
 }
 
-export async function fetchSessionDetail(
+function requestSessionDetail(
   slug: string,
   forwardedHeaders: HeadersInit = {},
 ): Promise<SessionDetail> {
-  const requestDetail = () => fetchJson<SessionDetail>(apiUrl(`/api/v1/sessions/${slug}`), {
+  return fetchJson<SessionDetail>(apiUrl(`/api/v1/sessions/${slug}`), {
     cache: "no-store",
     credentials: "include",
     headers: { Accept: "application/json", ...forwardedHeaders },
   });
+}
+
+export async function fetchSessionDetail(
+  slug: string,
+  forwardedHeaders: HeadersInit = {},
+): Promise<SessionDetail> {
+  const requestDetail = () => requestSessionDetail(slug, forwardedHeaders);
 
   try {
     return await requestDetail();
@@ -279,6 +286,19 @@ export async function fetchSessionDetail(
 
   await refreshAccessCookie();
   return requestDetail();
+}
+
+export async function recoverBrowserSessionDetail(slug: string): Promise<SessionDetail> {
+  try {
+    return await fetchSessionDetail(slug);
+  } catch (error) {
+    if (typeof window === "undefined" || !(error instanceof ApiError) || error.status !== 404) {
+      throw error;
+    }
+  }
+
+  await refreshAccessCookie();
+  return requestSessionDetail(slug);
 }
 
 export function fetchAtlasPoints(

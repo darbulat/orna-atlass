@@ -22,7 +22,7 @@ export default async function SessionPage({ params }: { params: Promise<{ slug: 
     return <SessionDetailContent session={session} />;
   } catch (error) {
     const fallback = <SessionLoadState slug={slug} error={error} />;
-    if (error instanceof ApiError && error.status === 401) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 404)) {
       return <SessionRefreshRecovery slug={slug} fallback={fallback} />;
     }
     return fallback;

@@ -115,7 +115,10 @@ def point_from_location(location: Location, *, include_locked: bool = False) -> 
         key=lambda item: item.recorded_at,
         reverse=True,
     )
-    latest = discoverable_sessions[0] if discoverable_sessions else None
+    latest = next(
+        (session for session in discoverable_sessions if session.access_level == "public"),
+        discoverable_sessions[0] if discoverable_sessions else None,
+    )
     return AtlasPoint(
         id=location.id,
         slug=location.slug,

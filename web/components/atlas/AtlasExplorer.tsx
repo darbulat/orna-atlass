@@ -1384,7 +1384,7 @@ export function AtlasExplorer({
             <div className="soft-paywall-actions">
               <Link
                 className="button-link"
-                href={`/membership?mode=register&returnTo=${encodeURIComponent(`/sessions/${selected.latest_session.slug}`)}`}
+                href="/membership?mode=register"
                 onClick={() => {
                   for (const name of ["paywall_signup_click", "signup_started"]) {
                     window.dispatchEvent(new CustomEvent("orna:analytics", {

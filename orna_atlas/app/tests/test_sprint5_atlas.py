@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -69,6 +69,50 @@ def test_atlas_point_teases_published_members_only_session_without_media_or_exac
     }
     assert "exact_latitude" not in payload
     assert "media_assets" not in payload["latest_session"]
+
+
+def test_mixed_location_keeps_its_public_preview_when_a_newer_member_session_exists() -> None:
+    now = datetime.now(UTC)
+    location = SimpleNamespace(
+        id=uuid4(),
+        slug="mixed-marsh",
+        name="Mixed Marsh",
+        description=None,
+        country_code="EE",
+        region="Laanemaa",
+        habitat="wetland",
+        latitude=58.91,
+        longitude=23.72,
+        timezone="Europe/Tallinn",
+        sensitivity_level="normal",
+        coordinate_visibility="exact_public",
+        sessions=[
+            SimpleNamespace(
+                id=uuid4(),
+                slug="new-member-session",
+                title="New Member Session",
+                recorded_at=now,
+                duration_seconds=7200,
+                access_level="members_only",
+                publication_status="published",
+            ),
+            SimpleNamespace(
+                id=uuid4(),
+                slug="public-preview",
+                title="Public Preview",
+                recorded_at=now - timedelta(days=1),
+                duration_seconds=1800,
+                access_level="public",
+                publication_status="published",
+            ),
+        ],
+    )
+
+    payload = service.point_from_location(location, include_locked=True).model_dump(mode="json")
+
+    assert payload["session_count"] == 2
+    assert payload["latest_session"]["slug"] == "public-preview"
+    assert payload["latest_session"]["access_level"] == "public"
 
 
 def test_protected_location_uses_public_coordinates() -> None:
