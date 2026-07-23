@@ -18,6 +18,20 @@ def test_repository_agent_harness_is_complete() -> None:
     assert check_harness(REPOSITORY_ROOT) == []
 
 
+def test_ci_adr_gate_uses_branch_wide_base_for_feature_pushes() -> None:
+    workflow = (REPOSITORY_ROOT / ".github/workflows/ci.yml").read_text(
+        encoding="utf-8"
+    )
+    adr_base_line = next(
+        line for line in workflow.splitlines() if "ADR_BASE_REF:" in line
+    )
+
+    assert "github.event.pull_request.base.sha" in adr_base_line
+    assert "github.ref_name == github.event.repository.default_branch" in adr_base_line
+    assert "github.event.before" in adr_base_line
+    assert "format('origin/{0}', github.event.repository.default_branch)" in adr_base_line
+
+
 def test_runtime_architecture_respects_declared_boundaries() -> None:
     assert check_architecture(REPOSITORY_ROOT) == []
 
