@@ -2,6 +2,15 @@ import { expect, test } from "@playwright/test";
 
 const mockApiUrl = "http://127.0.0.1:4010";
 
+type BoundingBox = { x: number; y: number; width: number; height: number };
+
+function boxesOverlap(first: BoundingBox, second: BoundingBox) {
+  return first.x < second.x + second.width
+    && first.x + first.width > second.x
+    && first.y < second.y + second.height
+    && first.y + first.height > second.y;
+}
+
 test("home page opens on a selected interactive globe before marketing content", async ({ page }) => {
   let grantRequests = 0;
   let authRequests = 0;
@@ -36,6 +45,28 @@ test("home page opens on a selected interactive globe before marketing content",
   expect(grantRequests).toBe(1);
   expect(authRequests).toBe(0);
   await expect(page).toHaveURL(/\/$/);
+});
+
+test("atlas globe tools remain disjoint and clickable above Cesium controls", async ({ page }) => {
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 390, height: 844 },
+    { width: 320, height: 800 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/atlas");
+
+    const search = page.getByRole("button", { name: "Search", exact: true });
+    const reset = page.getByRole("button", { name: "Reset globe" });
+    const [searchBox, resetBox] = await Promise.all([search.boundingBox(), reset.boundingBox()]);
+    expect(searchBox).not.toBeNull();
+    expect(resetBox).not.toBeNull();
+    expect(boxesOverlap(searchBox!, resetBox!)).toBe(false);
+
+    await search.click();
+    await expect(page.locator("#atlas-search")).toBeFocused();
+    await reset.click();
+  }
 });
 
 test("atlas starts the selected public preview with one click and no auth gate", async ({ page }) => {
@@ -504,9 +535,39 @@ test("current-location control selects the nearest public listening site without
   await expect(locateButton).toBeEnabled();
   await locateButton.press("Enter");
 
-  await expect(page.getByRole("status")).toHaveText("Nearest listening location: Third Reedbed.");
+  const status = page.getByRole("status");
+  await expect(status).toHaveText("Nearest listening location: Third Reedbed.");
   await expect(page.locator(".dawn-copy strong")).toHaveText("Third Reedbed");
   await expect(page.locator(".location-carousel").getByRole("button", { name: "Next location" })).toBeDisabled();
+
+  const statusBox = await status.boundingBox();
+  const listenBox = await page.locator(".dawn-copy").getByRole("button", { name: "Listen" }).boundingBox();
+  expect(statusBox).not.toBeNull();
+  expect(listenBox).not.toBeNull();
+  for (const tool of await page.locator(".globe-tools button").all()) {
+    const toolBox = await tool.boundingBox();
+    expect(toolBox).not.toBeNull();
+    expect(boxesOverlap(toolBox!, statusBox!)).toBe(false);
+    expect(boxesOverlap(toolBox!, listenBox!)).toBe(false);
+  }
+});
+
+test("a denied location request stays clear of the mobile Listen control", async ({ page, context }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await context.clearPermissions();
+  await page.goto("/atlas");
+
+  await page.getByRole("button", { name: "Use current location" }).click();
+  const status = page.getByRole("status");
+  await expect(status).toContainText("denied location access");
+
+  const listen = page.locator(".dawn-copy").getByRole("button", { name: "Listen" });
+  const [statusBox, listenBox] = await Promise.all([status.boundingBox(), listen.boundingBox()]);
+  expect(statusBox).not.toBeNull();
+  expect(listenBox).not.toBeNull();
+  expect(boxesOverlap(statusBox!, listenBox!)).toBe(false);
+  await listen.click();
+  await expect(page.locator("#atlas-session-player")).toBeVisible();
 });
 
 test("atlas loads the interactive Cesium globe on a mobile viewport", async ({ page }) => {
@@ -1340,19 +1401,80 @@ test("a favorite response for the previous session cannot update the next sessio
   await expect(panel.getByText(/Saved to your account/)).toHaveCount(0);
 });
 
-test("signed-in favorites are saved to the account library", async ({ page }) => {
+test("an external authentication boundary invalidates an in-flight favorite read", async ({ page }) => {
+  let favoriteReads = 0;
+  let authBoundaryCrossed = false;
+  let releaseStaleReads!: () => void;
+  const staleReads = new Promise<void>((resolve) => {
+    releaseStaleReads = resolve;
+  });
+  const favorite = {
+    session: {
+      id: "20000000-0000-4000-8000-000000000002",
+      slug: "second-session",
+      title: "Second Session",
+      recorded_at: "2026-03-20T04:30:00Z",
+      duration_seconds: 600,
+      access_level: "public",
+      location: {
+        id: "10000000-0000-4000-8000-000000000001",
+        slug: "pine-marsh",
+        name: "Pine Marsh",
+        region: "Harju County",
+        habitat: "Wetland",
+      },
+    },
+    favorited_at: "2026-07-22T07:00:00Z",
+  };
   await page.route("**/api/v1/users/me/favorites**", async (route) => {
-    if (route.request().method() === "GET") {
+    favoriteReads += 1;
+    if (!authBoundaryCrossed) {
+      await staleReads;
       await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
       return;
     }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([favorite]) });
+  });
+
+  await page.goto("/");
+  await page.locator(".location-card", { hasText: "Pine Marsh" }).click();
+  await expect.poll(() => favoriteReads).toBeGreaterThan(0);
+  await page.waitForTimeout(100);
+  const initialReads = favoriteReads;
+  authBoundaryCrossed = true;
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("orna:account-auth-changed", {
+      detail: { state: "authenticated" },
+    }));
+  });
+  await expect.poll(() => favoriteReads).toBeGreaterThan(initialReads);
+
+  const panel = page.locator("#atlas-session-player");
+  await expect(panel.getByRole("button", { name: "Remove from favorites" })).toHaveAttribute("aria-pressed", "true");
+  releaseStaleReads();
+  await expect(panel.getByRole("button", { name: "Remove from favorites" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("signed-in favorites are saved to the account library", async ({ page }) => {
+  let favoriteReads = 0;
+  let favoriteWrites = 0;
+  await page.route("**/api/v1/users/me/favorites**", async (route) => {
+    if (route.request().method() === "GET") {
+      favoriteReads += 1;
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      return;
+    }
+    favoriteWrites += 1;
     await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
   await page.goto("/");
   await page.locator(".location-card", { hasText: "Pine Marsh" }).click();
   const panel = page.locator("#atlas-session-player");
   const save = panel.getByRole("button", { name: "Save recording" });
+  await expect(save).toBeEnabled();
+  expect(favoriteReads).toBeGreaterThan(0);
   await save.click();
+  await expect.poll(() => favoriteWrites).toBe(1);
   await expect(panel.getByRole("button", { name: "Remove from favorites" })).toHaveAttribute("aria-pressed", "true");
   await expect(panel.getByText("Saved to your account.")).toBeVisible();
   await expect(panel.getByRole("link", { name: "View your library" })).toHaveAttribute("href", "/library");

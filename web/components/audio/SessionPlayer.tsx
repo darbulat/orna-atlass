@@ -54,6 +54,7 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
   const [favoriteHint, setFavoriteHint] = useState<string | null>(null);
   const [timelineHelpOpen, setTimelineHelpOpen] = useState(false);
   const [accountAuthRevision, setAccountAuthRevision] = useState(0);
+  const favoriteLoadGenerationRef = useRef(0);
   const displayedSessionIdRef = useRef(session.id);
   useEffect(() => {
     displayedSessionIdRef.current = session.id;
@@ -83,13 +84,20 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
   const weatherItems = useMemo(() => buildWeatherItems(session), [session]);
 
   useEffect(() => {
-    const handleAuthChange = () => setAccountAuthRevision((revision) => revision + 1);
+    const handleAuthChange = () => {
+      favoriteLoadGenerationRef.current += 1;
+      setFavoritePending(true);
+      setAccountAuthRevision((revision) => revision + 1);
+    };
     window.addEventListener(ACCOUNT_AUTH_CHANGED_EVENT, handleAuthChange);
     return () => window.removeEventListener(ACCOUNT_AUTH_CHANGED_EVENT, handleAuthChange);
   }, []);
 
   useEffect(() => {
     let active = true;
+    const generation = favoriteLoadGenerationRef.current + 1;
+    favoriteLoadGenerationRef.current = generation;
+    const isCurrentLoad = () => active && favoriteLoadGenerationRef.current === generation;
     setIsFavorite(false);
     setFavoritePending(true);
     setFavoriteHint(null);
@@ -98,11 +106,11 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
       return () => { active = false; };
     }
     void fetchFavorites().then((favorites) => {
-      if (active) setIsFavorite(favorites.some((favorite) => favorite.session.id === session.id));
+      if (isCurrentLoad()) setIsFavorite(favorites.some((favorite) => favorite.session.id === session.id));
     }).catch((error: unknown) => {
-      if (active && !isApiError(error)) setFavoriteHint("Favorites are temporarily unavailable.");
+      if (isCurrentLoad() && !isApiError(error)) setFavoriteHint("Favorites are temporarily unavailable.");
     }).finally(() => {
-      if (active) setFavoritePending(false);
+      if (isCurrentLoad()) setFavoritePending(false);
     });
     return () => { active = false; };
   }, [accountAuthRevision, session.id]);
