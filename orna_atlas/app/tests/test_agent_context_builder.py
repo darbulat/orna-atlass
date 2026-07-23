@@ -40,6 +40,33 @@ def test_routes_task_and_target_path_to_privacy_context(
 
 
 @pytest.mark.parametrize(
+    ("frontend_path", "backend_context"),
+    [
+        ("web/lib/api/auth.ts", "orna_atlas/app/modules/auth/service.py"),
+        ("web/lib/api/library.ts", "orna_atlas/app/modules/library/service.py"),
+    ],
+)
+def test_frontend_auth_and_library_files_route_to_responsible_backend_context(
+    context_map: context_builder.ContextMap,
+    frontend_path: str,
+    backend_context: str,
+) -> None:
+    selection = context_builder.build_context(
+        context_map,
+        task="Fix frontend client bug",
+        role="frontend",
+        changed_paths=(frontend_path,),
+    )
+    manifest = context_builder.render_manifest(selection).splitlines()
+
+    assert frontend_path in manifest
+    assert "docs/DOMAIN_RULES.md" in manifest
+    assert backend_context in manifest
+    assert len(manifest) <= context_map.max_files
+    assert selection.total_bytes <= context_map.max_bytes
+
+
+@pytest.mark.parametrize(
     "role",
     ["architect", "backend", "documentation", "frontend", "security", "test"],
 )

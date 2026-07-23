@@ -19,3 +19,9 @@ def test_adr_gate_protects_its_governance_surfaces() -> None:
         "scripts/run_agent_evals.py",
     )
     assert all(_is_protected(path, policy) for path in protected)
+
+
+def test_adr_gate_protects_repository_skill_workflows() -> None:
+    policy = load_policy(REPOSITORY_ROOT)
+
+    assert _is_protected(".agents/skills/create-api/SKILL.md", policy)

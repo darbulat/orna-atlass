@@ -178,12 +178,16 @@ path_roots = [
   "orna_atlas/app/modules/library",
   "orna_atlas/app/modules/memberships",
   "orna_atlas/app/modules/users",
-  "web/lib/api/auth",
-  "web/lib/api/library",
+  "web/lib/api/auth.ts",
+  "web/lib/api/library.ts",
   "web/app/library",
   "web/app/membership",
 ]
-files = ["docs/DOMAIN_RULES.md"]
+files = [
+  "docs/DOMAIN_RULES.md",
+  "orna_atlas/app/modules/auth/service.py",
+  "orna_atlas/app/modules/library/service.py",
+]
 patterns = [
   "orna_atlas/app/modules/auth/*.py",
   "orna_atlas/app/modules/library/*.py",

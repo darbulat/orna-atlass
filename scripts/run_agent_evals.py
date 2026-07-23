@@ -78,6 +78,9 @@ def main() -> int:
             return 2
     else:
         selected = [evaluation for evaluation in evaluations if evaluation["tier"] == args.tier]
+        if not selected:
+            print(f"ERROR: no evals registered for tier '{args.tier}'.")
+            return 2
 
     base_environment = os.environ.copy()
     base_environment["PYTHONPATH"] = os.pathsep.join(

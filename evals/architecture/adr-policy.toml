@@ -4,6 +4,7 @@ protected_patterns = [
   "AGENTS.md",
   ".agents/context-map.toml",
   ".agents/roles/**",
+  ".agents/skills/**",
   ".github/workflows/**",
   "Dockerfile.*",
   "docker-compose*.yml",

@@ -89,6 +89,44 @@ Keep the contract in the repository.
 Architecture changes remain reviewable.
 """,
     )
+    _write(
+        tmp_path,
+        "docs/adr/README.md",
+        "- [ADR-0001: Agent contract](0001-agent-contract.md)\n",
+    )
+
+    errors = evaluate_changes(
+        tmp_path,
+        [
+            Change("M", "AGENTS.md"),
+            Change("A", adr_path),
+            Change("M", "docs/adr/README.md"),
+        ],
+        Policy(("AGENTS.md",)),
+    )
+
+    assert errors == []
+
+
+def test_adr_policy_requires_index_update_for_new_record(tmp_path: Path) -> None:
+    adr_path = "docs/adr/0001-agent-contract.md"
+    _write(
+        tmp_path,
+        adr_path,
+        """# ADR-0001: Agent contract
+
+- Status: proposed
+- Date: 2026-07-23
+
+## Decision
+
+Keep the contract in the repository.
+
+## Consequences
+
+Architecture changes remain reviewable.
+""",
+    )
 
     errors = evaluate_changes(
         tmp_path,
@@ -96,4 +134,49 @@ Architecture changes remain reviewable.
         Policy(("AGENTS.md",)),
     )
 
-    assert errors == []
+    assert any("without updating docs/adr/README.md" in error for error in errors)
+
+
+def test_adr_policy_requires_index_to_link_new_record(tmp_path: Path) -> None:
+    adr_path = "docs/adr/0001-agent-contract.md"
+    _write(
+        tmp_path,
+        adr_path,
+        """# ADR-0001: Agent contract
+
+- Status: accepted
+- Date: 2026-07-23
+
+## Decision
+
+Keep the contract in the repository.
+
+## Consequences
+
+Architecture changes remain reviewable.
+""",
+    )
+    _write(
+        tmp_path,
+        "docs/adr/README.md",
+        (
+            "Pending file: 0001-agent-contract.md\n"
+            "<!-- - [ADR-0001: Hidden](0001-agent-contract.md) -->\n"
+            "`- [ADR-0001: Code](0001-agent-contract.md)`\n"
+            "- ![ADR-0001: Image](0001-agent-contract.md)\n"
+            "<!--\n- [ADR-0001: Multiline comment](0001-agent-contract.md)\n-->\n"
+            "```markdown\n- [ADR-0001: Fenced code](0001-agent-contract.md)\n```\n"
+        ),
+    )
+
+    errors = evaluate_changes(
+        tmp_path,
+        [
+            Change("M", "AGENTS.md"),
+            Change("A", adr_path),
+            Change("M", "docs/adr/README.md"),
+        ],
+        Policy(("AGENTS.md",)),
+    )
+
+    assert "docs/adr/README.md: must link to 0001-agent-contract.md" in errors
