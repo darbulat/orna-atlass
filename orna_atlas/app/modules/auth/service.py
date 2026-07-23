@@ -55,6 +55,26 @@ async def authenticate(session: AsyncSession, data: LoginRequest) -> User:
     return user
 
 
+async def authenticate_password_login(
+    session: AsyncSession,
+    data: LoginRequest,
+    *,
+    ip_address: str | None,
+    user_agent: str | None,
+) -> tuple[TokenResponse, str]:
+    user = await authenticate(session, data)
+    await add_audit_event(
+        session,
+        event_type="auth.login_succeeded",
+        subject_type="user",
+        subject_id=str(user.id),
+        actor_user_id=user.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    return await issue_token_pair(session, user)
+
+
 async def authenticate_magic_link(
     session: AsyncSession, email: str
 ) -> tuple[TokenResponse, str, bool]:

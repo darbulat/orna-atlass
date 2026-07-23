@@ -1,0 +1,26 @@
+version = 1
+
+protected_patterns = [
+  "AGENTS.md",
+  ".agents/context-map.toml",
+  ".agents/roles/**",
+  ".agents/skills/**",
+  ".github/workflows/**",
+  "Dockerfile.*",
+  "docker-compose*.yml",
+  "deploy/**",
+  "docs/ARCHITECTURE.md",
+  "docs/DOMAIN_RULES.md",
+  "docs/architecture/**",
+  "evals/architecture/adr-policy.toml",
+  "evals/manifest.toml",
+  "orna_atlas/app/core/security.py",
+  "orna_atlas/app/db/**",
+  "orna_atlas/app/main.py",
+  "pyproject.toml",
+  "scripts/build_agent_context.py",
+  "scripts/check_adr_policy.py",
+  "scripts/check_agent_harness.py",
+  "scripts/check_architecture.py",
+  "scripts/run_agent_evals.py",
+]

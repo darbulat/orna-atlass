@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Tests"
+  short_description: "Add focused ORNA regression and contract tests"
+  default_prompt: "Use $write-tests to add focused regression coverage for this ORNA Atlas behavior."

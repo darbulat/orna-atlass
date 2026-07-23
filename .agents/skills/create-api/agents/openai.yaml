@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create API"
+  short_description: "Build safe ORNA FastAPI endpoints and contracts"
+  default_prompt: "Use $create-api to add a safe ORNA Atlas endpoint with synchronized contracts and tests."
