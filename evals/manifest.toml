@@ -1,0 +1,58 @@
+version = 1
+
+[[eval]]
+id = "architecture-boundaries"
+area = "architecture"
+tier = "fast"
+command = ["python", "scripts/check_architecture.py"]
+working_directory = "."
+
+[[eval]]
+id = "agent-harness-contract"
+area = "quality"
+tier = "fast"
+command = ["python", "scripts/check_agent_harness.py"]
+working_directory = "."
+
+[[eval]]
+id = "context-routing-contract"
+area = "prompt"
+tier = "fast"
+command = ["python", "scripts/build_agent_context.py", "--check"]
+working_directory = "."
+
+[[eval]]
+id = "backend-contracts"
+area = "quality"
+tier = "full"
+command = ["python", "-m", "pytest"]
+working_directory = "."
+
+[[eval]]
+id = "postgis-scale"
+area = "performance"
+tier = "dependency"
+command = [
+  "python",
+  "-m",
+  "pytest",
+  "-m",
+  "integration",
+  "tests/integration/test_postgis_atlas.py",
+]
+working_directory = "."
+env = { RUN_INTEGRATION_TESTS = "1" }
+
+[[eval]]
+id = "frontend-unit-and-contract"
+area = "quality"
+tier = "full"
+command = ["npm", "run", "test:unit"]
+working_directory = "web"
+
+[[eval]]
+id = "browser-journeys"
+area = "ui"
+tier = "dependency"
+command = ["npm", "run", "test:e2e"]
+working_directory = "web"

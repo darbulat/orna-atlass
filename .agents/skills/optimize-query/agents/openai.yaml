@@ -1,0 +1,4 @@
+interface:
+  display_name: "Optimize Query"
+  short_description: "Tune ORNA SQLAlchemy and PostGIS query paths"
+  default_prompt: "Use $optimize-query to diagnose and improve this ORNA Atlas query while preserving behavior."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Change"
+  short_description: "Review ORNA changes against repository invariants"
+  default_prompt: "Use $review-change to review this ORNA Atlas change for correctness, privacy, and regression risk."

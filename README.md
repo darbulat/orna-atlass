@@ -177,10 +177,13 @@ exists, and writes an audit event. Further role changes must use the authenticat
 ## Documentation
 
 - [Project architecture](docs/ARCHITECTURE.md)
+- [Architecture context index](docs/architecture/README.md)
 - [Implementation plan (RU)](docs/IMPLEMENTATION_PLAN_rus.md)
 - [Current implementation](docs/CURRENT_STATE.md)
 - [Domain rules](docs/DOMAIN_RULES.md)
 - [Architecture decisions](docs/adr/README.md)
+- [Change specifications](specs/README.md)
+- [Agent evaluation registry](evals/README.md)
 - [Performance baseline](docs/PERFORMANCE_BASELINE.md)
 - [Contribution guide](CONTRIBUTING.md)
 - [Developer and LLM guide](AGENTS.md)

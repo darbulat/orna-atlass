@@ -1,6 +1,6 @@
 # ORNA Atlas: current implementation
 
-Last verified: 2026-07-22. This document describes code that exists now. `ARCHITECTURE*.md` and `IMPLEMENTATION_PLAN_rus.md` may also describe target behavior; when they disagree, code, migrations and tests are authoritative.
+Last verified: 2026-07-23. This document describes code that exists now. `ARCHITECTURE*.md` and `IMPLEMENTATION_PLAN_rus.md` may also describe target behavior; when they disagree, code, migrations and tests are authoritative.
 
 ## Capability matrix
 
@@ -25,6 +25,7 @@ Last verified: 2026-07-22. This document describes code that exists now. `ARCHIT
 | Dependency integration tests | Implemented opt-in | Disposable PostgreSQL/PostGIS, Redis and MinIO tests cover migrations, constraints, 100k geospatial aggregation, public privacy/cache invalidation, mixed search pages, pipeline concurrency/partial failure/recovery, BirdNET savepoints, seed ownership and storage cleanup. |
 | Observability | Implemented baseline | Structured request/worker logs carry request, processing-job and RQ-job IDs. API request logs record bounded route templates and the HTTPS gateway maps HLS paths to a redacted sentinel before access logging, so grant tokens are not written at either layer. API `/metrics` exposes bounded-label HTTP and privacy-bounded conversion metrics documented in [`CONVERSION_ANALYTICS.md`](CONVERSION_ANALYTICS.md); the worker serves fork-safe multiprocess queue, outcome and per-stage metrics on port `9101`. A hosted metrics backend and distributed tracing are deployment concerns, not implemented runtime claims. |
 | Deployment | Implemented | API and ML worker use separate Dockerfiles. The API image installs neither development nor TensorFlow/BirdNET dependencies; CI builds and inspects both images. Compose gates API/workers on a one-shot successful migration service and gives long-running workers restart policies. |
+| Repository agent governance | Implemented | `AGENTS.md` is the operational contract; six specialist role contracts and six reusable skills cover architecture, backend, frontend, tests, security and documentation work. A deterministic, budgeted context builder rejects secret/build/binary/symlink inputs, and CI runs architecture, harness and context evals plus an ADR gate for durable architecture surfaces. Full and dependency-backed quality, performance and UI checks are registered separately. |
 
 ## Runtime entry points
 

@@ -113,6 +113,23 @@ async def require_asset(session: AsyncSession, asset_id: UUID) -> MediaAsset:
     return asset
 
 
+async def get_ready_hls_rendition(
+    session: AsyncSession, asset_id: UUID
+) -> MediaAsset | None:
+    asset = await repository.get_asset(session, asset_id)
+    metadata = asset.metadata_ if asset and isinstance(asset.metadata_, dict) else {}
+    inventory = metadata.get("object_keys", [])
+    if (
+        asset is None
+        or not asset.is_active
+        or asset.processing_status != "ready"
+        or metadata.get("format") != "hls"
+        or not isinstance(inventory, list)
+    ):
+        return None
+    return asset
+
+
 async def register_recording_segments(
     session: AsyncSession,
     session_id: UUID,

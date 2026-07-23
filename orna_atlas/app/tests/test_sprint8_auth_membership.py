@@ -33,6 +33,8 @@ from orna_atlas.app.core.security import (
 )
 from orna_atlas.app import main as main_module
 from orna_atlas.app.main import app
+from orna_atlas.app.modules.auth import service as auth_service
+from orna_atlas.app.modules.auth.schemas import LoginRequest
 from orna_atlas.app.modules.memberships.models import Membership
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.users import service as users_service
@@ -46,6 +48,41 @@ def test_password_hash_is_salted_and_verifiable() -> None:
     assert first != second
     assert verify_password("correct horse battery staple", first)
     assert not verify_password("wrong password", first)
+
+
+@pytest.mark.asyncio
+async def test_password_login_orchestration_stays_in_service(monkeypatch) -> None:
+    events: list[str] = []
+    user = SimpleNamespace(id=uuid4())
+    payload = SimpleNamespace(access_token="token")
+
+    async def authenticate(_session, _data):
+        events.append("authenticated")
+        return user
+
+    async def audit(_session, **kwargs):
+        events.append("audited")
+        assert kwargs["ip_address"] == "127.0.0.1"
+        assert kwargs["user_agent"] == "test-agent"
+
+    async def issue(_session, authenticated_user):
+        events.append("committed")
+        assert authenticated_user is user
+        return payload, "refresh-token"
+
+    monkeypatch.setattr(auth_service, "authenticate", authenticate)
+    monkeypatch.setattr(auth_service, "add_audit_event", audit)
+    monkeypatch.setattr(auth_service, "issue_token_pair", issue)
+
+    result = await auth_service.authenticate_password_login(
+        AsyncMock(),
+        LoginRequest(email="listener@example.com", password="secret password"),
+        ip_address="127.0.0.1",
+        user_agent="test-agent",
+    )
+
+    assert result == (payload, "refresh-token")
+    assert events == ["authenticated", "audited", "committed"]
 
 
 def test_access_token_round_trip_and_tamper_rejection() -> None:

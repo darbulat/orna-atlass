@@ -1,0 +1,380 @@
+version = 1
+
+[defaults]
+max_files = 14
+max_bytes = 131072
+excluded_directories = [
+  ".git",
+  ".next",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".venv",
+  "__pycache__",
+  "build",
+  "coverage",
+  "dist",
+  "htmlcov",
+  "model-cache",
+  "node_modules",
+  "test-results",
+]
+excluded_names = [
+  ".env",
+  ".env.*",
+  ".npmrc",
+  ".pypirc",
+  "*.key",
+  "*.p12",
+  "*.pfx",
+  "*.pem",
+  "*credential*",
+  "*secret*",
+  "credentials.json",
+  "id_rsa*",
+  "secrets.*",
+]
+text_extensions = [
+  ".cjs",
+  ".css",
+  ".html",
+  ".ini",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".py",
+  ".sql",
+  ".template",
+  ".toml",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".yaml",
+  ".yml",
+]
+text_names = ["Dockerfile", "Dockerfile.api", "Dockerfile.worker"]
+
+[core]
+files = ["AGENTS.md", "docs/CURRENT_STATE.md"]
+
+[roles.architect]
+contract = ".agents/roles/architect.md"
+
+[roles.backend]
+contract = ".agents/roles/backend.md"
+
+[roles.frontend]
+contract = ".agents/roles/frontend.md"
+
+[roles.test]
+contract = ".agents/roles/test.md"
+
+[roles.security]
+contract = ".agents/roles/security.md"
+
+[roles.documentation]
+contract = ".agents/roles/documentation.md"
+
+[[domains]]
+name = "public-privacy-and-atlas"
+keywords = [
+  "atlas",
+  "bbox",
+  "coordinate",
+  "dawn",
+  "geospatial",
+  "location",
+  "postgis",
+  "privacy",
+  "public projection",
+  "sunrise",
+  "атлас",
+  "геодан",
+  "координат",
+  "локац",
+  "приват",
+  "рассвет",
+]
+path_roots = [
+  "orna_atlas/app/modules/atlas",
+  "orna_atlas/app/modules/locations",
+  "orna_atlas/app/integrations/sunrise.py",
+  "web/components/atlas",
+  "web/app/atlas",
+]
+files = [
+  "docs/DOMAIN_RULES.md",
+  "docs/adr/0001-public-coordinate-projection.md",
+]
+patterns = [
+  "orna_atlas/app/modules/atlas/*.py",
+  "orna_atlas/app/modules/locations/*.py",
+  "web/components/atlas/*.ts",
+  "web/components/atlas/*.tsx",
+]
+
+[[domains]]
+name = "playback-media-and-processing"
+keywords = [
+  "audio",
+  "birdnet",
+  "grant",
+  "hls",
+  "media",
+  "pipeline",
+  "playback",
+  "processing",
+  "recording",
+  "rendition",
+  "s3",
+  "аудио",
+  "воспроизвед",
+  "медиа",
+  "обработ",
+  "пайплайн",
+]
+path_roots = [
+  "orna_atlas/app/modules/media",
+  "orna_atlas/app/workers",
+  "orna_atlas/app/integrations/bird_analysis.py",
+  "orna_atlas/app/integrations/s3.py",
+  "web/components/audio",
+]
+files = [
+  "docs/DOMAIN_RULES.md",
+  "docs/adr/0002-fail-closed-playback.md",
+  "docs/adr/0003-versioned-media-assets.md",
+  "docs/adr/0005-segmented-hls-playback.md",
+]
+patterns = [
+  "orna_atlas/app/modules/media/*.py",
+  "orna_atlas/app/workers/*.py",
+  "web/components/audio/*.ts",
+  "web/components/audio/*.tsx",
+]
+
+[[domains]]
+name = "authentication-membership-and-library"
+keywords = [
+  "account",
+  "authentication",
+  "authorization",
+  "entitlement",
+  "library",
+  "magic link",
+  "membership",
+  "oauth",
+  "refresh token",
+  "role",
+  "вход",
+  "доступ",
+  "личный кабинет",
+  "подписк",
+  "роль",
+  "учетн",
+]
+path_roots = [
+  "orna_atlas/app/modules/auth",
+  "orna_atlas/app/modules/library",
+  "orna_atlas/app/modules/memberships",
+  "orna_atlas/app/modules/users",
+  "web/lib/api/auth",
+  "web/lib/api/library",
+  "web/app/library",
+  "web/app/membership",
+]
+files = ["docs/DOMAIN_RULES.md"]
+patterns = [
+  "orna_atlas/app/modules/auth/*.py",
+  "orna_atlas/app/modules/library/*.py",
+  "orna_atlas/app/modules/memberships/*.py",
+  "orna_atlas/app/modules/users/*.py",
+  "web/lib/api/auth*.ts",
+  "web/lib/api/library.ts",
+]
+
+[[domains]]
+name = "api-contracts"
+keywords = [
+  "api contract",
+  "dto",
+  "endpoint",
+  "fastapi",
+  "openapi",
+  "request schema",
+  "response schema",
+  "router",
+  "schema",
+  "api-контракт",
+  "контракт api",
+  "схем",
+  "эндпоинт",
+]
+path_roots = [
+  "orna_atlas/app/main.py",
+  "web/lib/api",
+  "web/openapi.json",
+]
+files = [
+  "docs/DOMAIN_RULES.md",
+  "docs/adr/0004-service-owned-transactions.md",
+  ".agents/skills/create-api/SKILL.md",
+]
+patterns = [
+  "orna_atlas/app/modules/*/router.py",
+  "orna_atlas/app/modules/*/schemas.py",
+  "web/lib/api/*.ts",
+]
+
+[[domains]]
+name = "persistence-and-queries"
+keywords = [
+  "alembic",
+  "database",
+  "index",
+  "migration",
+  "postgres",
+  "query",
+  "repository",
+  "sqlalchemy",
+  "transaction",
+  "база дан",
+  "запрос",
+  "индекс",
+  "миграц",
+  "репозитор",
+  "транзакц",
+]
+path_roots = [
+  "orna_atlas/app/db",
+  "orna_atlas/app/migrations",
+]
+files = [
+  "docs/DOMAIN_RULES.md",
+  "docs/adr/0004-service-owned-transactions.md",
+  ".agents/skills/optimize-query/SKILL.md",
+]
+patterns = [
+  "orna_atlas/app/db/*.py",
+  "orna_atlas/app/migrations/versions/*.py",
+  "orna_atlas/app/modules/*/repository.py",
+]
+
+[[domains]]
+name = "frontend-and-product-flow"
+keywords = [
+  "accessibility",
+  "component",
+  "conversion",
+  "frontend",
+  "next.js",
+  "playwright",
+  "react",
+  "responsive",
+  "ui",
+  "ux",
+  "доступност",
+  "интерфейс",
+  "компонент",
+  "фронтенд",
+]
+path_roots = ["web/app", "web/components", "web/e2e"]
+files = [
+  "docs/UX_FUNNEL_SPEC_RU.md",
+  "docs/CONVERSION_ANALYTICS.md",
+  ".agents/skills/create-component/SKILL.md",
+]
+patterns = [
+  "web/app/*/page.tsx",
+  "web/components/*.tsx",
+  "web/e2e/*.spec.ts",
+]
+
+[[domains]]
+name = "tests-and-verification"
+keywords = [
+  "contract test",
+  "e2e",
+  "integration test",
+  "playwright",
+  "pytest",
+  "regression",
+  "test",
+  "интеграц тест",
+  "регресс",
+  "тест",
+]
+path_roots = ["orna_atlas/app/tests", "tests/integration", "web/e2e"]
+files = [
+  "docs/DOMAIN_RULES.md",
+  ".agents/skills/write-tests/SKILL.md",
+]
+patterns = [
+  "orna_atlas/app/tests/test_sprint2_architecture.py",
+  "tests/integration/test_domain_constraints.py",
+  "tests/integration/test_public_privacy_api.py",
+  "web/e2e/public-navigation.spec.ts",
+]
+
+[[domains]]
+name = "operations-and-observability"
+keywords = [
+  "ci",
+  "deploy",
+  "docker",
+  "logging",
+  "metrics",
+  "observability",
+  "performance",
+  "redis",
+  "worker",
+  "деплой",
+  "логирован",
+  "метрик",
+  "наблюдаем",
+  "производительн",
+]
+path_roots = [
+  ".github/workflows",
+  "deploy",
+  "orna_atlas/app/core/logging.py",
+  "orna_atlas/app/core/metrics.py",
+  "orna_atlas/app/integrations/redis.py",
+]
+files = ["docs/PERFORMANCE_BASELINE.md"]
+patterns = [
+  ".github/workflows/*.yml",
+  "deploy/*.template",
+  "docker-compose*.yml",
+  "orna_atlas/app/core/logging.py",
+  "orna_atlas/app/core/metrics.py",
+]
+
+[[domains]]
+name = "agent-governance-and-documentation"
+keywords = [
+  "adr",
+  "agent",
+  "architecture",
+  "context",
+  "documentation",
+  "governance",
+  "spec",
+  "агент",
+  "архитектур",
+  "документац",
+  "контекст",
+  "спецификац",
+]
+path_roots = [".agents", "docs", "specs"]
+files = [
+  "docs/ARCHITECTURE.md",
+  "docs/adr/README.md",
+  ".agents/skills/review-change/SKILL.md",
+  ".agents/skills/refactor-module/SKILL.md",
+]
+patterns = [
+  ".agents/roles/*.md",
+  ".agents/skills/*/SKILL.md",
+  "specs/*.md",
+]

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refactor Module"
+  short_description: "Refactor ORNA modules without behavior drift"
+  default_prompt: "Use $refactor-module to simplify this ORNA Atlas module without changing its public behavior."

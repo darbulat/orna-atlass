@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Component"
+  short_description: "Build ORNA Next.js components and user flows"
+  default_prompt: "Use $create-component to build an accessible ORNA Atlas UI component with typed API integration and tests."

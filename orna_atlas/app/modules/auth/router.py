@@ -18,7 +18,6 @@ from orna_atlas.app.core.domain_errors import (
 from orna_atlas.app.core.rate_limit import auth_rate_limit
 from orna_atlas.app.core.security import ACCESS_COOKIE, REFRESH_COOKIE
 from orna_atlas.app.db.session import get_db_session
-from orna_atlas.app.modules.admin.repository import add_audit_event
 from orna_atlas.app.modules.auth import magic, oauth, service
 from orna_atlas.app.modules.auth.oauth import OAuthProvider
 from orna_atlas.app.modules.auth.schemas import (
@@ -439,17 +438,12 @@ async def login(
     response: Response,
     session: AsyncSession = Depends(get_db_session),
 ) -> TokenResponse:
-    user = await service.authenticate(session, data)
-    await add_audit_event(
+    payload, refresh_token = await service.authenticate_password_login(
         session,
-        event_type="auth.login_succeeded",
-        subject_type="user",
-        subject_id=str(user.id),
-        actor_user_id=user.id,
+        data,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    payload, refresh_token = await service.issue_token_pair(session, user)
     _set_auth_cookies(response, payload, refresh_token)
     return payload
 

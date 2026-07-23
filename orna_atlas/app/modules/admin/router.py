@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.core.security import CurrentUser, get_current_admin
 from orna_atlas.app.db.session import get_db_session
-from orna_atlas.app.modules.admin import repository as admin_repository
+from orna_atlas.app.modules.admin import service as admin_service
 from orna_atlas.app.modules.admin.schemas import AuditEventRead
 from orna_atlas.app.modules.collections import service as collections_service
 from orna_atlas.app.modules.collections.schemas import CollectionAdminRead, CollectionCreate, CollectionUpdate
@@ -232,7 +232,7 @@ async def list_audit_events(
     session: AsyncSession = Depends(get_db_session),
     _: CurrentUser = admin_dependency,
 ) -> list[AuditEventRead]:
-    events = await admin_repository.list_audit_events(
+    events = await admin_service.list_audit_events(
         session, event_type=event_type, limit=limit, offset=offset
     )
     return [AuditEventRead.model_validate(event) for event in events]

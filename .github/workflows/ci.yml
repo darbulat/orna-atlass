@@ -42,6 +42,8 @@ jobs:
       S3_SECRET_ACCESS_KEY: ornaorna
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Start S3-compatible storage
         run: >-
           docker run --detach --name orna-ci-minio --publish 9000:9000
@@ -55,6 +57,12 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install '.[dev]'
+      - name: Run fast agent architecture and context evals
+        run: python scripts/run_agent_evals.py --tier fast
+      - name: Require an ADR for durable architecture changes
+        env:
+          ADR_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python scripts/check_adr_policy.py --base-ref "$ADR_BASE_REF"
       - run: python -m ruff check .
       - run: alembic upgrade head
       - run: alembic check
