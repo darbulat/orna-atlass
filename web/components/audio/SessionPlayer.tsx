@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { isApiError } from "../../lib/api/client";
 import {
   ACCOUNT_AUTH_CHANGED_EVENT,
@@ -10,6 +10,7 @@ import {
 } from "../../lib/api/account-auth-state";
 import { addFavorite, fetchFavorites, removeFavorite } from "../../lib/api/library";
 import { type SessionDetail } from "../../lib/api/sessions";
+import { observeFavoriteContinuation } from "./favoriteContinuation";
 import { usePlayer } from "./PlayerProvider";
 import {
   TIMELINE_TRACK_START,
@@ -55,10 +56,23 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
   const [timelineHelpOpen, setTimelineHelpOpen] = useState(false);
   const [accountAuthRevision, setAccountAuthRevision] = useState(0);
   const favoriteLoadGenerationRef = useRef(0);
+  const favoriteMutationSourceRef = useRef<object | null>(null);
+  const favoriteMutationAbortRef = useRef<AbortController | null>(null);
+  const favoriteAuthFailureRef = useRef<{ source: object; sessionId: string } | null>(null);
+  const mountedRef = useRef(false);
   const displayedSessionIdRef = useRef(session.id);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    favoriteMutationAbortRef.current?.abort();
     displayedSessionIdRef.current = session.id;
   }, [session.id]);
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      favoriteMutationAbortRef.current?.abort();
+      favoriteMutationAbortRef.current = null;
+    };
+  }, []);
   const isCurrent = currentSession?.id === session.id;
   const isPlaying = isCurrent && playbackState === "playing";
   const displayedState = isCurrent ? playbackState : "idle";
@@ -84,7 +98,16 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
   const weatherItems = useMemo(() => buildWeatherItems(session), [session]);
 
   useEffect(() => {
-    const handleAuthChange = () => {
+    const handleAuthChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ state?: string; source?: unknown }>).detail;
+      const source = detail?.source;
+      favoriteMutationAbortRef.current?.abort();
+      favoriteMutationAbortRef.current = null;
+      favoriteAuthFailureRef.current = detail?.state === "anonymous"
+        && source != null
+        && source === favoriteMutationSourceRef.current
+        ? { source: source as object, sessionId: displayedSessionIdRef.current }
+        : null;
       favoriteLoadGenerationRef.current += 1;
       setFavoritePending(true);
       setAccountAuthRevision((revision) => revision + 1);
@@ -95,44 +118,71 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     const generation = favoriteLoadGenerationRef.current + 1;
     favoriteLoadGenerationRef.current = generation;
     const isCurrentLoad = () => active && favoriteLoadGenerationRef.current === generation;
     setIsFavorite(false);
     setFavoritePending(true);
-    setFavoriteHint(null);
+    const preserveSignInRecovery = isAccountAuthenticationUnavailable()
+      && favoriteAuthFailureRef.current?.sessionId === session.id;
+    if (!preserveSignInRecovery) setFavoriteHint(null);
     if (isAccountAuthenticationUnavailable()) {
       setFavoritePending(false);
-      return () => { active = false; };
+      return () => {
+        active = false;
+        controller.abort();
+      };
     }
-    void fetchFavorites().then((favorites) => {
+    void fetchFavorites(100, 0, controller.signal).then((favorites) => {
       if (isCurrentLoad()) setIsFavorite(favorites.some((favorite) => favorite.session.id === session.id));
     }).catch((error: unknown) => {
       if (isCurrentLoad() && !isApiError(error)) setFavoriteHint("Favorites are temporarily unavailable.");
     }).finally(() => {
+      observeFavoriteContinuation("load");
       if (isCurrentLoad()) setFavoritePending(false);
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [accountAuthRevision, session.id]);
 
   const toggleFavorite = useCallback(async () => {
     const targetSessionId = session.id;
+    const accountGeneration = favoriteLoadGenerationRef.current;
+    const isCurrentMutation = () => (
+      mountedRef.current
+      && favoriteLoadGenerationRef.current === accountGeneration
+      && displayedSessionIdRef.current === targetSessionId
+    );
     const nextFavorite = !isFavorite;
     if (isAccountAuthenticationUnavailable()) {
       trackPlayerEvent("favorite_requires_login");
       setFavoriteHint("Sign in or create a free account to save favorites.");
       return;
     }
+    const mutationSource = {};
+    const controller = new AbortController();
+    favoriteMutationAbortRef.current?.abort();
+    favoriteMutationAbortRef.current = controller;
+    favoriteAuthFailureRef.current = null;
+    favoriteMutationSourceRef.current = mutationSource;
     setFavoritePending(true);
     try {
-      if (nextFavorite) await addFavorite(targetSessionId);
-      else await removeFavorite(targetSessionId);
-      if (displayedSessionIdRef.current !== targetSessionId) return;
+      if (nextFavorite) await addFavorite(targetSessionId, mutationSource, controller.signal);
+      else await removeFavorite(targetSessionId, mutationSource, controller.signal);
+      if (!isCurrentMutation()) return;
       if (nextFavorite) trackPlayerEvent("favorite_add");
       setIsFavorite(nextFavorite);
       setFavoriteHint(nextFavorite ? "Saved to your account." : "Removed from your account.");
     } catch (error) {
-      if (displayedSessionIdRef.current === targetSessionId) {
+      const authFailure = favoriteAuthFailureRef.current as { source: object; sessionId: string } | null;
+      const isOwnedAuthFailure = isApiError(error)
+        && error.status === 401
+        && authFailure?.source === mutationSource
+        && authFailure.sessionId === targetSessionId;
+      if (isCurrentMutation() || isOwnedAuthFailure) {
         if (isApiError(error) && error.status === 401) {
           trackPlayerEvent("favorite_requires_login");
           setFavoriteHint("Sign in or create a free account to save favorites.");
@@ -141,7 +191,10 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
         }
       }
     } finally {
-      if (displayedSessionIdRef.current === targetSessionId) setFavoritePending(false);
+      observeFavoriteContinuation("mutation");
+      if (favoriteMutationAbortRef.current === controller) favoriteMutationAbortRef.current = null;
+      if (isCurrentMutation()) setFavoritePending(false);
+      if (favoriteMutationSourceRef.current === mutationSource) favoriteMutationSourceRef.current = null;
     }
   }, [isFavorite, session.id]);
 

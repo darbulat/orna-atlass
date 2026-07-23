@@ -5,10 +5,16 @@ import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { apiErrorMessage, isApiError } from "../../lib/api/client";
-import { isAccountAuthenticationUnavailable } from "../../lib/api/account-auth-state";
+import { apiErrorMessage } from "../../lib/api/client";
+import {
+  ACCOUNT_AUTH_CHANGED_EVENT,
+  getAccountAuthEpoch,
+  isAccountAuthenticationUnavailable,
+} from "../../lib/api/account-auth-state";
 import { updateListeningProgress } from "../../lib/api/library";
 import { apiUrl, requestPlaybackGrant, type PlaybackGrant, type SessionDetail } from "../../lib/api/sessions";
+import { observeListeningProgressContinuation } from "./favoriteContinuation";
+import { canDrainListeningProgress } from "./listeningProgress";
 import { initialPlayerState, playerReducer, type PlaybackState } from "./playerMachine";
 import { detachAudio, disposePlayerResources, isHlsStream } from "./playerResources";
 
@@ -49,10 +55,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const grantRequestRef = useRef(0);
   const grantAbortRef = useRef<AbortController | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
+  const mountedRef = useRef(false);
+  const providerGenerationRef = useRef(0);
+  const historyAbortRef = useRef<AbortController | null>(null);
   const historyRef = useRef({
     inFlight: false,
     lastSentAt: 0,
-    pendingBySession: new Map<string, { sessionId: string; position: number; completed: boolean }>(),
+    pendingBySession: new Map<string, {
+      sessionId: string;
+      position: number;
+      completed: boolean;
+      accountEpoch: number;
+    }>(),
 
   });
   const engagementRef = useRef({
@@ -66,31 +80,50 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const writeListeningProgress = useCallback((sessionId: string, position: number, completed: boolean, force = false) => {
     const history = historyRef.current;
-    if (isAccountAuthenticationUnavailable()) return;
+    if (!mountedRef.current || isAccountAuthenticationUnavailable()) return;
+    const providerGeneration = providerGenerationRef.current;
     const now = Date.now();
     if (!force && now - history.lastSentAt < 15_000) return;
-    const next = { sessionId, position: Number.isFinite(position) ? Math.max(0, position) : 0, completed };
+    const next = {
+      sessionId,
+      position: Number.isFinite(position) ? Math.max(0, position) : 0,
+      completed,
+      accountEpoch: getAccountAuthEpoch(),
+    };
     if (history.inFlight) {
       history.pendingBySession.set(sessionId, next);
       return;
     }
     history.inFlight = true;
     history.lastSentAt = now;
+    const controller = new AbortController();
+    historyAbortRef.current = controller;
     void updateListeningProgress(next.sessionId, {
       position_seconds: next.position,
       completed: next.completed,
-    }).catch((error: unknown) => {
-      if (isApiError(error) && error.status === 401) {
-        history.pendingBySession.clear();
+    }, controller.signal).catch(() => undefined).finally(() => {
+      if (historyAbortRef.current === controller) historyAbortRef.current = null;
+      if (!canDrainListeningProgress(
+        providerGeneration,
+        providerGenerationRef.current,
+        mountedRef.current,
+      )) {
+        observeListeningProgressContinuation();
+        return;
       }
-    }).finally(() => {
       history.inFlight = false;
-      const pendingEntry = history.pendingBySession.entries().next();
-      if (!pendingEntry.done) {
+      const currentAccountEpoch = getAccountAuthEpoch();
+      let pendingEntry = history.pendingBySession.entries().next();
+      while (!pendingEntry.done) {
         const [pendingSessionId, pending] = pendingEntry.value;
         history.pendingBySession.delete(pendingSessionId);
-        writeListeningProgress(pending.sessionId, pending.position, pending.completed, true);
+        if (pending.accountEpoch === currentAccountEpoch) {
+          writeListeningProgress(pending.sessionId, pending.position, pending.completed, true);
+          break;
+        }
+        pendingEntry = history.pendingBySession.entries().next();
       }
+      observeListeningProgressContinuation();
     });
   }, []);
 
@@ -245,9 +278,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         && audioRef.current?.src
         && grantExpiresAt > Date.now() + 30_000
       ) {
+        const requestId = grantRequestRef.current;
+        const accountEpoch = getAccountAuthEpoch();
+        const audio = audioRef.current;
         dispatch({ type: "clear_error" });
         try {
-          await audioRef.current.play();
+          await audio.play();
+          if (
+            requestId !== grantRequestRef.current
+            || accountEpoch !== getAccountAuthEpoch()
+            || currentSessionRef.current?.id !== session.id
+            || audioRef.current !== audio
+          ) {
+            return false;
+          }
           updatePlaybackProgress();
           dispatch({ type: "playing" });
           window.dispatchEvent(new CustomEvent("orna:analytics", {
@@ -255,6 +299,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           }));
           return true;
         } catch (error) {
+          if (
+            requestId !== grantRequestRef.current
+            || accountEpoch !== getAccountAuthEpoch()
+            || currentSessionRef.current?.id !== session.id
+            || audioRef.current !== audio
+          ) {
+            return false;
+          }
           dispatch({
             type: "failed",
             sessionId: session.id,
@@ -435,17 +487,55 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  useEffect(() => () => {
-    hlsRef.current?.destroy();
-    hlsRef.current = null;
-    disposePlayerResources({
-      audio: audioRef.current,
-      abortController: grantAbortRef.current,
-      refreshTimerId: refreshTimerRef.current,
-      clearTimer: window.clearTimeout,
-    });
-    refreshTimerRef.current = null;
-    grantRequestRef.current += 1;
+  useEffect(() => {
+    const history = historyRef.current;
+    const handleAccountBoundary = () => {
+      grantRequestRef.current += 1;
+      historyAbortRef.current?.abort();
+      historyAbortRef.current = null;
+      history.inFlight = false;
+      history.pendingBySession.clear();
+      hlsRef.current?.destroy();
+      hlsRef.current = null;
+      disposePlayerResources({
+        audio: audioRef.current,
+        abortController: grantAbortRef.current,
+        refreshTimerId: refreshTimerRef.current,
+        clearTimer: window.clearTimeout,
+      });
+      audioRef.current = null;
+      grantAbortRef.current = null;
+      refreshTimerRef.current = null;
+      currentSessionRef.current = null;
+      engagementRef.current = {
+        sessionId: null,
+        previousMediaTime: 0,
+        listenedSeconds: 0,
+        emitted: new Set<number>(),
+      };
+      dispatch({ type: "account_boundary" });
+    };
+    mountedRef.current = true;
+    window.addEventListener(ACCOUNT_AUTH_CHANGED_EVENT, handleAccountBoundary);
+    return () => {
+      window.removeEventListener(ACCOUNT_AUTH_CHANGED_EVENT, handleAccountBoundary);
+      mountedRef.current = false;
+      providerGenerationRef.current += 1;
+      historyAbortRef.current?.abort();
+      historyAbortRef.current = null;
+      history.inFlight = false;
+      history.pendingBySession.clear();
+      hlsRef.current?.destroy();
+      hlsRef.current = null;
+      disposePlayerResources({
+        audio: audioRef.current,
+        abortController: grantAbortRef.current,
+        refreshTimerId: refreshTimerRef.current,
+        clearTimer: window.clearTimeout,
+      });
+      refreshTimerRef.current = null;
+      grantRequestRef.current += 1;
+    };
   }, []);
 
   const value = useMemo(

@@ -1,7 +1,14 @@
 import type { components } from "./generated";
+import { runExplicitAuthentication } from "./auth-refresh";
 import { fetchJson } from "./client";
 import { apiUrl } from "./sessions";
-import { markAccountAnonymous, markAccountAuthenticated } from "./account-auth-state";
+import {
+  beginAccountAuthBoundary,
+  cancelAccountAuthBoundary,
+  completeAccountAuthBoundary,
+  getAccountAuthEpoch,
+  markAccountAuthenticated,
+} from "./account-auth-state";
 
 export type User = components["schemas"]["UserRead"];
 export type Membership = components["schemas"]["MembershipRead"];
@@ -57,42 +64,73 @@ export function requestMagicLink(email: string, returnTo: string): Promise<{ acc
 }
 
 export function register(email: string, password: string): Promise<User> {
-  return apiRequest<User>("/api/v1/auth/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  }).then((user) => {
-    markAccountAuthenticated();
-    return user;
+  const boundary = beginAccountAuthBoundary();
+  return runExplicitAuthentication(async () => {
+    try {
+      const user = await apiRequest<User>("/api/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      completeAccountAuthBoundary(boundary, "authenticated");
+      return user;
+    } catch (error) {
+      cancelAccountAuthBoundary(boundary);
+      throw error;
+    }
   });
 }
 
 export function login(email: string, password: string): Promise<TokenResponse> {
-  return apiRequest<TokenResponse>("/api/v1/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  }).then((token) => {
-    markAccountAuthenticated();
-    return token;
+  const boundary = beginAccountAuthBoundary();
+  return runExplicitAuthentication(async () => {
+    try {
+      const token = await apiRequest<TokenResponse>("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      completeAccountAuthBoundary(boundary, "authenticated");
+      return token;
+    } catch (error) {
+      cancelAccountAuthBoundary(boundary);
+      throw error;
+    }
   });
 }
 
 export function logout(): Promise<components["schemas"]["LogoutResponse"]> {
-  return apiRequest<components["schemas"]["LogoutResponse"]>("/api/v1/auth/logout", { method: "POST" })
-    .then((response) => {
-      markAccountAnonymous();
+  const boundary = beginAccountAuthBoundary();
+  return runExplicitAuthentication(async () => {
+    try {
+      const response = await apiRequest<components["schemas"]["LogoutResponse"]>(
+        "/api/v1/auth/logout",
+        { method: "POST" },
+      );
+      completeAccountAuthBoundary(boundary, "anonymous");
       return response;
-    });
-}
-
-export function fetchCurrentUser(): Promise<User> {
-  return apiRequest<User>("/api/v1/users/me").then((user) => {
-    markAccountAuthenticated();
-    return user;
+    } catch (error) {
+      cancelAccountAuthBoundary(boundary);
+      throw error;
+    }
   });
 }
 
-export function fetchMembership(): Promise<Membership> {
-  return apiRequest<Membership>("/api/v1/memberships/me");
+export async function fetchCurrentUser(): Promise<User> {
+  const accountEpoch = getAccountAuthEpoch();
+  const user = await apiRequest<User>("/api/v1/users/me");
+  if (accountEpoch !== getAccountAuthEpoch()) {
+    throw new DOMException("Authentication changed while loading the current user", "AbortError");
+  }
+  markAccountAuthenticated();
+  return user;
+}
+
+export async function fetchMembership(): Promise<Membership> {
+  const accountEpoch = getAccountAuthEpoch();
+  const membership = await apiRequest<Membership>("/api/v1/memberships/me");
+  if (accountEpoch !== getAccountAuthEpoch()) {
+    throw new DOMException("Authentication changed while loading membership", "AbortError");
+  }
+  return membership;
 }

@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const mockApiUrl = "http://127.0.0.1:4010";
 const apiUrl = process.env.E2E_API_URL ?? mockApiUrl;
 const nextServer = {
-  command: `API_SERVER_URL=${apiUrl} NEXT_PUBLIC_API_URL=${apiUrl} NEXT_DIST_DIR=.next-codex-e2e npm run dev -- --hostname 127.0.0.1 --port 3100`,
+  command: `API_SERVER_URL=${apiUrl} NEXT_PUBLIC_API_URL=${apiUrl} NEXT_DIST_DIR=.next-codex-e2e ORNA_E2E_PROBES=1 npm run dev -- --webpack --hostname 127.0.0.1 --port 3100`,
   url: "http://127.0.0.1:3100",
   reuseExistingServer: !process.env.CI,
   timeout: 120_000,
