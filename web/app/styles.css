@@ -908,8 +908,11 @@ article span { color: #9bd8bd; font-size: 0.8rem; text-transform: uppercase; let
   display: flex;
   font-size: 1.2rem;
   justify-content: center;
+  height: 44px;
   min-height: 44px;
   min-width: 44px;
+  padding: 0;
+  width: 44px;
 }
 .cesium-stage .cesium-widget canvas { display: block; }
 .cesium-stage .cesium-viewer-bottom {
@@ -1332,7 +1335,7 @@ a:focus-visible {
   left: 32px;
   pointer-events: none;
   position: absolute;
-  width: min(320px, calc(100% - 64px));
+  width: min(320px, calc(100% - 150px));
   z-index: 4;
 }
 .dawn-copy .listen-pill {
@@ -1395,22 +1398,23 @@ a:focus-visible {
   display: grid;
   gap: 12px;
   position: absolute;
-  right: 26px;
-  z-index: 4;
+  right: 68px;
+  z-index: 9;
 }
 .globe-location-status {
   background: rgba(3, 9, 10, 0.82);
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 999px;
-  bottom: 42px;
   color: rgba(244,239,226,0.86);
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 0.72rem;
   margin: 0;
   max-width: min(280px, calc(100% - 140px));
   padding: 7px 12px;
+  pointer-events: none;
   position: absolute;
-  right: 72px;
+  right: 122px;
+  top: 90px;
   z-index: 4;
 }
 .globe-tools button,
