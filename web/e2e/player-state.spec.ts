@@ -10,6 +10,16 @@ const corsHeaders = {
 
 async function installFakeAudio(page: Page) {
   await page.addInitScript(() => {
+    let heldPlay: Promise<void> | null = null;
+    let releaseHeldPlay: (() => void) | null = null;
+    Object.assign(window, {
+      __holdNextAudioPlay: () => {
+        heldPlay = new Promise<void>((resolve) => {
+          releaseHeldPlay = resolve;
+        });
+      },
+      __releaseHeldAudioPlay: () => releaseHeldPlay?.(),
+    });
     class FakeAudio extends EventTarget {
       currentTime = 0;
       duration = 3600;
@@ -29,8 +39,16 @@ async function installFakeAudio(page: Page) {
       }
 
       play() {
-        this.paused = false;
-        return Promise.resolve();
+        const playMaySettle = heldPlay;
+        heldPlay = null;
+        if (!playMaySettle) {
+          this.paused = false;
+          return Promise.resolve();
+        }
+        Object.assign(window, { __heldAudioPlayStarted: true });
+        return playMaySettle.then(() => {
+          this.paused = false;
+        });
       }
 
       pause() {
@@ -126,6 +144,70 @@ test("mobile global player stays compact and exposes details on demand", async (
   await player.getByRole("button", { name: "Expand player" }).click();
   await expect(player.getByText(/Grant expires/)).toBeVisible();
   await expect(player.getByRole("button", { name: "Collapse player" })).toBeVisible();
+});
+
+test("a cached play continuation cannot cross an authentication boundary", async ({ page }) => {
+  await installFakeAudio(page);
+  await page.addInitScript(() => {
+    Object.assign(window, { __playerPlayEvents: 0 });
+    window.addEventListener("orna:analytics", (event) => {
+      if ((event as CustomEvent<{ name?: string }>).detail?.name === "player_play") {
+        const state = window as typeof window & { __playerPlayEvents?: number };
+        state.__playerPlayEvents = (state.__playerPlayEvents ?? 0) + 1;
+      }
+    });
+  });
+  await page.route("**/playback-grants", (route) => route.fulfill({
+    status: 200,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      ...grant(firstSessionId, 1),
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+      refresh_after_seconds: 600,
+    }),
+  }));
+  await page.route("**/api/v1/users/me/favorites**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, headers: corsHeaders, body: "[]" });
+      return;
+    }
+    await route.fulfill({
+      status: 401,
+      headers: corsHeaders,
+      body: JSON.stringify({ detail: "Old account expired" }),
+    });
+  });
+  await page.route("**/api/v1/auth/refresh", (route) => route.fulfill({
+    status: 401,
+    headers: corsHeaders,
+    body: JSON.stringify({ detail: "Refresh expired" }),
+  }));
+
+  await page.goto("/sessions/first-session");
+  await page.getByRole("button", { name: "Play session" }).click();
+  await page.getByRole("button", { name: "Pause playback" }).click();
+  const playEventsBeforeBoundary = await page.evaluate(() => (
+    (window as typeof window & { __playerPlayEvents?: number }).__playerPlayEvents ?? 0
+  ));
+  await page.evaluate(() => {
+    (window as typeof window & { __holdNextAudioPlay?: () => void }).__holdNextAudioPlay?.();
+  });
+  await page.getByRole("button", { name: "Play session" }).click();
+  await expect.poll(() => page.evaluate(() => Boolean(
+    (window as typeof window & { __heldAudioPlayStarted?: boolean }).__heldAudioPlayStarted
+  ))).toBe(true);
+
+  await page.getByRole("button", { name: "Save recording" }).click();
+  await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await page.evaluate(() => {
+    (window as typeof window & { __releaseHeldAudioPlay?: () => void }).__releaseHeldAudioPlay?.();
+  });
+
+  await expect(page.getByRole("button", { name: "Play session" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pause playback" })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __playerPlayEvents?: number }).__playerPlayEvents ?? 0
+  ))).toBe(playEventsBeforeBoundary);
 });
 
 test("global player refreshes an expiring grant before resuming and surfaces errors while collapsed", async ({ page }) => {

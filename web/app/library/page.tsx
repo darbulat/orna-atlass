@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { SiteHeader } from "../../components/site-header";
+import { observeLibraryMutationContinuation } from "../../components/audio/favoriteContinuation";
 import { isApiError } from "../../lib/api/client";
+import {
+  ACCOUNT_AUTH_CHANGED_EVENT,
+  isAccountAuthenticationTransitioning,
+} from "../../lib/api/account-auth-state";
 import {
   clearListeningHistory,
   fetchFavorites,
@@ -18,10 +23,40 @@ export default function LibraryPage() {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [history, setHistory] = useState<ListeningHistoryItem[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "login" | "error">("loading");
+  const [accountRevision, setAccountRevision] = useState(0);
+  const accountRevisionRef = useRef(0);
+  const mountedRef = useRef(false);
+  const mutationAbortControllersRef = useRef(new Set<AbortController>());
 
   useEffect(() => {
+    const mutationControllers = mutationAbortControllersRef.current;
+    mountedRef.current = true;
+    const handleAccountBoundary = () => {
+      mutationControllers.forEach((controller) => controller.abort());
+      mutationControllers.clear();
+      accountRevisionRef.current += 1;
+      setFavorites([]);
+      setHistory([]);
+      setState("loading");
+      setAccountRevision(accountRevisionRef.current);
+    };
+    window.addEventListener(ACCOUNT_AUTH_CHANGED_EVENT, handleAccountBoundary);
+    return () => {
+      mountedRef.current = false;
+      mutationControllers.forEach((controller) => controller.abort());
+      mutationControllers.clear();
+      window.removeEventListener(ACCOUNT_AUTH_CHANGED_EVENT, handleAccountBoundary);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isAccountAuthenticationTransitioning()) return;
     let active = true;
-    void Promise.all([fetchFavorites(), fetchListeningHistory()])
+    const controller = new AbortController();
+    void Promise.all([
+      fetchFavorites(100, 0, controller.signal),
+      fetchListeningHistory(50, 0, controller.signal),
+    ])
       .then(([nextFavorites, nextHistory]) => {
         if (!active) return;
         setFavorites(nextFavorites);
@@ -32,24 +67,43 @@ export default function LibraryPage() {
         if (!active) return;
         setState(isApiError(error) && error.status === 401 ? "login" : "error");
       });
-    return () => { active = false; };
-  }, []);
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [accountRevision]);
 
   async function forgetFavorite(item: Favorite) {
+    const operationRevision = accountRevisionRef.current;
+    const controller = new AbortController();
+    mutationAbortControllersRef.current.add(controller);
     try {
-      await removeFavorite(item.session.id);
+      await removeFavorite(item.session.id, undefined, controller.signal);
+      if (!mountedRef.current || accountRevisionRef.current !== operationRevision) return;
       setFavorites((current) => current.filter((favorite) => favorite.session.id !== item.session.id));
     } catch {
+      if (!mountedRef.current || accountRevisionRef.current !== operationRevision) return;
       setState("error");
+    } finally {
+      mutationAbortControllersRef.current.delete(controller);
+      observeLibraryMutationContinuation();
     }
   }
 
   async function clearHistory() {
+    const operationRevision = accountRevisionRef.current;
+    const controller = new AbortController();
+    mutationAbortControllersRef.current.add(controller);
     try {
-      await clearListeningHistory();
+      await clearListeningHistory(controller.signal);
+      if (!mountedRef.current || accountRevisionRef.current !== operationRevision) return;
       setHistory([]);
     } catch {
+      if (!mountedRef.current || accountRevisionRef.current !== operationRevision) return;
       setState("error");
+    } finally {
+      mutationAbortControllersRef.current.delete(controller);
+      observeLibraryMutationContinuation();
     }
   }
 

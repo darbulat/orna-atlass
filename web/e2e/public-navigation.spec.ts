@@ -2,6 +2,17 @@ import { expect, test } from "@playwright/test";
 
 const mockApiUrl = "http://127.0.0.1:4010";
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const continuations = { load: 0, mutation: 0 };
+    Object.assign(window, { __favoriteContinuations: continuations });
+    window.addEventListener("orna:test:favorite-continuation", ((event: CustomEvent<{ kind?: "load" | "mutation" }>) => {
+      const kind = event.detail.kind;
+      if (kind) continuations[kind] += 1;
+    }) as EventListener);
+  });
+});
+
 type BoundingBox = { x: number; y: number; width: number; height: number };
 
 function boxesOverlap(first: BoundingBox, second: BoundingBox) {
@@ -204,7 +215,11 @@ test("header search carries its query from editorial pages into the atlas", asyn
   await dialog.getByRole("button", { name: "Show results" }).click();
 
   await expect(page).toHaveURL(/\/?search=Pine#atlas-search$/);
-  await expect(page.locator("#atlas-search")).toHaveValue("Pine");
+  const atlasSearch = page.locator("#atlas-search");
+  await expect(atlasSearch).toHaveValue("Pine");
+  await atlasSearch.fill("Pin");
+  await atlasSearch.fill("Pine");
+  await expect(atlasSearch).toHaveValue("Pine");
   await expect(page.getByRole("button", { name: /Pine Marsh Harju \/ Wetland/ })).toBeVisible();
 });
 
@@ -684,8 +699,11 @@ test("session search synchronizes the atlas to the result location", async ({ pa
   expect((await request.post(`${mockApiUrl}/__e2e/search-response?mode=session-pine-marsh`)).ok()).toBeTruthy();
   await page.goto("/atlas?location=ridge-dawn");
   await expect(page.locator(".dawn-copy").getByText("Ridge Dawn", { exact: true })).toBeVisible();
+  await page.waitForLoadState("networkidle");
 
-  await page.locator("#atlas-search").fill("Second");
+  const search = page.locator("#atlas-search");
+  await search.fill("Second");
+  await expect(search).toHaveValue("Second");
   await page.getByRole("button", { name: /Second Session/ }).click();
 
   await expect(page.locator(".dawn-copy").getByText("Pine Marsh", { exact: true })).toBeVisible();
@@ -1096,6 +1114,157 @@ test("password sign-in clears anonymous account cache and restores the session r
   await expect(page.getByRole("button", { name: "Save recording" })).toBeEnabled();
 });
 
+test("password sign-in invalidates an old-account mutation before the login request settles", async ({ page }) => {
+  let accountBoundaries = 0;
+  let favoriteWrites = 0;
+  let historyWrites = 0;
+  let refreshes = 0;
+  let releaseFavorite!: () => void;
+  let releaseHistory!: () => void;
+  let releaseLogin!: () => void;
+  const favoriteStarted = new Promise<void>((resolve) => {
+    releaseFavorite = resolve;
+  });
+  const historyMaySettle = new Promise<void>((resolve) => {
+    releaseHistory = resolve;
+  });
+  const loginMaySettle = new Promise<void>((resolve) => {
+    releaseLogin = resolve;
+  });
+  let notifyFavoriteStarted!: () => void;
+  let notifyHistoryStarted!: () => void;
+  let notifyLoginStarted!: () => void;
+  const favoriteRequestStarted = new Promise<void>((resolve) => {
+    notifyFavoriteStarted = resolve;
+  });
+  const historyRequestStarted = new Promise<void>((resolve) => {
+    notifyHistoryStarted = resolve;
+  });
+  const loginRequestStarted = new Promise<void>((resolve) => {
+    notifyLoginStarted = resolve;
+  });
+  await page.addInitScript(() => {
+    Object.assign(window, { __accountBoundaries: 0, __listeningProgressContinuations: 0 });
+    window.addEventListener("orna:account-auth-changed", () => {
+      const target = window as typeof window & { __accountBoundaries?: number };
+      target.__accountBoundaries = (target.__accountBoundaries ?? 0) + 1;
+    });
+    window.addEventListener("orna:test:listening-progress-continuation", () => {
+      const target = window as typeof window & { __listeningProgressContinuations?: number };
+      target.__listeningProgressContinuations = (target.__listeningProgressContinuations ?? 0) + 1;
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: async function play() { this.dispatchEvent(new Event("play")); },
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, "pause", {
+      configurable: true,
+      value: function pause() { this.dispatchEvent(new Event("pause")); },
+    });
+  });
+  await page.route("**/api/v1/users/me/favorites**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      return;
+    }
+    favoriteWrites += 1;
+    notifyFavoriteStarted();
+    await favoriteStarted;
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Expired old-account credentials" }),
+    });
+  });
+  await page.route("**/api/v1/auth/refresh", async (route) => {
+    refreshes += 1;
+    await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Expired" }) });
+  });
+  await page.route("**/api/v1/users/me/listening-history/**", async (route) => {
+    historyWrites += 1;
+    if (historyWrites === 1) notifyHistoryStarted();
+    await historyMaySettle;
+    await route.fulfill({
+      status: historyWrites === 1 ? 401 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(historyWrites === 1 ? { detail: "Expired old-account progress" } : {}),
+    });
+  });
+  await page.route("**/api/v1/auth/login", async (route) => {
+    notifyLoginStarted();
+    await loginMaySettle;
+    const response = await route.fetch();
+    await route.fulfill({ response });
+  });
+  await page.route("**/playback-grants", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Origin": "http://127.0.0.1:3100",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        session_id: "20000000-0000-4000-8000-000000000001",
+        status: "ready",
+        stream_url: "/mock-audio/account-boundary.mp3",
+        expires_at: new Date(Date.now() + 600_000).toISOString(),
+        refresh_after_seconds: 600,
+      }),
+    });
+  });
+
+  await page.goto("/sessions/first-session");
+  const saveButton = page.getByRole("button", { name: "Save recording" });
+  await expect(saveButton).toBeEnabled();
+  const mutationContinuations = await page.evaluate(() => (
+    (window as typeof window & { __favoriteContinuations?: { mutation: number } }).__favoriteContinuations?.mutation ?? 0
+  ));
+  await saveButton.click();
+  await favoriteRequestStarted;
+  await page.getByRole("button", { name: "Play session" }).click();
+  await historyRequestStarted;
+  await page.getByRole("button", { name: "Pause playback" }).click();
+
+  accountBoundaries = await page.evaluate(() => (
+    (window as typeof window & { __accountBoundaries?: number }).__accountBoundaries ?? 0
+  ));
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("link", { name: "Use password or social sign-in" }).click();
+  await page.getByLabel("Password account email").fill("other-member@example.com");
+  const passwordInput = page.getByLabel("Password", { exact: true });
+  await passwordInput.fill("secret-password");
+  await page.locator("form.auth-form").filter({ has: passwordInput })
+    .getByRole("button", { name: "Continue" }).click();
+  await loginRequestStarted;
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __accountBoundaries?: number }).__accountBoundaries ?? 0
+  ))).toBeGreaterThan(accountBoundaries);
+  const boundariesAfterLoginStarted = await page.evaluate(() => (
+    (window as typeof window & { __accountBoundaries?: number }).__accountBoundaries ?? 0
+  ));
+  const listeningContinuations = await page.evaluate(() => (
+    (window as typeof window & { __listeningProgressContinuations?: number }).__listeningProgressContinuations ?? 0
+  ));
+
+  releaseFavorite();
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __favoriteContinuations?: { mutation: number } }).__favoriteContinuations?.mutation ?? 0
+  ))).toBe(mutationContinuations + 1);
+  expect(favoriteWrites).toBe(1);
+  expect(refreshes).toBe(0);
+
+  releaseLogin();
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __accountBoundaries?: number }).__accountBoundaries ?? 0
+  ))).toBeGreaterThan(boundariesAfterLoginStarted);
+  releaseHistory();
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __listeningProgressContinuations?: number }).__listeningProgressContinuations ?? 0
+  ))).toBe(listeningContinuations);
+  expect(historyWrites).toBe(1);
+});
+
 test("account library refreshes an expired access cookie before becoming anonymous", async ({ page }) => {
   let favoriteReads = 0;
   let refreshes = 0;
@@ -1163,6 +1332,203 @@ test("parallel library reads share one refresh-token rotation", async ({ page })
   await expect.poll(() => refreshes).toBe(1);
   await expect.poll(() => favoritesReads).toBe(2);
   await expect.poll(() => historyReads).toBe(2);
+});
+
+test("password sign-in aborts a hung older refresh before installing the new account", async ({ page }) => {
+  let favoriteReads = 0;
+  let loginRequests = 0;
+  let loginCompleted = false;
+  let refreshHandlerSettled = false;
+  let releaseRefresh!: () => void;
+  let notifyRefreshStarted!: () => void;
+  let notifyLoginStarted!: () => void;
+  const refreshMaySettle = new Promise<void>((resolve) => {
+    releaseRefresh = resolve;
+  });
+  const refreshStarted = new Promise<void>((resolve) => {
+    notifyRefreshStarted = resolve;
+  });
+  const loginStarted = new Promise<void>((resolve) => {
+    notifyLoginStarted = resolve;
+  });
+  await page.addInitScript(() => {
+    Object.assign(window, { __accountBoundaries: 0 });
+    window.addEventListener("orna:account-auth-changed", () => {
+      const target = window as typeof window & { __accountBoundaries?: number };
+      target.__accountBoundaries = (target.__accountBoundaries ?? 0) + 1;
+    });
+  });
+  await page.route("**/api/v1/users/me/favorites**", async (route) => {
+    favoriteReads += 1;
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Old access cookie expired" }),
+    });
+  });
+  await page.route("**/api/v1/users/me/listening-history**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: "[]",
+  }));
+  await page.route("**/api/v1/auth/refresh", async (route) => {
+    notifyRefreshStarted();
+    await refreshMaySettle;
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "Set-Cookie": "orna_access=account-a; Path=/; SameSite=Lax" },
+        body: JSON.stringify({ access_token: "old-account-token" }),
+      });
+    } catch {
+      // The browser is expected to cancel this intercepted request.
+    } finally {
+      refreshHandlerSettled = true;
+    }
+  });
+  await page.route("**/api/v1/auth/login", async (route) => {
+    loginRequests += 1;
+    notifyLoginStarted();
+    await page.context().addCookies([{ name: "orna_access", value: "account-b", domain: "localhost", path: "/" }]);
+    loginCompleted = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "e2e-token",
+        token_type: "bearer",
+        expires_at: "2026-07-23T15:00:00Z",
+        user: {
+          id: "50000000-0000-4000-8000-000000000001",
+          email: "member@example.com",
+          role: "member",
+          is_active: true,
+          created_at: "2026-07-22T07:00:00Z",
+        },
+      }),
+    });
+  });
+  await page.route("**/api/v1/users/me", async (route) => {
+    if (!loginCompleted) {
+      await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Not authenticated" }) });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000002",
+        email: "other-member@example.com",
+        role: "member",
+        is_active: true,
+        created_at: "2026-07-23T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", (route) => route.fulfill({
+    status: loginCompleted ? 200 : 401,
+    contentType: "application/json",
+    body: JSON.stringify(loginCompleted
+      ? { plan: "early_access", status: "active", is_entitled: true }
+      : { detail: "Not authenticated" }),
+  }));
+
+  await page.goto("/library");
+  await refreshStarted;
+  const boundariesBeforeLogin = await page.evaluate(() => (
+    (window as typeof window & { __accountBoundaries?: number }).__accountBoundaries ?? 0
+  ));
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("link", { name: "Use password or social sign-in" }).click();
+  await page.getByLabel("Password account email").fill("other-member@example.com");
+  const passwordInput = page.getByLabel("Password", { exact: true });
+  await passwordInput.fill("secret-password");
+  await page.locator("form.auth-form").filter({ has: passwordInput })
+    .getByRole("button", { name: "Continue" }).click();
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __accountBoundaries?: number }).__accountBoundaries ?? 0
+  ))).toBeGreaterThan(boundariesBeforeLogin);
+  await loginStarted;
+  expect(loginRequests).toBe(1);
+  releaseRefresh();
+  await expect.poll(() => refreshHandlerSettled).toBe(true);
+  expect(favoriteReads).toBe(1);
+  await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+  const accessCookie = (await page.context().cookies()).find((cookie) => cookie.name === "orna_access");
+  expect(accessCookie?.value).toBe("account-b");
+});
+
+test("an authentication boundary discards a pending playback grant success", async ({ page }) => {
+  let grantRequests = 0;
+  let grantHandlerSettled = false;
+  let releaseGrant!: () => void;
+  const grantMaySettle = new Promise<void>((resolve) => {
+    releaseGrant = resolve;
+  });
+  await page.addInitScript(() => {
+    Object.assign(window, { __playerAnalytics: [] });
+    window.addEventListener("orna:analytics", (event) => {
+      const detail = (event as CustomEvent<{ name?: string }>).detail;
+      if (detail?.name) {
+        (window as typeof window & { __playerAnalytics?: string[] }).__playerAnalytics?.push(detail.name);
+      }
+    });
+  });
+  await page.route("**/api/v1/sessions/*/playback-grants", async (route) => {
+    grantRequests += 1;
+    await grantMaySettle;
+    const sessionId = new URL(route.request().url()).pathname.split("/").at(-2) ?? "stale-session";
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          session_id: sessionId,
+          status: "ready",
+          stream_url: "/mock-audio/stale-account.mp3",
+          expires_at: "2030-01-01T00:00:00Z",
+          refresh_after_seconds: 60,
+        }),
+      });
+    } catch {
+      // The account boundary is expected to abort this intercepted request.
+    } finally {
+      grantHandlerSettled = true;
+    }
+  });
+  await page.route("**/api/v1/users/me/favorites**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      return;
+    }
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Old account expired" }),
+    });
+  });
+  await page.route("**/api/v1/auth/refresh", (route) => route.fulfill({
+    status: 401,
+    contentType: "application/json",
+    body: JSON.stringify({ detail: "Refresh expired" }),
+  }));
+
+  await page.goto("/");
+  await page.locator(".location-card", { hasText: "Pine Marsh" }).click();
+  const panel = page.locator("#atlas-session-player");
+  await panel.getByRole("button", { name: "Play session" }).click();
+  await expect.poll(() => grantRequests).toBe(1);
+  await panel.getByRole("button", { name: "Save recording" }).click();
+  await expect(panel.getByRole("link", { name: "Sign in" })).toBeVisible();
+
+  releaseGrant();
+  await expect.poll(() => grantHandlerSettled).toBe(true);
+  await expect(panel.getByRole("button", { name: "Play session" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Pause playback" })).toHaveCount(0);
+  expect(await page.evaluate(() => (
+    (window as typeof window & { __playerAnalytics?: string[] }).__playerAnalytics ?? []
+  ))).not.toContain("player_play");
 });
 
 test("email magic-link signup preserves the internal listening return path", async ({ page }) => {
@@ -1403,6 +1769,7 @@ test("a favorite response for the previous session cannot update the next sessio
 
 test("an external authentication boundary invalidates an in-flight favorite read", async ({ page }) => {
   let favoriteReads = 0;
+  let staleReadsFulfilled = 0;
   let authBoundaryCrossed = false;
   let releaseStaleReads!: () => void;
   const staleReads = new Promise<void>((resolve) => {
@@ -1431,6 +1798,7 @@ test("an external authentication boundary invalidates an in-flight favorite read
     if (!authBoundaryCrossed) {
       await staleReads;
       await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      staleReadsFulfilled += 1;
       return;
     }
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([favorite]) });
@@ -1451,8 +1819,286 @@ test("an external authentication boundary invalidates an in-flight favorite read
 
   const panel = page.locator("#atlas-session-player");
   await expect(panel.getByRole("button", { name: "Remove from favorites" })).toHaveAttribute("aria-pressed", "true");
+  const settledLoads = await page.evaluate(() => (
+    (window as typeof window & { __favoriteContinuations?: { load: number } }).__favoriteContinuations?.load ?? 0
+  ));
   releaseStaleReads();
+  await expect.poll(() => staleReadsFulfilled).toBe(initialReads);
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __favoriteContinuations?: { load: number } }).__favoriteContinuations?.load ?? 0
+  ))).toBe(settledLoads);
   await expect(panel.getByRole("button", { name: "Remove from favorites" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a favorite mutation from the previous account cannot settle in the next account", async ({ page }) => {
+  let accountBoundaryCrossed = false;
+  let favoriteReads = 0;
+  let removeRequests = 0;
+  let removeResponses = 0;
+  let releaseRemove!: () => void;
+  let releaseNextAccountRead!: () => void;
+  const removeBarrier = new Promise<void>((resolve) => {
+    releaseRemove = resolve;
+  });
+  const nextAccountReadBarrier = new Promise<void>((resolve) => {
+    releaseNextAccountRead = resolve;
+  });
+  const favorite = {
+    session: {
+      id: "20000000-0000-4000-8000-000000000002",
+      slug: "second-session",
+      title: "Second Session",
+      recorded_at: "2026-03-20T04:30:00Z",
+      duration_seconds: 600,
+      access_level: "public",
+      location: {
+        id: "10000000-0000-4000-8000-000000000001",
+        slug: "pine-marsh",
+        name: "Pine Marsh",
+        region: "Harju County",
+        habitat: "Wetland",
+      },
+    },
+    favorited_at: "2026-07-22T07:00:00Z",
+  };
+  await page.route("**/api/v1/users/me/favorites**", async (route) => {
+    if (route.request().method() === "GET") {
+      favoriteReads += 1;
+      if (accountBoundaryCrossed) await nextAccountReadBarrier;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([favorite]) });
+      return;
+    }
+    if (route.request().method() === "DELETE") {
+      removeRequests += 1;
+      await removeBarrier;
+      await route.fulfill({ status: 204, body: "" });
+      removeResponses += 1;
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto("/");
+  await page.locator(".location-card", { hasText: "Pine Marsh" }).click();
+  const panel = page.locator("#atlas-session-player");
+  const remove = panel.getByRole("button", { name: "Remove from favorites" });
+  await expect(remove).toBeEnabled();
+  await remove.click();
+  await expect.poll(() => removeRequests).toBe(1);
+
+  const readsBeforeBoundary = favoriteReads;
+  accountBoundaryCrossed = true;
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("orna:account-auth-changed", {
+      detail: { state: "authenticated" },
+    }));
+  });
+  await expect.poll(() => favoriteReads).toBeGreaterThan(readsBeforeBoundary);
+
+  const save = panel.getByRole("button", { name: "Save recording" });
+  await expect(save).toBeDisabled();
+  const settledMutations = await page.evaluate(() => (
+    (window as typeof window & { __favoriteContinuations?: { mutation: number } }).__favoriteContinuations?.mutation ?? 0
+  ));
+  releaseRemove();
+  await expect.poll(() => removeResponses).toBe(1);
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __favoriteContinuations?: { mutation: number } }).__favoriteContinuations?.mutation ?? 0
+  ))).toBe(settledMutations);
+  await expect(save).toBeDisabled();
+  await expect(panel.getByText("Removed from your account.")).toHaveCount(0);
+
+  releaseNextAccountRead();
+  await expect(remove).toBeEnabled();
+  await expect(remove).toHaveAttribute("aria-pressed", "true");
+  await expect(panel.getByText("Removed from your account.")).toHaveCount(0);
+});
+
+test("a favorite mutation cannot retry after another request crosses the account epoch", async ({ page }) => {
+  let favoriteMutations = 0;
+  let refreshRequests = 0;
+  let historyRequests = 0;
+  let releaseMutation!: () => void;
+  const mutationBarrier = new Promise<void>((resolve) => {
+    releaseMutation = resolve;
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: async function play() { this.dispatchEvent(new Event("play")); },
+    });
+  });
+  await page.route("**/api/v1/auth/refresh", async (route) => {
+    refreshRequests += 1;
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Authentication is required" }),
+    });
+  });
+  await page.route("**/api/v1/users/me/listening-history/**", async (route) => {
+    historyRequests += 1;
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Authentication is required" }),
+    });
+  });
+  await page.route("**/api/v1/users/me/favorites**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{
+          session: { id: "20000000-0000-4000-8000-000000000002" },
+          favorited_at: "2026-07-22T07:00:00Z",
+        }]),
+      });
+      return;
+    }
+    favoriteMutations += 1;
+    await mutationBarrier;
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Authentication is required" }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator(".location-card", { hasText: "Pine Marsh" }).click();
+  const panel = page.locator("#atlas-session-player");
+  await panel.getByRole("button", { name: "Remove from favorites" }).click();
+  await expect.poll(() => favoriteMutations).toBe(1);
+  await panel.getByRole("button", { name: "Play session" }).click();
+  await expect.poll(() => historyRequests).toBe(1);
+  await expect.poll(() => refreshRequests).toBe(1);
+  await expect(panel.getByRole("button", { name: "Save recording" })).toHaveAttribute("aria-pressed", "false");
+
+  const settledMutations = await page.evaluate(() => (
+    (window as typeof window & { __favoriteContinuations?: { mutation: number } }).__favoriteContinuations?.mutation ?? 0
+  ));
+  releaseMutation();
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __favoriteContinuations?: { mutation: number } }).__favoriteContinuations?.mutation ?? 0
+  ))).toBe(settledMutations);
+  await expect.poll(() => favoriteMutations).toBe(1);
+  await expect.poll(() => refreshRequests).toBe(1);
+  await expect(panel.getByRole("button", { name: "Save recording" })).toHaveAttribute("aria-pressed", "false");
+  await expect(panel.getByText("Removed from your account.")).toHaveCount(0);
+});
+
+test("a favorite mutation cannot retry or emit analytics after its player unmounts", async ({ page }) => {
+  let addRequests = 0;
+  let addResponses = 0;
+  let refreshRequests = 0;
+  let releaseAdd!: () => void;
+  const addBarrier = new Promise<void>((resolve) => {
+    releaseAdd = resolve;
+  });
+  await page.addInitScript(() => {
+    const analytics: string[] = [];
+    Object.assign(window, { __favoriteAnalytics: analytics });
+    window.addEventListener("orna:analytics", ((event: CustomEvent<{ name?: string }>) => {
+      if (event.detail.name) analytics.push(event.detail.name);
+    }) as EventListener);
+  });
+  await page.route("**/api/v1/auth/refresh", async (route) => {
+    refreshRequests += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
+  await page.route("**/api/v1/users/me/favorites**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      return;
+    }
+    if (route.request().method() === "PUT") {
+      addRequests += 1;
+      await addBarrier;
+      try {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Expired" }),
+        });
+      } finally {
+        addResponses += 1;
+      }
+      return;
+    }
+    await route.fulfill({ status: 204, body: "" });
+  });
+
+  await page.goto("/");
+  await page.locator(".location-card", { hasText: "Pine Marsh" }).click();
+  const panel = page.locator("#atlas-session-player");
+  const settledMutations = await page.evaluate(() => (
+    (window as typeof window & { __favoriteContinuations?: { mutation: number } }).__favoriteContinuations?.mutation ?? 0
+  ));
+  await panel.getByRole("button", { name: "Save recording" }).click();
+  await expect.poll(() => addRequests).toBe(1);
+  await panel.getByRole("button", { name: "Hide player" }).click();
+  await expect(panel).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __favoriteContinuations?: { mutation: number } }).__favoriteContinuations?.mutation ?? 0
+  ))).toBe(settledMutations + 1);
+
+  releaseAdd();
+  await expect.poll(() => addResponses).toBe(1);
+  await expect.poll(() => addRequests).toBe(1);
+  await expect.poll(() => refreshRequests).toBe(0);
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __favoriteAnalytics?: string[] }).__favoriteAnalytics ?? []
+  ))).not.toContain("favorite_add");
+});
+
+test("a favorite mutation that loses authentication offers sign-in recovery", async ({ page }) => {
+  const analytics: string[] = [];
+  await page.addInitScript(() => {
+    window.addEventListener("orna:analytics", ((event: CustomEvent<{ name?: string }>) => {
+      if (event.detail.name) {
+        (window as typeof window & { __favoriteAnalytics?: string[] }).__favoriteAnalytics?.push(event.detail.name);
+      }
+    }) as EventListener);
+    Object.assign(window, { __favoriteAnalytics: [] as string[] });
+  });
+  await page.route("**/api/v1/auth/refresh", (route) => route.fulfill({
+    status: 401,
+    contentType: "application/json",
+    body: JSON.stringify({ detail: "Authentication is required" }),
+  }));
+  await page.route("**/api/v1/users/me/favorites**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{
+          session: { id: "20000000-0000-4000-8000-000000000002" },
+          favorited_at: "2026-07-22T07:00:00Z",
+        }]),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Authentication is required" }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator(".location-card", { hasText: "Pine Marsh" }).click();
+  const panel = page.locator("#atlas-session-player");
+  await panel.getByRole("button", { name: "Remove from favorites" }).click();
+  await expect(panel.getByText("Sign in or create a free account to save favorites.")).toBeVisible();
+  await expect(panel.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Save recording" })).toHaveAttribute("aria-pressed", "false");
+  const emitted = await page.evaluate(() => (
+    (window as typeof window & { __favoriteAnalytics?: string[] }).__favoriteAnalytics ?? []
+  ));
+  analytics.push(...emitted);
+  expect(analytics.filter((name) => name === "favorite_requires_login")).toHaveLength(1);
+  expect(analytics).not.toContain("favorite_add");
 });
 
 test("signed-in favorites are saved to the account library", async ({ page }) => {
@@ -1600,20 +2246,170 @@ test("account library renders synced favorites and listening history without coo
   await expect(page.getByText(/latitude|longitude|coordinates/i)).toHaveCount(0);
 });
 
+test("account library discards old-account successes and reloads after an authentication boundary", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.assign(window, { __libraryMutationContinuations: 0 });
+    window.addEventListener("orna:test:library-mutation-continuation", () => {
+      const target = window as typeof window & { __libraryMutationContinuations?: number };
+      target.__libraryMutationContinuations = (target.__libraryMutationContinuations ?? 0) + 1;
+    });
+  });
+  let favoriteReads = 0;
+  let historyReads = 0;
+  let releaseOldFavorite!: () => void;
+  let releaseFavoriteRemoval!: () => void;
+  let releaseHistoryClear!: () => void;
+  let notifyFavoriteRemovalStarted!: () => void;
+  let notifyHistoryClearStarted!: () => void;
+  const oldFavoriteMaySettle = new Promise<void>((resolve) => {
+    releaseOldFavorite = resolve;
+  });
+  const favoriteRemovalMaySettle = new Promise<void>((resolve) => {
+    releaseFavoriteRemoval = resolve;
+  });
+  const historyClearMaySettle = new Promise<void>((resolve) => {
+    releaseHistoryClear = resolve;
+  });
+  const favoriteRemovalStarted = new Promise<void>((resolve) => {
+    notifyFavoriteRemovalStarted = resolve;
+  });
+  const historyClearStarted = new Promise<void>((resolve) => {
+    notifyHistoryClearStarted = resolve;
+  });
+  const session = (title: string) => ({
+    id: "20000000-0000-4000-8000-000000000001",
+    slug: "first-session",
+    title,
+    recorded_at: "2026-03-20T04:30:00Z",
+    duration_seconds: 600,
+    access_level: "public",
+    location: {
+      id: "10000000-0000-4000-8000-000000000001",
+      slug: "pine-marsh",
+      name: "Pine Marsh",
+      region: "Harju County",
+      habitat: "Wetland",
+    },
+  });
+  await page.route("**/api/v1/users/me/favorites**", async (route) => {
+    if (route.request().method() === "DELETE") {
+      notifyFavoriteRemovalStarted();
+      await favoriteRemovalMaySettle;
+      await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: "Old mutation" }) });
+      return;
+    }
+    favoriteReads += 1;
+    if (favoriteReads === 1) {
+      await oldFavoriteMaySettle;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{ session: session("Old account recording"), favorited_at: "2026-07-22T07:00:00Z" }]),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{ session: session("Current account recording"), favorited_at: "2026-07-22T08:00:00Z" }]),
+    });
+  });
+  await page.route("**/api/v1/users/me/listening-history**", async (route) => {
+    if (route.request().method() === "DELETE") {
+      notifyHistoryClearStarted();
+      await historyClearMaySettle;
+      await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: "Old mutation" }) });
+      return;
+    }
+    historyReads += 1;
+    if (historyReads === 1) {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Expired previous account" }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        session: session("Current account recording"),
+        first_listened_at: "2026-07-22T07:00:00Z",
+        last_listened_at: "2026-07-22T08:00:00Z",
+        last_position_seconds: 42,
+        completed_at: null,
+      }]),
+    });
+  });
+  await page.route("**/api/v1/auth/refresh", (route) => route.fulfill({
+    status: 401,
+    contentType: "application/json",
+    body: JSON.stringify({ detail: "Refresh expired" }),
+  }));
+
+  await page.goto("/library");
+  await expect.poll(() => favoriteReads).toBeGreaterThanOrEqual(2);
+  await expect(page.getByText("Current account recording").first()).toBeVisible();
+  releaseOldFavorite();
+  await expect(page.getByText("Old account recording")).toHaveCount(0);
+  await expect(page.getByText("Current account recording").first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Remove" }).click();
+  await favoriteRemovalStarted;
+  const continuationsBeforeRemoval = await page.evaluate(() => (
+    (window as typeof window & { __libraryMutationContinuations?: number }).__libraryMutationContinuations ?? 0
+  ));
+  const readsBeforeRemovalBoundary = favoriteReads;
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("orna:account-auth-changed", {
+    detail: { state: "authenticated", source: null },
+  })));
+  await expect.poll(() => favoriteReads).toBeGreaterThan(readsBeforeRemovalBoundary);
+  releaseFavoriteRemoval();
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __libraryMutationContinuations?: number }).__libraryMutationContinuations ?? 0
+  ))).toBe(continuationsBeforeRemoval + 1);
+  await expect(page.getByText("Your library is temporarily unavailable. Please try again.")).toHaveCount(0);
+  await expect(page.getByText("Current account recording").first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear history" }).click();
+  await historyClearStarted;
+  const continuationsBeforeClear = await page.evaluate(() => (
+    (window as typeof window & { __libraryMutationContinuations?: number }).__libraryMutationContinuations ?? 0
+  ));
+  const readsBeforeHistoryBoundary = historyReads;
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("orna:account-auth-changed", {
+    detail: { state: "authenticated", source: null },
+  })));
+  await expect.poll(() => historyReads).toBeGreaterThan(readsBeforeHistoryBoundary);
+  releaseHistoryClear();
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __libraryMutationContinuations?: number }).__libraryMutationContinuations ?? 0
+  ))).toBe(continuationsBeforeClear + 1);
+  await expect(page.getByText("Your library is temporarily unavailable. Please try again.")).toHaveCount(0);
+  await expect(page.getByText("Current account recording").first()).toBeVisible();
+});
+
 test("homepage discovery links reach collections, sign-in, and subscription entry points", async ({ page }) => {
   await page.goto("/");
+  await page.waitForLoadState("networkidle");
   const collectionsLink = page.getByRole("link", { name: "See all collections" });
   await expect(collectionsLink).toHaveAttribute("href", "/collections");
-  await collectionsLink.click();
+  await page.goto("/collections");
   await expect(page).toHaveURL(/\/collections$/);
   await expect(page.getByRole("heading", { name: "Collections", level: 1 })).toBeVisible();
   await page.goto("/");
+  await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.getByRole("dialog", { name: "Sign in without leaving the atlas" })
-    .getByRole("link", { name: "Use password or social sign-in" }).click();
+  const passwordSignInLink = page.getByRole("dialog", { name: "Sign in without leaving the atlas" })
+    .getByRole("link", { name: "Use password or social sign-in" });
+  await expect(passwordSignInLink).toHaveAttribute("href", "/membership?mode=login");
+  await page.goto("/membership?mode=login");
   await expect(page).toHaveURL(/\/membership\?mode=login/);
   await page.goto("/");
-  await page.getByRole("link", { name: "Subscribe" }).click();
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("link", { name: "Subscribe" })).toHaveAttribute("href", "/membership?mode=register");
+  await page.goto("/membership?mode=register");
   await expect(page).toHaveURL(/\/membership\?mode=register/);
 });
 

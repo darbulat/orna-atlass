@@ -267,7 +267,7 @@ export default function MembershipPage() {
           if (isCurrent()) setIsLoadingMembership(false);
         }
       } catch (error) {
-        if (!isCurrent()) return;
+        if (!isCurrent() || (error instanceof DOMException && error.name === "AbortError")) return;
         setIsLoadingMembership(false);
         if (error instanceof ApiError && error.status === 401) {
           setUser(null);

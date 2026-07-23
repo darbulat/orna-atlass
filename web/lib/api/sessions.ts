@@ -1,6 +1,7 @@
 import type { components } from "./generated";
 import { ApiError, fetchJson } from "./client";
 import { refreshAuthentication } from "./auth-refresh";
+import { getAccountAuthEpoch } from "./account-auth-state";
 
 export type LocationRead = components["schemas"]["LocationRead"];
 export type MediaAssetRead = components["schemas"]["PublicMediaAssetRead"];
@@ -49,13 +50,14 @@ export function apiUrl(path: string): string {
 }
 
 function refreshAccessCookie(signal?: AbortSignal): Promise<void> {
-  return refreshAuthentication(() => fetchJson<components["schemas"]["TokenResponse"]>(
+  return refreshAuthentication((refreshSignal) => fetchJson<components["schemas"]["TokenResponse"]>(
     apiUrl("/api/v1/auth/refresh"),
     {
       method: "POST",
       credentials: "include",
       cache: "no-store",
       headers: { Accept: "application/json" },
+      signal: refreshSignal,
     },
   ), signal);
 }
@@ -352,6 +354,12 @@ export function fetchFollowDawn(): Promise<DawnFollowResponse> {
 }
 
 export async function requestPlaybackGrant(sessionId: string, signal?: AbortSignal): Promise<PlaybackGrant> {
+  const accountEpoch = getAccountAuthEpoch();
+  const assertCurrentAccount = () => {
+    if (accountEpoch !== getAccountAuthEpoch()) {
+      throw new DOMException("Authentication changed during the playback request", "AbortError");
+    }
+  };
   const requestGrant = () => fetchJson<PlaybackGrant>(apiUrl(`/api/v1/sessions/${sessionId}/playback-grants`), {
     method: "POST",
     credentials: "include",
@@ -360,13 +368,19 @@ export async function requestPlaybackGrant(sessionId: string, signal?: AbortSign
   });
 
   try {
-    return await requestGrant();
+    const grant = await requestGrant();
+    assertCurrentAccount();
+    return grant;
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 401) {
       throw error;
     }
   }
 
+  assertCurrentAccount();
   await refreshAccessCookie(signal);
-  return requestGrant();
+  assertCurrentAccount();
+  const grant = await requestGrant();
+  assertCurrentAccount();
+  return grant;
 }
