@@ -50,6 +50,23 @@ const minimumGlobeZoomDistance = 350000;
 const maximumGlobeZoomDistance = 52000000;
 const markerDragThresholdPixels = 8;
 
+function useMobileViewport() {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 720px)").matches;
+  });
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 720px)");
+    const sync = () => setIsMobile(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  return isMobile;
+}
+
 function isPoint(item: AtlasPoint | AtlasCluster): item is AtlasPoint {
   return item.type === "point";
 }
@@ -138,6 +155,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
   const [isViewerReady, setIsViewerReady] = useState(false);
   const [hoveredPoint, setHoveredPoint] = useState<{ point: AtlasPoint; x: number; y: number } | null>(null);
   const [zoomBounds, setZoomBounds] = useState({ atMinimum: false, atMaximum: false });
+  const shouldShowStaticFallback = useMobileViewport() === false;
 
   useEffect(() => {
     onSelectRef.current = onSelectPoint;
@@ -500,7 +518,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
           <span>{hoveredPoint.point.session_count} recording{hoveredPoint.point.session_count === 1 ? "" : "s"}</span>
         </div>
       ) : null}
-      {isWebglUnavailable ? <StaticGlobeFallback points={points} selectedSlug={selectedSlug} /> : null}
+      {isWebglUnavailable && shouldShowStaticFallback ? <StaticGlobeFallback points={points} selectedSlug={selectedSlug} /> : null}
       <div className="cesium-zoom-controls" role="group" aria-label="Globe zoom controls">
         <button type="button" aria-label="Zoom in" disabled={zoomBounds.atMinimum} onClick={() => changeZoom("in")}>+</button>
         <button type="button" aria-label="Zoom out" disabled={zoomBounds.atMaximum} onClick={() => changeZoom("out")}>−</button>
