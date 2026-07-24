@@ -2113,6 +2113,63 @@ a:focus-visible {
   margin: 0;
 }
 
+.membership-information {
+  display: grid;
+  gap: 1.4rem;
+  max-width: 660px;
+  width: 100%;
+}
+
+.membership-information .eyebrow,
+.membership-information h2,
+.membership-information h3,
+.membership-information p {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.membership-comparison {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.membership-comparison .panel {
+  border-radius: 14px;
+  min-width: 0;
+}
+
+.membership-faq {
+  display: grid;
+  gap: .75rem;
+  max-width: 660px;
+  width: 100%;
+}
+
+.membership-faq details {
+  border-bottom: 1px solid rgba(248,250,249,.14);
+  min-width: 0;
+  padding: 0 0 .75rem;
+}
+
+.membership-faq summary {
+  cursor: pointer;
+  line-height: 1.35;
+  min-height: 44px;
+  padding: .65rem 0;
+}
+
+.membership-faq details p {
+  color: rgba(238, 243, 240, .7);
+  line-height: 1.6;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .membership-comparison { grid-template-columns: 1fr; }
+}
+
 .form-message {
   margin-top: 1rem;
   color: #f1b8a8;
@@ -2127,6 +2184,8 @@ a:focus-visible {
     #030504;
   color: #f8faf9;
   display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
   justify-content: center;
   min-height: 100svh;
   overflow-x: hidden;
@@ -2278,6 +2337,18 @@ a:focus-visible {
   text-align: center;
 }
 .auth-legal a { color: rgba(248,250,249,.82); }
+.auth-membership-link {
+  color: rgba(238, 243, 240, .7);
+  font-size: .92rem;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 660px;
+  text-align: center;
+}
+.auth-membership-link a {
+  color: #d9eee5;
+  text-underline-offset: 3px;
+}
 .auth-notice {
   background: rgba(155,216,189,.1);
   border: 1px solid rgba(155,216,189,.25);

@@ -21,6 +21,7 @@ import {
 } from "../../lib/api/auth";
 
 type AuthMode = "login" | "register";
+type MembershipEntryMode = "default" | AuthMode;
 
 const providerLabels: Record<OAuthProvider, string> = {
   google: "Google",
@@ -163,6 +164,7 @@ export default function MembershipPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<AuthMode>("login");
+  const [entryMode, setEntryMode] = useState<MembershipEntryMode>("default");
   const [message, setMessage] = useState<string | null>(null);
   const [oauthMessage, setOauthMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [accountLoadError, setAccountLoadError] = useState<string | null>(null);
@@ -180,7 +182,10 @@ export default function MembershipPage() {
     const params = new URLSearchParams(window.location.search);
     setAuthReturnTo(internalReturnTo(params.get("returnTo")));
     const requestedMode = params.get("mode");
-    if (requestedMode === "register" || requestedMode === "login") setMode(requestedMode);
+    if (requestedMode === "register" || requestedMode === "login") {
+      setMode(requestedMode);
+      setEntryMode(requestedMode);
+    }
   }, []);
 
   useEffect(() => {
@@ -410,14 +415,26 @@ export default function MembershipPage() {
     );
   }
 
+  const isFocusedLogin = entryMode === "login" && mode === "login";
+  const authHeading = isFocusedLogin
+    ? "Sign in to ORNA Atlas"
+    : mode === "register"
+      ? "Create your free ORNA account"
+      : "Sign in or create your account";
+  const authIntro = isFocusedLogin
+    ? "Use your email link, password, or social account to return to your atlas listening."
+    : mode === "register"
+      ? "Create a free account. Payment details are not required and public listening remains anonymous."
+      : "Sign in securely and create a free account while public listening remains anonymous.";
+
   return (
     <main className="auth-page" id="main-content">
       <SiteHeader active="membership" />
       <section className="auth-card" aria-labelledby="auth-heading">
         <div className="auth-intro">
           <p className="auth-kicker">Your ORNA account</p>
-          <h1 id="auth-heading">Sign in or create your account</h1>
-          <p>Sign in securely and create a free account while public listening remains anonymous.</p>
+          <h1 id="auth-heading">{authHeading}</h1>
+          <p>{authIntro}</p>
         </div>
 
         {registrationComplete ? <AuthNotice>Your free account was created. Sign in to continue.</AuthNotice> : null}
@@ -447,13 +464,22 @@ export default function MembershipPage() {
         <div className="auth-divider"><span>or use a password</span></div>
 
         <div className="auth-mode" aria-label="Authentication mode">
-          {mode === "register" ? <p>Already have an account? Sign in.</p> : null}
-          <button type="button" aria-pressed={mode === "login"} onClick={() => setMode("login")}>Sign in</button>
+          <button
+            type="button"
+            aria-pressed={mode === "login"}
+            onClick={() => {
+              setMode("login");
+              if (entryMode === "register") setEntryMode("default");
+            }}
+          >
+            Sign in
+          </button>
           <button
             type="button"
             aria-pressed={mode === "register"}
             onClick={() => {
               setMode("register");
+              setEntryMode("register");
               window.dispatchEvent(new CustomEvent("orna:analytics", {
                 detail: { name: "signup_started", placement: "membership_form" },
               }));
@@ -485,12 +511,19 @@ export default function MembershipPage() {
         <p className="auth-legal">By continuing, you agree to the <Link href="/terms">Terms of Use</Link> and acknowledge the <Link href="/privacy">Privacy Policy</Link>.</p>
         {message ? <p className="auth-notice" role="alert">{message}</p> : null}
       </section>
-      <MembershipInformation
-        onCreateAccount={() => {
-          setMode("register");
-          window.requestAnimationFrame(() => document.getElementById("membership-email")?.focus());
-        }}
-      />
+      {isFocusedLogin ? (
+        <p className="auth-membership-link">
+          New to ORNA? <Link href="/membership?mode=register">Create a free account</Link> or <Link href="/membership">learn about future membership</Link>.
+        </p>
+      ) : (
+        <MembershipInformation
+          onCreateAccount={() => {
+            setMode("register");
+            setEntryMode("register");
+            window.requestAnimationFrame(() => document.getElementById("membership-email")?.focus());
+          }}
+        />
+      )}
     </main>
   );
 }
