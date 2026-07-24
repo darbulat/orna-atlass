@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Cartesian2, Entity, ScreenSpaceEventHandler, Viewer as CesiumViewer } from "cesium";
 import type {
   AtlasCluster,
@@ -607,9 +607,13 @@ export function AtlasExplorer({
     ),
     [currentDawn.active_locations, currentDawn.next_locations],
   );
+  const dawnSlugsForMode = useCallback(
+    (mode: ListeningMode) => (mode === "Dawn" ? dawnModeSlugs : activeDawnSlugs),
+    [dawnModeSlugs, activeDawnSlugs],
+  );
   const locations = useMemo(
-    () => filterLocationsByMode(allLocations, selectedMode, currentDawn.generated_at, dawnModeSlugs),
-    [allLocations, currentDawn.generated_at, dawnModeSlugs, selectedMode],
+    () => filterLocationsByMode(allLocations, selectedMode, currentDawn.generated_at, dawnSlugsForMode(selectedMode)),
+    [allLocations, currentDawn.generated_at, dawnSlugsForMode, selectedMode],
   );
   const initialSelectedSlug = preferredInitialSlug && locations.some((location) => location.slug === preferredInitialSlug)
     ? preferredInitialSlug
@@ -680,7 +684,7 @@ export function AtlasExplorer({
         allLocations,
         mode,
         currentDawn.generated_at,
-        dawnModeSlugs,
+        dawnSlugsForMode(mode),
       );
       setSelectedMode(mode);
       setSelectedSlug(location.slug);
@@ -697,7 +701,7 @@ export function AtlasExplorer({
     };
     window.addEventListener("orna:open-session", openSession);
     return () => window.removeEventListener("orna:open-session", openSession);
-  }, [allLocations, currentDawn.generated_at, dawnModeSlugs, locationCardCount]);
+  }, [allLocations, currentDawn.generated_at, dawnSlugsForMode, dawnModeSlugs, locationCardCount]);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("orna:analytics", {
@@ -982,7 +986,7 @@ export function AtlasExplorer({
           allLocations,
           resultMode,
           currentDawn.generated_at,
-          dawnModeSlugs,
+          dawnSlugsForMode(resultMode),
         );
         const resultIndex = modeLocations.findIndex((location) => location.slug === result.slug);
         const resultMaxStart = Math.max(0, modeLocations.length - locationCardCount);
@@ -1021,7 +1025,7 @@ export function AtlasExplorer({
       allLocations,
       mode,
       currentDawn.generated_at,
-      dawnModeSlugs,
+      dawnSlugsForMode(mode),
     );
     setSelectedMode(mode);
     setSelectedSlug(nextLocations[0]?.slug ?? null);
@@ -1057,7 +1061,7 @@ export function AtlasExplorer({
           allLocations,
           mode,
           currentDawn.generated_at,
-          dawnModeSlugs,
+          dawnSlugsForMode(mode),
         );
         setSelectedMode(mode);
         const nearestIndex = Math.max(

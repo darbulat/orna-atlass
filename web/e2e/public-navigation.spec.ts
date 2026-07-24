@@ -693,6 +693,26 @@ test("an empty time filter clears the unrelated selected location", async ({ pag
   await expect(page.locator(".dawn-copy").getByText("Pine Marsh", { exact: true })).toHaveCount(0);
 });
 
+test("time tabs apply distinct mode filtering when mode data is mixed", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  expect((await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=multiple-dawn`)).ok()).toBeTruthy();
+  await page.goto("/atlas");
+
+  const dawnCards = page.locator(".location-card");
+
+  await page.getByRole("tab", { name: "Dawn", exact: true }).click();
+  await expect(dawnCards.getByText("Ridge Dawn", { exact: true })).toBeVisible();
+  await expect(dawnCards).toHaveCount(2);
+  await expect(page.getByText("No locations in this time window.")).toHaveCount(0);
+
+  for (const mode of ["Night", "Dusk", "Day"]) {
+    await page.getByRole("tab", { name: mode, exact: true }).click();
+    await expect(page.getByText("No locations in this time window.")).toBeVisible();
+    await expect(page.locator(".location-card")).toHaveCount(0);
+    await expect(page.locator(".dawn-copy").getByText("No location selected", { exact: true })).toBeVisible();
+  }
+});
+
 test("session search synchronizes the atlas to the result location", async ({ page, request }) => {
   test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
   expect((await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=multiple-dawn`)).ok()).toBeTruthy();
