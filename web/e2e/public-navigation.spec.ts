@@ -696,7 +696,9 @@ test("an empty time filter clears the unrelated selected location", async ({ pag
 test("time tabs apply distinct mode filtering when mode data is mixed", async ({ page, request }) => {
   test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
   expect((await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=multiple-dawn`)).ok()).toBeTruthy();
-  await page.goto("/atlas");
+  // A requested location makes the server fetch no-store, isolating this controlled response
+  // from dawn data cached by earlier browser tests.
+  await page.goto("/atlas?location=ridge-dawn");
 
   const dawnCards = page.locator(".location-card");
 
