@@ -92,12 +92,60 @@ The gateway renders `deploy/nginx.conf.template`; its access-log format replaces
 playback path with a redacted sentinel before writing the log record.
 
 The override enforces production validation for the API, disables local-admin compatibility,
-disables MinIO, keeps PostgreSQL, Redis, and worker metrics bound to loopback, removes
-direct API/web host-port publication, and requires `AUTH_COOKIE_SECURE=true`,
-`PUBLIC_HOST`, `NEXT_PUBLIC_API_URL`, `CORS_ORIGINS`,
-`S3_ENDPOINT_URL`, and `S3_PUBLIC_ENDPOINT_URL` to be supplied explicitly.
-Set `CORS_ORIGINS` to a JSON list containing the public frontend origin, for
-example `["https://atlas.example.com"]`.
+disables MinIO, keeps PostgreSQL, Redis, and worker metrics bound to loopback, and removes direct
+API/web host-port publication.
+
+### Production environment
+
+Use `.env.example` as the local-development template, but replace every development credential and
+URL before a production start. The production configuration is grouped below:
+
+| Area | Variables | Production requirements |
+| --- | --- | --- |
+| Public routing | `PUBLIC_HOST`, `NEXT_PUBLIC_API_URL`, `CORS_ORIGINS`, `TRUSTED_PROXY_CIDRS` | Use the canonical HTTPS host/origin. `CORS_ORIGINS` is a JSON list such as `["https://atlas.example.com"]`; trusted proxies are a JSON list of only the reverse-proxy network CIDRs. With the HTTPS overlay, the browser API URL is replaced by the same-origin `/api` route. |
+| Data services | `DATABASE_URL`, `REDIS_URL` | Point to the intended production PostgreSQL/PostGIS and Redis services. |
+| Object storage | `S3_ENDPOINT_URL`, `S3_PUBLIC_ENDPOINT_URL`, `S3_REGION`, `S3_PRIVATE_BUCKET`, `S3_PUBLIC_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Supply the external S3-compatible service, separate private/public buckets, and production credentials. |
+| Cookies and tokens | `AUTH_COOKIE_SECURE=true`, `HLS_TOKEN_SECRET`, `HLS_TOKEN_KEY_ID`, `HLS_TOKEN_PREVIOUS_SECRETS` | Use an HLS secret of at least 32 characters that is independent from the authentication signing key. Previous HLS keys are a JSON object used only for bounded rotation. |
+| Authentication signing | `AUTH_SIGNING_ALGORITHM`, `AUTH_KEY_ID`, `AUTH_SECRET_KEY`, `AUTH_PRIVATE_KEY`, `AUTH_JWKS_JSON` | For `HS256`, replace `AUTH_SECRET_KEY` with an independent secret of at least 32 characters. For `RS256`, supply a PEM `AUTH_PRIVATE_KEY`; use `AUTH_JWKS_JSON` for rotation-ready verification keys. |
+
+Keep `APP_ENVIRONMENT=production` and `LOCAL_ADMIN_ENABLED=false`; the server overlay sets both.
+The remaining operational controls are optional overrides of the validated defaults:
+
+| Area | Variables and defaults |
+| --- | --- |
+| Playback and sessions | `S3_PRESIGN_EXPIRES_SECONDS=900`, `ACCESS_TOKEN_TTL_SECONDS=900`, `REFRESH_TOKEN_TTL_DAYS=30` |
+| Pipeline timing | `AUDIO_JOB_TIMEOUT_SECONDS=600`, `AUDIO_JOB_TIMEOUT_PER_HOUR_SECONDS=3600`, `AUDIO_JOB_MAX_TIMEOUT_SECONDS=21600`, `PIPELINE_STALE_AFTER_SECONDS=25200` |
+| Pipeline retries/results | `AUDIO_JOB_MAX_RETRIES=2`, `AUDIO_JOB_RETRY_INTERVAL_SECONDS=60`, `AUDIO_JOB_RESULT_TTL_SECONDS=3600` |
+| Retention and metrics | `MEDIA_RETENTION_DAYS=30`, `WORKER_METRICS_PORT=9101` |
+| Request limits | `AUTH_RATE_LIMIT=10`, `PLAYBACK_RATE_LIMIT=30`, `SEARCH_RATE_LIMIT=60`, `RATE_LIMIT_WINDOW_SECONDS=60` |
+
+#### Email magic links
+
+Email sign-in is fail-closed until SMTP delivery is configured. Set:
+
+| Variable | Requirement |
+| --- | --- |
+| `MAGIC_LINK_CALLBACK_URL` | Absolute public HTTPS URL ending in `/api/v1/auth/magic-link/consume`. |
+| `SMTP_HOST`, `SMTP_FROM_EMAIL` | Required together to enable delivery. |
+| `SMTP_PORT` | SMTP port; defaults to `587`. |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | Optional, but must be supplied together when the server requires authentication. |
+| `SMTP_STARTTLS` | Must remain `true` in production. |
+| `OAUTH_FRONTEND_URL` | Absolute public HTTPS membership URL used after authentication. |
+
+If SMTP is omitted, magic-link requests return service unavailable rather than inventing a delivery.
+
+#### Social OAuth
+
+OAuth providers are optional. Configure either every variable for a provider or none of them:
+
+- Google: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`;
+- Apple: `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (P-256 PEM; escaped
+  newlines are accepted);
+- Facebook: `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET`.
+
+When any provider is enabled, `OAUTH_CALLBACK_BASE_URL` and `OAUTH_FRONTEND_URL` must be absolute
+public HTTPS URLs without credentials, query parameters, or fragments. Never commit provider,
+SMTP, signing, HLS, database, or object-storage secrets.
 
 ## Backend checks
 
