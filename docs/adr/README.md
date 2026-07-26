@@ -8,4 +8,5 @@ ADRs document durable decisions that affect several modules. Status values are `
 - [ADR-0004: Service-owned transactions](0004-service-owned-transactions.md)
 - [ADR-0005: Segmented sources produce inventory-gated private HLS](0005-segmented-hls-playback.md)
 - [ADR-0006: Repository-native agent governance](0006-repository-native-agent-governance.md)
+- [ADR-0007: Pin CI lint behavior explicitly](0007-pin-ci-lint-behavior.md)
 
