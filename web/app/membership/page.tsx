@@ -391,25 +391,113 @@ export default function MembershipPage() {
     const playbackLabel = membership
       ? (membership.is_entitled ? "Member sessions unlocked" : "Public previews only")
       : (isLoadingMembership ? "Loading…" : "Unavailable");
+    const membershipView = isLoadingMembership
+      ? "loading"
+      : membership?.is_entitled
+        ? "entitled"
+        : membership
+          ? "free"
+          : "unavailable";
+    const accessHeading = membershipView === "loading"
+      ? "Checking your listening access…"
+      : membershipView === "unavailable"
+        ? "Listening access is unavailable."
+        : membershipView === "entitled"
+          ? "Your full atlas is open."
+          : "The public atlas is open.";
+    const accessDescription = membershipView === "loading"
+      ? "We are confirming this account’s current playback access."
+      : membershipView === "unavailable"
+        ? "We could not confirm your membership access right now. Please try again later."
+        : membershipView === "entitled"
+          ? "Your active membership unlocks available member recordings."
+          : "Explore the globe and listen to every available public field recording.";
+    const accountInitial = user.email.slice(0, 1).toUpperCase();
     return (
-      <main className="shell membership-page" id="main-content">
+      <main className="shell membership-page account-page" id="main-content">
+        <div className="account-glow account-glow-primary" aria-hidden="true" />
+        <div className="account-glow account-glow-secondary" aria-hidden="true" />
         <SiteHeader active="membership" />
-        <p className="eyebrow">ORNA Atlas</p>
-        <h1>Your account</h1>
-        <section className="panel membership-card" aria-live="polite">
-          <p className="eyebrow">Signed in</p>
-          <h2>{user.email}</h2>
-          <dl>
-            <div><dt>Role</dt><dd>{user.role}</dd></div>
-            <div><dt>Plan</dt><dd>{planLabel}</dd></div>
-            <div><dt>Status</dt><dd>{statusLabel}</dd></div>
-            <div><dt>Playback</dt><dd>{playbackLabel}</dd></div>
-          </dl>
-          <button type="button" onClick={signOut} disabled={busy}>Sign out</button>
-        </section>
+
+        <header className="account-hero">
+          <div>
+            <p className="eyebrow">Your ORNA space</p>
+            <h1>Your account</h1>
+          </div>
+          <p>Manage your listening access and return to the landscapes you have saved.</p>
+        </header>
+
+        <div className="account-dashboard">
+          <section
+            className="account-overview"
+            aria-label="Account overview"
+          >
+            <div className="account-identity">
+              <span className="account-avatar" aria-hidden="true">{accountInitial}</span>
+              <div>
+                <p className="account-state"><span aria-hidden="true" /> Signed in</p>
+                <h2>{user.email}</h2>
+              </div>
+              <button className="account-signout" type="button" onClick={signOut} disabled={busy}>
+                {busy ? "Signing out…" : "Sign out"}
+              </button>
+            </div>
+
+            <dl className="account-stats" aria-live="polite">
+              <div><dt>Role</dt><dd>{user.role}</dd></div>
+              <div><dt>Plan</dt><dd>{planLabel}</dd></div>
+              <div><dt>Status</dt><dd>{statusLabel}</dd></div>
+              <div className="account-stat-wide"><dt>Playback</dt><dd>{playbackLabel}</dd></div>
+            </dl>
+
+            <div className="account-actions" aria-label="Account actions">
+              <Link className="account-action-primary" href="/#atlas-entry">
+                Explore the atlas <span aria-hidden="true">↗</span>
+              </Link>
+              <Link href="/library">
+                Open your library <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+          </section>
+
+          <aside
+            className={`account-access-card is-${membershipView}`}
+            aria-labelledby="listening-access-heading"
+            aria-live="polite"
+          >
+            <div className="account-soundmark" aria-hidden="true">
+              <span /><span /><span /><span /><span />
+            </div>
+            <div>
+              <p className="eyebrow">Listening access</p>
+              <h2 id="listening-access-heading">{accessHeading}</h2>
+              <p>{accessDescription}</p>
+            </div>
+            <div className={`account-access-status ${membershipView === "entitled" ? "is-entitled" : ""}`}>
+              <span aria-hidden="true">
+                {membershipView === "entitled" ? "✓" : membershipView === "unavailable" ? "!" : membershipView === "loading" ? "…" : "○"}
+              </span>
+              <div>
+                <strong>
+                  {membershipView === "entitled"
+                    ? "Active membership"
+                    : membershipView === "unavailable"
+                      ? "Unavailable"
+                      : playbackLabel}
+                </strong>
+                {membershipView === "free" || membershipView === "unavailable" ? (
+                  <p>
+                    <span>Membership enrollment is not open yet.</span>
+                    {membershipView === "free" ? <><span aria-hidden="true"> </span><span>No payment is taken.</span></> : null}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </aside>
+        </div>
+
         {oauthMessage ? <AuthNotice error={oauthMessage.error}>{oauthMessage.text}</AuthNotice> : null}
         {accountLoadError ? <AuthNotice error>{accountLoadError}</AuthNotice> : null}
-        {!isLoadingMembership && !membership?.is_entitled ? <MembershipInformation /> : null}
         {message ? <p className="form-message" role="alert">{message}</p> : null}
       </main>
     );

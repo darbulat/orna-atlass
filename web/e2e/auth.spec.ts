@@ -78,6 +78,62 @@ test("auth screen keeps the reference layout usable on a narrow phone", async ({
 });
 
 
+test("signed-in account is a responsive dashboard with clear access and next actions", async ({ page }) => {
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "none", status: "inactive", is_entitled: false }),
+    });
+  });
+
+  await page.goto("/membership");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
+  const overview = page.getByRole("region", { name: "Account overview" });
+  await expect(overview.getByText("member@example.com")).toBeVisible();
+  await expect(overview.getByText("Public previews only")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Explore the atlas" })).toHaveAttribute("href", "/#atlas-entry");
+  await expect(page.getByRole("link", { name: "Open your library" })).toHaveAttribute("href", "/library");
+  await expect(page.getByText("Membership enrollment is not open yet.")).toBeVisible();
+  await expect(page.getByText("No payment is taken.")).toBeVisible();
+
+  await page.setViewportSize({ width: 320, height: 700 });
+  const geometry = await page.evaluate(() => {
+    const dashboard = document.querySelector<HTMLElement>(".account-dashboard")?.getBoundingClientRect();
+    const controls = Array.from(document.querySelectorAll<HTMLElement>(".account-page a, .account-page button"))
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => element.getBoundingClientRect());
+    return {
+      viewport: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      dashboardLeft: dashboard?.left,
+      dashboardRight: dashboard?.right,
+      controlsFit: controls.every((box) => box.left >= 0 && box.right <= document.documentElement.clientWidth),
+      controlsTallEnough: controls.every((box) => box.height >= 44),
+    };
+  });
+  expect(geometry.scrollWidth).toBe(geometry.viewport);
+  expect(geometry.dashboardLeft).toBeGreaterThanOrEqual(0);
+  expect(geometry.dashboardRight).toBeLessThanOrEqual(320);
+  expect(geometry.controlsFit).toBe(true);
+  expect(geometry.controlsTallEnough).toBe(true);
+});
+
+
 test("OAuth callback outcome is announced without exposing provider data", async ({ page }) => {
   await page.goto("/membership?oauth=error&oauth_provider=google&oauth_error=cancelled");
   await expect(page.locator("main").getByRole("alert")).toContainText("Google sign-in was cancelled");
@@ -205,6 +261,11 @@ test("OAuth success survives a membership status outage", async ({ page }) => {
   await expect(page.getByText("Status", { exact: true }).locator("..")).toContainText("Unavailable");
   await expect(page.getByText("Playback", { exact: true }).locator("..")).toContainText("Unavailable");
   await expect(page.getByText("Plan", { exact: true }).locator("..")).not.toContainText("none");
+  const accessCard = page.getByRole("complementary", { name: "Listening access is unavailable." });
+  await expect(accessCard.getByText("Unavailable", { exact: true })).toBeVisible();
+  await expect(accessCard).toContainText("We could not confirm your membership access right now.");
+  await expect(page.getByRole("heading", { name: "The public atlas is open." })).toHaveCount(0);
+  await expect(page.getByText(/no membership interest has been recorded/i)).toHaveCount(0);
   await expect(page).toHaveURL(/\/membership$/);
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByText("Signed in with Google.")).toHaveCount(0);
@@ -246,6 +307,8 @@ test("email login keeps membership fields loading until entitlements arrive", as
   await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
   await expect(page.getByText("Plan", { exact: true }).locator("..")).toContainText("Loading…");
   await expect(page.getByText("Status", { exact: true }).locator("..")).toContainText("Loading…");
+  await expect(page.getByRole("heading", { name: "Checking your listening access…" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "The public atlas is open." })).toHaveCount(0);
   releaseMembership?.();
   await expect(page.getByText("Plan", { exact: true }).locator("..")).toContainText("supporter");
   await expect(page.getByText("Playback", { exact: true }).locator("..")).toContainText("Member sessions unlocked");
