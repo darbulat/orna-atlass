@@ -1,7 +1,11 @@
 from typing import Literal
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -44,6 +48,25 @@ def create_app() -> FastAPI:
     if settings.auth_signing_algorithm == "RS256":
         public_jwks()
     app = FastAPI(title=settings.app_name)
+    recovery_paths = {
+        f"{settings.api_prefix}/auth/email-verification/request",
+        f"{settings.api_prefix}/auth/email-verification/confirm",
+        f"{settings.api_prefix}/auth/password-reset/request",
+        f"{settings.api_prefix}/auth/password-reset/confirm",
+    }
+    optional_auth_operations = {
+        (f"{settings.api_prefix}/sessions", "get"),
+        (f"{settings.api_prefix}/sessions/{{locator}}", "get"),
+        (f"{settings.api_prefix}/sessions/{{session_id}}/playback-grants", "post"),
+    }
+
+    @app.middleware("http")
+    async def prevent_recovery_response_caching(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path in recovery_paths:
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -53,6 +76,29 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     register_error_handlers(app)
+
+    confirmation_errors = {
+        f"{settings.api_prefix}/auth/email-verification/confirm": (
+            "Invalid or expired email verification token"
+        ),
+        f"{settings.api_prefix}/auth/password-reset/confirm": (
+            "Invalid or expired password reset token"
+        ),
+    }
+
+    @app.exception_handler(RequestValidationError)
+    async def sanitize_recovery_confirmation_validation(
+        request: Request, exc: RequestValidationError
+    ):
+        detail = confirmation_errors.get(request.url.path)
+        if detail is not None:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": detail},
+                headers={"Cache-Control": "no-store"},
+            )
+        return await request_validation_exception_handler(request, exc)
+
     app.include_router(analytics_router, prefix=settings.api_prefix)
     app.include_router(auth_router, prefix=settings.api_prefix)
     app.include_router(memberships_router, prefix=settings.api_prefix)
@@ -64,6 +110,20 @@ def create_app() -> FastAPI:
     app.include_router(library_router, prefix=settings.api_prefix)
     app.include_router(media_router, prefix=settings.api_prefix)
     app.include_router(sessions_router, prefix=settings.api_prefix)
+
+    def custom_openapi():
+        if app.openapi_schema is not None:
+            return app.openapi_schema
+        schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+        for path in confirmation_errors:
+            schema["paths"][path]["post"]["responses"].pop("422", None)
+        optional_security = [{}, {"HTTPBearer": []}, {"APIKeyCookie": []}]
+        for path, method in optional_auth_operations:
+            schema["paths"][path][method]["security"] = optional_security
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = custom_openapi
     return app
 
 

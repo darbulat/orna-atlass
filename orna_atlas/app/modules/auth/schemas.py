@@ -27,6 +27,38 @@ class MagicLinkAccepted(BaseModel):
     accepted: bool = True
 
 
+class AccountEmailAccepted(BaseModel):
+    accepted: bool = True
+
+
+class AccountRecoveryError(BaseModel):
+    detail: str
+
+
+class AccountTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=32, max_length=256)
+
+
+class PasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+
+
+class PasswordResetConfirm(AccountTokenRequest):
+    password: str = Field(min_length=12, max_length=128)
+
+
+class EmailVerificationResponse(BaseModel):
+    status: Literal["verified"]
+
+
+class PasswordResetResponse(BaseModel):
+    status: Literal["password_reset"]
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

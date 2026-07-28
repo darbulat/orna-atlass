@@ -3,9 +3,20 @@ import logging
 import secrets
 from typing import Literal
 from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
+from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
-from fastapi.responses import RedirectResponse
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,16 +27,23 @@ from orna_atlas.app.core.domain_errors import (
     ServiceUnavailableError,
 )
 from orna_atlas.app.core.rate_limit import auth_rate_limit
-from orna_atlas.app.core.security import ACCESS_COOKIE, REFRESH_COOKIE
+from orna_atlas.app.core.security import ACCESS_COOKIE, REFRESH_COOKIE, CurrentUser, get_current_user
 from orna_atlas.app.db.session import get_db_session
 from orna_atlas.app.modules.auth import magic, oauth, service
 from orna_atlas.app.modules.auth.oauth import OAuthProvider
 from orna_atlas.app.modules.auth.schemas import (
+    AccountEmailAccepted,
+    AccountRecoveryError,
+    AccountTokenRequest,
+    EmailVerificationResponse,
     LoginRequest,
     LogoutResponse,
     MagicLinkAccepted,
     MagicLinkRequest,
     OAuthProvidersResponse,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    PasswordResetResponse,
     RegisterRequest,
     TokenResponse,
 )
@@ -100,6 +118,96 @@ def _set_auth_cookies(response: Response, payload: TokenResponse, refresh_token:
         path=f"{settings.api_prefix}/auth",
         **common,
     )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(ACCESS_COOKIE)
+    response.delete_cookie(REFRESH_COOKIE, path=f"{get_settings().api_prefix}/auth")
+
+
+@router.post(
+    "/email-verification/request",
+    response_model=AccountEmailAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(auth_rate_limit)],
+)
+async def request_email_verification(
+    response: Response,
+    current_user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> AccountEmailAccepted:
+    await service.request_email_verification(session, UUID(current_user.id))
+    response.headers["Cache-Control"] = "no-store"
+    return AccountEmailAccepted()
+
+
+@router.post(
+    "/email-verification/confirm",
+    response_model=EmailVerificationResponse,
+    responses={status.HTTP_400_BAD_REQUEST: {"model": AccountRecoveryError}},
+    dependencies=[Depends(auth_rate_limit)],
+)
+async def confirm_email_verification(
+    data: AccountTokenRequest,
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
+) -> EmailVerificationResponse:
+    try:
+        await service.confirm_email_verification(session, data.token)
+    except AuthenticationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired email verification token",
+        ) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return EmailVerificationResponse(status="verified")
+
+
+@router.post(
+    "/password-reset/request",
+    response_model=AccountEmailAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(auth_rate_limit)],
+)
+async def request_password_reset(
+    data: PasswordResetRequest,
+    response: Response,
+    background_tasks: BackgroundTasks,
+) -> AccountEmailAccepted:
+    background_tasks.add_task(service.deliver_password_reset, str(data.email))
+    response.headers["Cache-Control"] = "no-store"
+    return AccountEmailAccepted()
+
+
+@router.post(
+    "/password-reset/confirm",
+    response_model=PasswordResetResponse,
+    responses={status.HTTP_400_BAD_REQUEST: {"model": AccountRecoveryError}},
+    dependencies=[Depends(auth_rate_limit)],
+)
+async def confirm_password_reset(
+    data: PasswordResetConfirm,
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
+) -> PasswordResetResponse | Response:
+    try:
+        await service.confirm_password_reset(session, data.token, data.password)
+    except AuthenticationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset token",
+        ) from exc
+    except ServiceUnavailableError as exc:
+        error_response = JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": exc.detail},
+        )
+        _clear_auth_cookies(error_response)
+        error_response.headers["Cache-Control"] = "no-store"
+        return error_response
+    _clear_auth_cookies(response)
+    response.headers["Cache-Control"] = "no-store"
+    return PasswordResetResponse(status="password_reset")
 
 
 @router.get("/oauth/providers", response_model=OAuthProvidersResponse)

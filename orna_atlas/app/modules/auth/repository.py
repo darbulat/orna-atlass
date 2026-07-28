@@ -17,12 +17,20 @@ async def create_refresh_token(
     return token
 
 
+async def find_refresh_token(session: AsyncSession, token_hash: str) -> RefreshToken | None:
+    result = await session.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_refresh_token(session: AsyncSession, token_hash: str) -> RefreshToken | None:
     result = await session.execute(
         select(RefreshToken)
         .options(selectinload(RefreshToken.user))
         .where(RefreshToken.token_hash == token_hash)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 

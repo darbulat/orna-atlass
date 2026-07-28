@@ -363,6 +363,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/email-verification/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Email Verification */
+        post: operations["confirm_email_verification_api_v1_auth_email_verification_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/email-verification/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Email Verification */
+        post: operations["request_email_verification_api_v1_auth_email_verification_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -493,6 +527,40 @@ export interface paths {
         get: operations["oauth_start_api_v1_auth_oauth__provider__start_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password-reset/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Password Reset */
+        post: operations["confirm_password_reset_api_v1_auth_password_reset_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password-reset/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Password Reset */
+        post: operations["request_password_reset_api_v1_auth_password_reset_request_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -880,6 +948,24 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountEmailAccepted */
+        AccountEmailAccepted: {
+            /**
+             * Accepted
+             * @default true
+             */
+            accepted: boolean;
+        };
+        /** AccountRecoveryError */
+        AccountRecoveryError: {
+            /** Detail */
+            detail: string;
+        };
+        /** AccountTokenRequest */
+        AccountTokenRequest: {
+            /** Token */
+            token: string;
+        };
         /**
          * AdminLocationRead
          * @description Authorized editorial projection containing exact and operational fields.
@@ -1372,6 +1458,14 @@ export interface components {
              */
             status: "ok" | "error";
         };
+        /** EmailVerificationResponse */
+        EmailVerificationResponse: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "verified";
+        };
         /** FavoriteRead */
         FavoriteRead: {
             /**
@@ -1754,6 +1848,29 @@ export interface components {
         OAuthProvidersResponse: {
             /** Providers */
             providers: ("google" | "apple" | "facebook")[];
+        };
+        /** PasswordResetConfirm */
+        PasswordResetConfirm: {
+            /** Password */
+            password: string;
+            /** Token */
+            token: string;
+        };
+        /** PasswordResetRequest */
+        PasswordResetRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+        };
+        /** PasswordResetResponse */
+        PasswordResetResponse: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "password_reset";
         };
         /** PlaybackGrantRead */
         PlaybackGrantRead: {
@@ -2295,6 +2412,8 @@ export interface components {
              * Format: email
              */
             email: string;
+            /** Email Verified */
+            email_verified: boolean;
             /**
              * Id
              * Format: uuid
@@ -2366,12 +2485,9 @@ export interface operations {
             };
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -2400,12 +2516,9 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -2438,14 +2551,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 collection_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -2478,12 +2588,9 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -2516,14 +2623,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 location_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -2550,14 +2654,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 location_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -2590,12 +2691,9 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -2626,14 +2724,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 asset_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -2660,14 +2755,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 asset_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -2694,14 +2786,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 asset_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -2730,14 +2819,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 user_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -2770,12 +2856,9 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -2808,14 +2891,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -2842,14 +2922,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -2882,14 +2959,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -2922,14 +2996,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -2958,14 +3029,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -2998,14 +3066,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3034,14 +3099,11 @@ export interface operations {
             query?: never;
             header?: {
                 "x-orna-admin"?: string | null;
-                authorization?: string | null;
             };
             path: {
                 user_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -3195,6 +3257,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_email_verification_api_v1_auth_email_verification_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailVerificationResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRecoveryError"];
+                };
+            };
+        };
+    };
+    request_email_verification_api_v1_auth_email_verification_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountEmailAccepted"];
                 };
             };
         };
@@ -3435,6 +3550,72 @@ export interface operations {
             };
         };
     };
+    confirm_password_reset_api_v1_auth_password_reset_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRecoveryError"];
+                };
+            };
+        };
+    };
+    request_password_reset_api_v1_auth_password_reset_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountEmailAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     refresh_api_v1_auth_refresh_post: {
         parameters: {
             query?: never;
@@ -3661,13 +3842,9 @@ export interface operations {
     read_my_membership_api_v1_memberships_me_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3678,15 +3855,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MembershipRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3730,13 +3898,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3794,15 +3958,11 @@ export interface operations {
     get_session_api_v1_sessions__locator__get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 locator: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3891,15 +4051,11 @@ export interface operations {
     create_playback_grant_api_v1_sessions__session_id__playback_grants_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3957,13 +4113,9 @@ export interface operations {
     read_me_api_v1_users_me_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3976,15 +4128,6 @@ export interface operations {
                     "application/json": components["schemas"]["UserRead"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     read_favorites_api_v1_users_me_favorites_get: {
@@ -3993,13 +4136,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4033,15 +4172,11 @@ export interface operations {
     put_favorite_api_v1_users_me_favorites__session_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4075,15 +4210,11 @@ export interface operations {
     delete_favorite_api_v1_users_me_favorites__session_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4118,13 +4249,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4158,13 +4285,9 @@ export interface operations {
     delete_listening_history_api_v1_users_me_listening_history_delete: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4182,29 +4305,16 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     put_listening_progress_api_v1_users_me_listening_history__session_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -4242,15 +4352,11 @@ export interface operations {
     delete_listening_history_item_api_v1_users_me_listening_history__session_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
-            cookie?: {
-                orna_access?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {

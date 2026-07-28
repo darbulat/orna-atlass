@@ -2232,7 +2232,8 @@ a:focus-visible {
   gap: 10px;
   margin-top: clamp(30px, 4vw, 46px);
 }
-.account-actions a {
+.account-actions a,
+.account-actions .account-action-button {
   align-items: center;
   border: 1px solid rgba(19,35,28,.2);
   border-radius: 999px;
@@ -2243,7 +2244,15 @@ a:focus-visible {
   padding: 10px 18px;
   text-decoration: none;
 }
-.account-actions a:hover { background: rgba(19,35,28,.07); }
+.account-actions .account-action-button {
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.account-actions a:hover,
+.account-actions .account-action-button:hover { background: rgba(19,35,28,.07); }
+.account-actions .account-action-button:disabled { cursor: wait; opacity: .55; }
 .account-actions .account-action-primary {
   background: #153e31;
   border-color: #153e31;
@@ -2649,6 +2658,13 @@ a:focus-visible {
   text-align: center;
 }
 .auth-legal a { color: rgba(248,250,249,.82); }
+.auth-recovery-link {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 .35rem;
+}
 .auth-membership-link {
   color: rgba(238, 243, 240, .7);
   font-size: .92rem;

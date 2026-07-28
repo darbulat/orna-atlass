@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, ReactNode, Suspense, useEffect, useRef, useState } from "react";
 
 import { SiteHeader } from "../../components/site-header";
 import { ApiError, apiErrorMessage } from "../../lib/api/client";
 import {
+  confirmEmailVerification,
+  confirmPasswordReset,
   fetchCurrentUser,
   fetchMembership,
   fetchOAuthProviders,
@@ -14,7 +16,9 @@ import {
   logout,
   oauthStartUrl,
   register,
+  requestEmailVerification,
   requestMagicLink,
+  requestPasswordReset,
   type Membership,
   type OAuthProvider,
   type User,
@@ -22,6 +26,7 @@ import {
 
 type AuthMode = "login" | "register";
 type MembershipEntryMode = "default" | AuthMode;
+type RecoveryMode = "forgot" | "reset";
 
 const providerLabels: Record<OAuthProvider, string> = {
   google: "Google",
@@ -157,12 +162,15 @@ function MembershipInformation({ onCreateAccount }: { onCreateAccount?: () => vo
   );
 }
 
-export default function MembershipPage() {
+function MembershipPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const membershipQuery = searchParams.toString();
   const [user, setUser] = useState<User | null>(null);
   const [membership, setMembership] = useState<Membership | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [mode, setMode] = useState<AuthMode>("login");
   const [entryMode, setEntryMode] = useState<MembershipEntryMode>("default");
   const [message, setMessage] = useState<string | null>(null);
@@ -171,22 +179,158 @@ export default function MembershipPage() {
   const [isLoadingAccount, setIsLoadingAccount] = useState(true);
   const [isLoadingMembership, setIsLoadingMembership] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [verificationBusy, setVerificationBusy] = useState(false);
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [configuredProviders, setConfiguredProviders] = useState<OAuthProvider[] | null>(null);
   const [providerLoadError, setProviderLoadError] = useState(false);
   const [authReturnTo, setAuthReturnTo] = useState("/membership");
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [verificationToken, setVerificationToken] = useState<string | null>(null);
+  const [recoveryRequestAccepted, setRecoveryRequestAccepted] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryRequestMessage, setRecoveryRequestMessage] = useState<string | null>(null);
+  const [isFailClosedAnonymous, setIsFailClosedAnonymous] = useState(false);
   const authGeneration = useRef(0);
+  const recoveryGeneration = useRef(0);
+  const resetTokenActive = useRef(false);
+  const resetConfirmationPending = useRef(false);
+  const failClosedAnonymous = useRef(false);
+  const verificationMayRestoreAccount = useRef(true);
+  const previousRecoveryMode = useRef<RecoveryMode | null>(null);
+  const hasExplicitAuthMode = useRef(false);
+  const requestedRecoveryMode = searchParams.get("mode");
+  const recoveryMode: RecoveryMode | null = resetToken
+    ? "reset"
+    : requestedRecoveryMode === "forgot"
+      ? "forgot"
+      : null;
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    if (previousRecoveryMode.current === "forgot" && recoveryMode !== "forgot") {
+      recoveryGeneration.current += 1;
+      setRecoveryBusy(false);
+      setRecoveryRequestAccepted(false);
+      setRecoveryRequestMessage(null);
+    }
+    previousRecoveryMode.current = recoveryMode;
+  }, [recoveryMode]);
+
+  useEffect(() => {
+    const consumeRecoveryFragment = () => {
+      const fragment = new URLSearchParams(window.location.hash.slice(1));
+      const emailToken = fragment.get("verify_email_token");
+      const passwordToken = fragment.get("reset_password_token");
+      if (!emailToken && !passwordToken) return;
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${window.location.search}`,
+      );
+
+      const abandonedReset = (
+        resetTokenActive.current || resetConfirmationPending.current
+      );
+      resetConfirmationPending.current = false;
+      if (abandonedReset) {
+        failClosedAnonymous.current = true;
+        setIsFailClosedAnonymous(true);
+      }
+      verificationMayRestoreAccount.current = !failClosedAnonymous.current;
+      authGeneration.current += 1;
+      resetTokenActive.current = false;
+      setBusy(false);
+      setVerificationBusy(false);
+      setVerificationToken(null);
+      setResetToken(null);
+      setPassword("");
+      setPasswordConfirmation("");
+      setMessage(null);
+      setMagicLinkSent(false);
+      if (abandonedReset) {
+        setUser(null);
+        setMembership(null);
+        setAccountLoadError(null);
+      }
+
+      if (emailToken && passwordToken) {
+        setMessage("That account link is invalid or expired. Request a new one.");
+        return;
+      }
+      if (emailToken) {
+        setVerificationToken(emailToken);
+        return;
+      }
+      resetTokenActive.current = true;
+      setResetToken(passwordToken);
+    };
+    const clearResetOnHistoryNavigation = () => {
+      if (!resetTokenActive.current) return;
+      resetTokenActive.current = false;
+      authGeneration.current += 1;
+      setBusy(false);
+      setUser(null);
+      setMembership(null);
+      setAccountLoadError(null);
+      setResetToken(null);
+      setPassword("");
+      setPasswordConfirmation("");
+    };
+    consumeRecoveryFragment();
+    window.addEventListener("hashchange", consumeRecoveryFragment);
+    window.addEventListener("popstate", clearResetOnHistoryNavigation);
+    return () => {
+      window.removeEventListener("hashchange", consumeRecoveryFragment);
+      window.removeEventListener("popstate", clearResetOnHistoryNavigation);
+    };
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(membershipQuery);
     setAuthReturnTo(internalReturnTo(params.get("returnTo")));
     const requestedMode = params.get("mode");
     if (requestedMode === "register" || requestedMode === "login") {
+      hasExplicitAuthMode.current = true;
       setMode(requestedMode);
       setEntryMode(requestedMode);
+    } else if (hasExplicitAuthMode.current) {
+      setMode("login");
+      setEntryMode("default");
     }
-  }, []);
+  }, [membershipQuery]);
+
+  useEffect(() => {
+    if (!verificationToken) return;
+    let active = true;
+    const generation = ++authGeneration.current;
+    const mayRestoreAccount = verificationMayRestoreAccount.current;
+    void confirmEmailVerification(verificationToken)
+      .then(async () => {
+        if (!active || generation !== authGeneration.current) return;
+        setOauthMessage({ text: "Your email address is verified.", error: false });
+        if (!mayRestoreAccount) return;
+        setUser((current) => current ? { ...current, email_verified: true } : current);
+        try {
+          const currentUser = await fetchCurrentUser();
+          if (active && generation === authGeneration.current) setUser(currentUser);
+        } catch {
+          // Confirmation is complete even if optional account restoration is unavailable.
+        }
+      })
+      .catch((error) => {
+        if (!active || generation !== authGeneration.current) return;
+        setOauthMessage({
+          text: error instanceof ApiError && error.status === 400
+            ? "That verification link is invalid or expired. Request a new one from your account."
+            : "Email verification is temporarily unavailable. Please try again.",
+          error: true,
+        });
+      })
+      .finally(() => {
+        if (active) setVerificationToken(null);
+      });
+    return () => { active = false; };
+  }, [verificationToken]);
 
   useEffect(() => {
     let active = true;
@@ -207,7 +351,11 @@ export default function MembershipPage() {
   useEffect(() => {
     let active = true;
     const generation = authGeneration.current;
-    const isCurrent = () => active && generation === authGeneration.current;
+    const isCurrent = () => (
+      active
+      && generation === authGeneration.current
+      && !failClosedAnonymous.current
+    );
     const params = new URLSearchParams(window.location.search);
     const oauthStatus = params.get("oauth");
     const oauthError = params.get("oauth_error");
@@ -294,8 +442,110 @@ export default function MembershipPage() {
     return () => { active = false; };
   }, []);
 
+  async function submitPasswordResetRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const generation = ++recoveryGeneration.current;
+    setRecoveryBusy(true);
+    setRecoveryRequestMessage(null);
+    setRecoveryRequestAccepted(false);
+    try {
+      await requestPasswordReset(email);
+      if (generation === recoveryGeneration.current) setRecoveryRequestAccepted(true);
+    } catch (error) {
+      if (generation === recoveryGeneration.current) {
+        setRecoveryRequestMessage(apiErrorMessage(
+          error,
+          "Password recovery is temporarily unavailable.",
+        ));
+      }
+    } finally {
+      if (generation === recoveryGeneration.current) setRecoveryBusy(false);
+    }
+  }
+
+  async function submitPasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    if (!resetToken) {
+      router.replace("/membership?mode=forgot");
+      setMessage("That reset link is invalid or expired. Request a new one.");
+      return;
+    }
+    if (password !== passwordConfirmation) {
+      setMessage("Passwords do not match.");
+      return;
+    }
+    const generation = ++authGeneration.current;
+    resetConfirmationPending.current = true;
+    setBusy(true);
+    try {
+      await confirmPasswordReset(resetToken, password);
+      if (generation !== authGeneration.current) return;
+      resetConfirmationPending.current = false;
+      setUser(null);
+      setMembership(null);
+      resetTokenActive.current = false;
+      setResetToken(null);
+      setPassword("");
+      setPasswordConfirmation("");
+      setMode("login");
+      setEntryMode("login");
+      setOauthMessage({ text: "Your password was reset. Sign in with your new password.", error: false });
+      router.replace("/membership?mode=login");
+    } catch (error) {
+      if (generation !== authGeneration.current) return;
+      resetConfirmationPending.current = false;
+      if (error instanceof ApiError && error.status === 400) {
+        resetTokenActive.current = false;
+        setResetToken(null);
+        router.replace("/membership?mode=forgot");
+        setMessage("That reset link is invalid or expired. Request a new one.");
+      } else {
+        failClosedAnonymous.current = true;
+        setIsFailClosedAnonymous(true);
+        setUser(null);
+        setMembership(null);
+        setAccountLoadError(null);
+        resetTokenActive.current = false;
+        setResetToken(null);
+        setPassword("");
+        setPasswordConfirmation("");
+        setMode("login");
+        setEntryMode("login");
+        router.replace("/membership?mode=login");
+        setMessage(
+          "We could not confirm whether your password changed. Try signing in with the new password, or request another reset link.",
+        );
+      }
+    } finally {
+      if (generation === authGeneration.current) setBusy(false);
+    }
+  }
+
+  async function resendVerification() {
+    const generation = authGeneration.current;
+    setVerificationBusy(true);
+    setMessage(null);
+    try {
+      await requestEmailVerification();
+      if (generation === authGeneration.current) {
+        setOauthMessage({
+          text: "Check your email. The verification link expires in 24 hours.",
+          error: false,
+        });
+      }
+    } catch (error) {
+      if (generation === authGeneration.current) {
+        setMessage(apiErrorMessage(error, "Verification email is temporarily unavailable."));
+      }
+    } finally {
+      if (generation === authGeneration.current) setVerificationBusy(false);
+    }
+  }
+
   async function submitMagicLink(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const generation = authGeneration.current;
     setBusy(true);
     setMessage(null);
     setMagicLinkSent(false);
@@ -305,11 +555,13 @@ export default function MembershipPage() {
     try {
       const params = new URLSearchParams(window.location.search);
       await requestMagicLink(email, internalReturnTo(params.get("returnTo")));
-      setMagicLinkSent(true);
+      if (generation === authGeneration.current) setMagicLinkSent(true);
     } catch (error) {
-      setMessage(apiErrorMessage(error, "Email sign-in is temporarily unavailable."));
+      if (generation === authGeneration.current) {
+        setMessage(apiErrorMessage(error, "Email sign-in is temporarily unavailable."));
+      }
     } finally {
-      setBusy(false);
+      if (generation === authGeneration.current) setBusy(false);
     }
   }
 
@@ -333,9 +585,29 @@ export default function MembershipPage() {
       }
       const token = await login(email, password);
       if (generation !== authGeneration.current) return;
+      failClosedAnonymous.current = false;
+      setIsFailClosedAnonymous(false);
       setUser(token.user);
       setAccountLoadError(null);
       setPassword("");
+      if (mode === "register" && !token.user.email_verified) {
+        try {
+          await requestEmailVerification();
+          if (generation === authGeneration.current) {
+            setOauthMessage({
+              text: "Account created. Check your email to verify your address.",
+              error: false,
+            });
+          }
+        } catch (error) {
+          if (generation === authGeneration.current) {
+            setMessage(apiErrorMessage(
+              error,
+              "Account created, but the verification email could not be sent. Retry from your account.",
+            ));
+          }
+        }
+      }
       setMembership(null);
       setIsLoadingMembership(true);
       try {
@@ -362,6 +634,7 @@ export default function MembershipPage() {
   async function signOut() {
     const generation = ++authGeneration.current;
     setBusy(true);
+    setVerificationBusy(false);
     setMessage(null);
     try {
       await logout();
@@ -385,7 +658,115 @@ export default function MembershipPage() {
     }
   }
 
-  if (user) {
+  if (recoveryMode) {
+    const isReset = recoveryMode === "reset";
+    return (
+      <main className="auth-page" id="main-content">
+        <SiteHeader active="membership" />
+        <section className="auth-card" aria-labelledby="recovery-heading">
+          <div className="auth-intro">
+            <p className="auth-kicker">Account security</p>
+            <h1 id="recovery-heading">
+              {isReset ? "Choose a new password" : "Recover your password"}
+            </h1>
+            <p>
+              {isReset
+                ? "Use at least 12 characters. Completing this reset signs out every existing session."
+                : "Enter your account email. We’ll send a one-time link if a password account exists."}
+            </p>
+          </div>
+          {recoveryRequestAccepted ? (
+            <AuthNotice>
+              If a password account exists for that email, a reset link has been sent. It expires in 1 hour.
+            </AuthNotice>
+          ) : null}
+          <form
+            className="auth-form"
+            onSubmit={isReset ? submitPasswordReset : submitPasswordResetRequest}
+          >
+            {isReset ? (
+              <>
+                <label htmlFor="reset-password">New password</label>
+                <input
+                  id="reset-password"
+                  type="password"
+                  minLength={12}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  required
+                  autoFocus
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                <label htmlFor="reset-password-confirmation">Confirm new password</label>
+                <input
+                  id="reset-password-confirmation"
+                  type="password"
+                  minLength={12}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  required
+                  value={passwordConfirmation}
+                  onChange={(event) => setPasswordConfirmation(event.target.value)}
+                />
+              </>
+            ) : (
+              <>
+                <label htmlFor="recovery-email">Account email</label>
+                <input
+                  id="recovery-email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  autoFocus
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </>
+            )}
+            <button
+              className="auth-continue"
+              type="submit"
+              disabled={isReset ? busy : recoveryBusy}
+            >
+              {(isReset ? busy : recoveryBusy)
+                ? "Please wait…"
+                : isReset ? "Reset password" : "Send reset link"}
+            </button>
+          </form>
+          {(isReset ? message : recoveryRequestMessage)
+            ? <AuthNotice error>{isReset ? message : recoveryRequestMessage}</AuthNotice>
+            : null}
+          <p className="auth-legal">
+            <Link
+              className="auth-recovery-link"
+              href="/membership?mode=login"
+              onClick={() => {
+                authGeneration.current += 1;
+                recoveryGeneration.current += 1;
+                setBusy(false);
+                setRecoveryBusy(false);
+                setUser(null);
+                setMembership(null);
+                setAccountLoadError(null);
+                resetTokenActive.current = false;
+                setResetToken(null);
+                setPassword("");
+                setPasswordConfirmation("");
+                setRecoveryRequestAccepted(false);
+                setRecoveryRequestMessage(null);
+                setMessage(null);
+              }}
+            >
+              Return to sign in
+            </Link>
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (user && !isFailClosedAnonymous) {
     const planLabel = membership?.plan ?? (isLoadingMembership ? "Loading…" : "Unavailable");
     const statusLabel = membership?.status ?? (isLoadingMembership ? "Loading…" : "Unavailable");
     const playbackLabel = membership
@@ -445,6 +826,7 @@ export default function MembershipPage() {
 
             <dl className="account-stats" aria-live="polite">
               <div><dt>Role</dt><dd>{user.role}</dd></div>
+              <div><dt>Email</dt><dd>{user.email_verified ? "Verified" : "Not verified"}</dd></div>
               <div><dt>Plan</dt><dd>{planLabel}</dd></div>
               <div><dt>Status</dt><dd>{statusLabel}</dd></div>
               <div className="account-stat-wide"><dt>Playback</dt><dd>{playbackLabel}</dd></div>
@@ -457,6 +839,16 @@ export default function MembershipPage() {
               <Link href="/library">
                 Open your library <span aria-hidden="true">→</span>
               </Link>
+              {!user.email_verified ? (
+                <button
+                  className="account-action-button"
+                  type="button"
+                  onClick={resendVerification}
+                  disabled={verificationBusy}
+                >
+                  {verificationBusy ? "Sending…" : "Verify email"} <span aria-hidden="true">→</span>
+                </button>
+              ) : null}
             </div>
           </section>
 
@@ -583,6 +975,18 @@ export default function MembershipPage() {
           <label htmlFor="membership-password">Password</label>
           <input id="membership-password" type="password" minLength={mode === "register" ? 12 : 1} maxLength={128} autoComplete={mode === "register" ? "new-password" : "current-password"} required value={password} onChange={(event) => setPassword(event.target.value)} />
           <button className="auth-continue" type="submit" disabled={busy}>{busy ? "Please wait…" : "Continue"}</button>
+          {mode === "login" ? (
+            <Link
+              className="auth-recovery-link"
+              href="/membership?mode=forgot"
+              onClick={() => {
+                setRecoveryRequestAccepted(false);
+                setMessage(null);
+              }}
+            >
+              Forgot your password?
+            </Link>
+          ) : null}
         </form>
 
         {configuredProviders && configuredProviders.length > 0 ? (
@@ -613,5 +1017,22 @@ export default function MembershipPage() {
         />
       )}
     </main>
+  );
+}
+
+export default function MembershipPage() {
+  return (
+    <Suspense
+      fallback={(
+        <main className="auth-page">
+          <section className="auth-shell" aria-busy="true" aria-live="polite">
+            <p className="auth-kicker">ORNA Atlas membership</p>
+            <h1>Loading your account…</h1>
+          </section>
+        </main>
+      )}
+    >
+      <MembershipPageContent />
+    </Suspense>
   );
 }
