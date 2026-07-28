@@ -1028,8 +1028,8 @@ test("globe exposes accessible bounded zoom and reset controls", async ({ page, 
   await expect(stage).toHaveAttribute("data-inertia-zoom", "0.8");
   await expect(stage).toHaveAttribute("data-marker-drag-threshold", "8");
   await expect(stage).toHaveAttribute("data-pole-clamp", "z-axis");
-  await expect(stage).toHaveAttribute("data-touch-controls", "native");
-  await expect(stage).toHaveAttribute("data-zoom-to-cursor", "native");
+  await expect(stage).toHaveAttribute("data-touch-controls", "centered");
+  await expect(stage).toHaveAttribute("data-zoom-anchor", "globe-center");
   await expect(page.locator(".cesium-host")).toHaveCSS("cursor", "grab");
   await expect(page.locator(".globe-stage")).toHaveCSS("touch-action", "none");
   await expect(controls.getByRole("button", { name: "Zoom in" })).toBeVisible();
@@ -1044,6 +1044,40 @@ test("globe exposes accessible bounded zoom and reset controls", async ({ page, 
   await controls.getByRole("button", { name: "Zoom out" }).click();
   await controls.getByRole("button", { name: "Reset globe" }).click();
   await expect(page.locator(".cesium-widget canvas")).toBeVisible();
+});
+
+test("manual camera controls keep the globe fixed to the stage center", async ({ page }) => {
+  await page.goto("/atlas");
+
+  const stage = page.getByLabel("Interactive Cesium globe");
+  const canvas = page.locator(".cesium-widget canvas");
+  await expect(canvas).toBeVisible();
+  await expect(stage).toHaveAttribute("data-camera-center-error", /.+/);
+
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width * 0.82, box!.y + box!.height * 0.5);
+  await page.mouse.wheel(0, -600);
+
+  await expect.poll(async () => Number(
+    await stage.getAttribute("data-camera-center-error"),
+  )).toBeLessThan(0.000001);
+
+  await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.64, box!.y + box!.height * 0.58, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => Number(
+    await stage.getAttribute("data-camera-center-error"),
+  )).toBeLessThan(0.000001);
+
+  const controls = page.getByRole("group", { name: "Globe zoom controls" });
+  for (const name of ["Zoom in", "Zoom out", "Reset globe"]) {
+    await controls.getByRole("button", { name }).click();
+    await expect.poll(async () => Number(
+      await stage.getAttribute("data-camera-center-error"),
+    )).toBeLessThan(0.000001);
+  }
 });
 
 test("mobile location carousel stops at both finite boundaries", async ({ page, request }) => {
