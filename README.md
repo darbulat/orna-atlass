@@ -39,6 +39,14 @@ add `--adopt-legacy-seed`; collection/session links are still left untouched.
 
 4. Open the frontend at <http://localhost:3000> and the API at <http://localhost:8000>.
 
+## Server deployment
+
+Connect to the deployment server before running the server Compose commands below:
+
+```bash
+ssh root@31.59.106.143
+```
+
 For a shared development server backed by external S3-compatible storage, set
 the public API and `S3_*` values in `.env`, then layer the server override over
 the local compose file:
