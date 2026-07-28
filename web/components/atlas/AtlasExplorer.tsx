@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Cartesian2, Entity, ScreenSpaceEventHandler, Viewer as CesiumViewer } from "cesium";
+import type { Cartesian2, Cartesian3, Entity, ScreenSpaceEventHandler, Viewer as CesiumViewer } from "cesium";
 import type {
   AtlasCluster,
   AtlasPoint,
@@ -21,6 +21,11 @@ import {
   listeningModes,
   type ListeningMode,
 } from "./listeningModes";
+import {
+  accumulateWheelZoomHeight,
+  clampZoomScaleToActualBounds,
+  normalizeWheelDelta,
+} from "./globeZoom";
 
 type AtlasView = "globe" | "map" | "list";
 
@@ -149,6 +154,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<CesiumViewer | null>(null);
   const cesiumRef = useRef<CesiumModule | null>(null);
+  const cancelWheelZoomRef = useRef<() => void>(() => undefined);
   const pointByEntityIdRef = useRef(new Map<string, AtlasPoint>());
   const onSelectRef = useRef(onSelectPoint);
   const [isWebglUnavailable, setIsWebglUnavailable] = useState(false);
@@ -172,10 +178,20 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
     let removeCameraMoveListener: (() => void) | null = null;
     let removeCameraChangedListener: (() => void) | null = null;
     let zoomAnimationFrame: number | null = null;
+    let zoomTargetHeight: number | null = null;
+    let zoomTargetPosition: Cartesian3 | null = null;
     let wheelHandler: ((event: WheelEvent) => void) | null = null;
     let pointerStart: { x: number; y: number } | null = null;
     let pointerExceededDragThreshold = false;
+    const cancelWheelZoom = () => {
+      if (zoomAnimationFrame !== null) window.cancelAnimationFrame(zoomAnimationFrame);
+      zoomAnimationFrame = null;
+      zoomTargetHeight = null;
+      zoomTargetPosition = null;
+    };
+    cancelWheelZoomRef.current = cancelWheelZoom;
     const trackPointerStart = (event: PointerEvent) => {
+      cancelWheelZoom();
       pointerStart = { x: event.clientX, y: event.clientY };
       pointerExceededDragThreshold = false;
     };
@@ -199,6 +215,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
           CameraEventType,
           Cartesian2,
           Cartesian3,
+          Cartographic,
           EllipsoidTerrainProvider,
           ImageryLayer,
           ScreenSpaceEventHandler,
@@ -278,35 +295,66 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
           const cursorTarget = ray ? viewer.scene.globe.pick(ray, viewer.scene) : undefined;
           if (!cursorTarget) return;
           const currentHeight = viewer.camera.positionCartographic.height;
-          const targetHeight = Math.min(
-            maximumGlobeZoomDistance,
-            Math.max(
-              minimumGlobeZoomDistance,
-              currentHeight * (event.deltaY < 0 ? 0.76 : 1.24),
-            ),
+          const wheelDelta = normalizeWheelDelta(
+            event.deltaY,
+            event.deltaMode,
+            viewer.scene.canvas.clientHeight,
+          );
+          zoomTargetHeight = accumulateWheelZoomHeight(
+            zoomTargetHeight ?? currentHeight,
+            wheelDelta,
+            {
+              minimumHeight: minimumGlobeZoomDistance,
+              maximumHeight: maximumGlobeZoomDistance,
+            },
           );
           const start = Cartesian3.clone(viewer.camera.position);
           const fromTarget = Cartesian3.subtract(start, cursorTarget, new Cartesian3());
-          const end = Cartesian3.add(
+          const scaledFromTarget = new Cartesian3();
+          const destination = new Cartesian3();
+          const destinationCartographic = new Cartographic();
+          const requestedScale = zoomTargetHeight / currentHeight;
+          const boundedScale = clampZoomScaleToActualBounds(
+            requestedScale,
+            (scale) => {
+              Cartesian3.multiplyByScalar(fromTarget, scale, scaledFromTarget);
+              Cartesian3.add(cursorTarget, scaledFromTarget, destination);
+              return viewer!.scene.globe.ellipsoid.cartesianToCartographic(
+                destination,
+                destinationCartographic,
+              )?.height ?? Number.NaN;
+            },
+            {
+              minimumHeight: minimumGlobeZoomDistance,
+              maximumHeight: maximumGlobeZoomDistance,
+            },
+          );
+          zoomTargetPosition = Cartesian3.add(
             cursorTarget,
             Cartesian3.multiplyByScalar(
               fromTarget,
-              targetHeight / currentHeight,
+              boundedScale,
               new Cartesian3(),
             ),
             new Cartesian3(),
           );
-          if (zoomAnimationFrame !== null) window.cancelAnimationFrame(zoomAnimationFrame);
+          if (zoomAnimationFrame !== null) return;
           const step = () => {
-            if (!viewer || viewer.isDestroyed()) return;
-            const next = Cartesian3.lerp(viewer.camera.position, end, 0.18, new Cartesian3());
+            if (!viewer || viewer.isDestroyed() || !zoomTargetPosition) {
+              cancelWheelZoom();
+              return;
+            }
+            const targetPosition = zoomTargetPosition;
+            const next = Cartesian3.lerp(viewer.camera.position, targetPosition, 0.18, new Cartesian3());
             viewer.camera.position = next;
             viewer.scene.requestRender();
-            if (Cartesian3.distance(next, end) > 100) {
+            if (Cartesian3.distance(next, targetPosition) > 100) {
               zoomAnimationFrame = window.requestAnimationFrame(step);
             } else {
-              viewer.camera.position = end;
+              viewer.camera.position = targetPosition;
               zoomAnimationFrame = null;
+              zoomTargetHeight = null;
+              zoomTargetPosition = null;
               syncZoomBounds();
             }
           };
@@ -372,7 +420,10 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       host.removeEventListener("pointermove", trackPointerMovement);
       removeCameraMoveListener?.();
       removeCameraChangedListener?.();
-      if (zoomAnimationFrame !== null) window.cancelAnimationFrame(zoomAnimationFrame);
+      cancelWheelZoom();
+      if (cancelWheelZoomRef.current === cancelWheelZoom) {
+        cancelWheelZoomRef.current = () => undefined;
+      }
       if (wheelHandler && viewer && !viewer.isDestroyed()) {
         viewer.scene.canvas.removeEventListener("wheel", wheelHandler);
       }
@@ -455,6 +506,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
 
     const animationFrame = window.requestAnimationFrame(() => {
       if (viewer.isDestroyed()) return;
+      cancelWheelZoomRef.current();
       viewer.resize();
       viewer.camera.flyTo({
         destination: Cartesian3.fromDegrees(selected.longitude, selected.latitude, focusedLocationHeight),
@@ -469,6 +521,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
     const viewer = viewerRef.current;
     const cesium = cesiumRef.current;
     if (!viewer || viewer.isDestroyed() || !cesium) return;
+    cancelWheelZoomRef.current();
     const position = viewer.camera.positionCartographic;
     const multiplier = direction === "in" ? 0.76 : 1.24;
     const targetHeight = Math.min(
@@ -488,6 +541,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
     const viewer = viewerRef.current;
     const cesium = cesiumRef.current;
     if (!viewer || viewer.isDestroyed() || !cesium) return;
+    cancelWheelZoomRef.current();
     viewer.camera.flyTo({
       destination: cesium.Cartesian3.fromDegrees(74, 27, 16000000),
       duration: 0.65,
