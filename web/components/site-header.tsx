@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
-import { apiErrorMessage } from "../lib/api/client";
-import { requestMagicLink } from "../lib/api/auth";
 import { AnalyticsLink } from "./analytics-link";
 
 type SiteHeaderProps = {
@@ -96,19 +94,14 @@ function HeaderDialog({ labelledBy, onClose, children }: HeaderDialogProps) {
 
 export function SiteHeader({ className = "", active }: SiteHeaderProps) {
   const searchTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const loginTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const [dialog, setDialog] = useState<"search" | "login" | null>(null);
+  const [dialog, setDialog] = useState<"search" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [email, setEmail] = useState("");
-  const [loginBusy, setLoginBusy] = useState(false);
-  const [loginMessage, setLoginMessage] = useState<string | null>(null);
 
   function closeDialog() {
     const closed = dialog;
     setDialog(null);
     window.setTimeout(() => {
       if (closed === "search") searchTriggerRef.current?.focus();
-      if (closed === "login") loginTriggerRef.current?.focus();
     }, 0);
   }
 
@@ -117,14 +110,6 @@ export function SiteHeader({ className = "", active }: SiteHeaderProps) {
       detail: { name: "search_opened", placement: "header" },
     }));
     setDialog("search");
-  }
-
-  function openLogin() {
-    window.dispatchEvent(new CustomEvent("orna:analytics", {
-      detail: { name: "login_opened", placement: "header" },
-    }));
-    setLoginMessage(null);
-    setDialog("login");
   }
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
@@ -140,19 +125,6 @@ export function SiteHeader({ className = "", active }: SiteHeaderProps) {
     window.location.assign(`/?search=${encodeURIComponent(query)}#atlas-search`);
   }
 
-  async function submitLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoginBusy(true);
-    setLoginMessage(null);
-    try {
-      await requestMagicLink(email, `${window.location.pathname}${window.location.search}`);
-      setLoginMessage("Check your email. The one-time sign-in link expires in 15 minutes.");
-    } catch (error) {
-      setLoginMessage(apiErrorMessage(error, "Email sign-in is temporarily unavailable."));
-    } finally {
-      setLoginBusy(false);
-    }
-  }
 
   return (
     <>
@@ -168,7 +140,6 @@ export function SiteHeader({ className = "", active }: SiteHeaderProps) {
           >Collections</AnalyticsLink>
           <Link className={active === "about" ? "active" : undefined} href="/about">About</Link>
           <button ref={searchTriggerRef} type="button" className="header-search-button" aria-label="Open search" onClick={openSearch}>Search</button>
-          <button ref={loginTriggerRef} type="button" className="header-login-button" onClick={openLogin}>Sign in</button>
           <AnalyticsLink
             className={active === "membership" ? "active" : undefined}
             destination="/membership?mode=register"
@@ -192,28 +163,6 @@ export function SiteHeader({ className = "", active }: SiteHeaderProps) {
             />
             <button type="submit">Show results</button>
           </form>
-        </HeaderDialog>
-      ) : null}
-      {dialog === "login" ? (
-        <HeaderDialog labelledBy="header-login-title" onClose={closeDialog}>
-          <p className="eyebrow">Your ORNA account</p>
-          <h2 id="header-login-title">Sign in without leaving the atlas</h2>
-          <form className="header-dialog-form" onSubmit={submitLogin}>
-            <label htmlFor="header-login-email">Email address</label>
-            <input
-              id="header-login-email"
-              type="email"
-              autoComplete="email"
-              autoFocus
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-            />
-            <button type="submit" disabled={loginBusy}>{loginBusy ? "Please wait…" : "Email me a sign-in link"}</button>
-          </form>
-          {loginMessage ? <p role="status">{loginMessage}</p> : null}
-          <Link href="/membership?mode=login">Use password or social sign-in</Link>
         </HeaderDialog>
       ) : null}
     </>

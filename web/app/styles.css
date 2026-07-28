@@ -2858,7 +2858,6 @@ a:focus-visible {
 }
 
 .header-search-button,
-.header-login-button,
 .popular-location-open {
   appearance: none;
   border: 0;
@@ -2868,8 +2867,7 @@ a:focus-visible {
   font: inherit;
   cursor: pointer;
 }
-.header-search-button,
-.header-login-button { min-height: 44px; }
+.header-search-button { min-height: 44px; }
 .header-dialog-backdrop {
   align-items: flex-start;
   background: rgba(3, 8, 8, 0.76);
