@@ -143,9 +143,182 @@ test("OAuth callback outcome is announced without exposing provider data", async
   await expect(page.getByRole("alert").filter({ hasText: "Apple sign-in could not be confirmed" })).toBeVisible();
   await expect(page).toHaveURL(/\/membership$/);
 
+  await page.route("**/api/v1/auth/oauth/link/pending", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ pending: true, provider: "google", ready: false }),
+    });
+  });
+  let cancelledLink = false;
+  await page.route("**/api/v1/auth/oauth/link/cancel", async (route) => {
+    cancelledLink = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "cancelled" }),
+    });
+  });
   await page.goto("/membership?oauth=error&oauth_provider=google&oauth_error=account_conflict");
-  await expect(page.locator("main .auth-notice").filter({ hasText: "original sign-in method" })).toBeVisible();
+  const conflict = page.locator("main .auth-notice").filter({
+    hasText: "Sign in to your existing account to connect Google",
+  });
+  await expect(conflict).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send a sign-in link" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel Google linking" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveCount(0);
   await expect(page).toHaveURL(/\/membership$/);
+  await page.getByRole("button", { name: "Cancel Google linking" }).click();
+  expect(cancelledLink).toBe(true);
+  await expect(conflict).toHaveCount(0);
+});
+
+
+test("magic-link reauthentication restores explicit Google linking confirmation", async ({ page }) => {
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "none", status: "inactive", is_entitled: false }),
+    });
+  });
+  await page.route("**/api/v1/auth/oauth/link/pending", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ pending: true, provider: "google", ready: true }),
+    });
+  });
+  let confirmed = false;
+  await page.route("**/api/v1/auth/oauth/link/confirm", async (route) => {
+    confirmed = true;
+    expect(route.request().postDataJSON()).toEqual({ confirmed: true });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "linked", provider: "google", return_to: "/membership" }),
+    });
+  });
+
+  await page.goto("/membership?magic=login");
+  const linking = page.getByRole("region", { name: "Connect Google" });
+  await expect(linking).toContainText("member@example.com");
+  expect(confirmed).toBe(false);
+  await linking.getByRole("button", { name: "Connect Google" }).click();
+
+  expect(confirmed).toBe(true);
+  await expect(page.getByRole("status")).toContainText("Google is now connected");
+  await expect(linking).toHaveCount(0);
+});
+
+
+test("terminal Apple linking failure names the selected provider truthfully", async ({ page }) => {
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "none", status: "inactive", is_entitled: false }),
+    });
+  });
+  await page.route("**/api/v1/auth/oauth/link/pending", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ pending: true, provider: "apple", ready: true }),
+    });
+  });
+  await page.route("**/api/v1/auth/oauth/link/confirm", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "OAuth link could not be completed" }),
+    });
+  });
+
+  await page.goto("/membership");
+  await page.getByRole("button", { name: "Connect Apple" }).click();
+
+  const alert = page.getByRole("alert").filter({ hasText: "Apple could not be connected" });
+  await expect(alert).toContainText("Start Apple sign-in again before retrying.");
+  await expect(page.getByText(/Google could not be connected|Start Google sign-in again/)).toHaveCount(0);
+});
+
+
+test("password reauthentication resumes pending Google linking before return navigation", async ({ page }) => {
+  const user = {
+    id: "50000000-0000-4000-8000-000000000001",
+    email: "member@example.com",
+    role: "member",
+    is_active: true,
+    email_verified: true,
+    created_at: "2026-07-19T00:00:00Z",
+  };
+  let ready = false;
+  await page.route("**/api/v1/auth/oauth/link/pending", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ pending: true, provider: "google", ready }),
+    });
+  });
+  await page.route("**/api/v1/auth/login", async (route) => {
+    ready = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "e2e-token",
+        token_type: "bearer",
+        expires_at: "2026-07-28T12:00:00Z",
+        user,
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "none", status: "inactive", is_entitled: false }),
+    });
+  });
+
+  await page.goto(
+    "/membership?returnTo=%2Flibrary&oauth=error&oauth_provider=google&oauth_error=account_conflict",
+  );
+  await page.getByLabel("Email address", { exact: true }).fill(user.email);
+  await page.getByLabel("Password", { exact: true }).fill("correct horse battery staple");
+  await page.locator("form").getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.getByRole("region", { name: "Connect Google" })).toBeVisible();
+  await expect(page).toHaveURL(/returnTo=%2Flibrary/);
 });
 
 

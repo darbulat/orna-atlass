@@ -3,7 +3,7 @@ import json
 import ssl
 from http.cookies import SimpleCookie
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -96,7 +96,14 @@ async def test_magic_link_redirect_distinguishes_signup_from_login(
     monkeypatch.setattr(
         router.service,
         "authenticate_magic_link",
-        AsyncMock(return_value=(SimpleNamespace(access_token="access"), "refresh", created)),
+        AsyncMock(return_value=(
+            SimpleNamespace(
+                access_token="access",
+                user=SimpleNamespace(id="50000000-0000-4000-8000-000000000001"),
+            ),
+            "refresh",
+            created,
+        )),
     )
 
     response = await router.consume_magic_link(
@@ -130,6 +137,7 @@ async def test_magic_link_request_binds_token_to_an_httponly_browser_cookie(monk
 
     accepted = await router.request_magic_link(
         MagicLinkRequest(email="listener@example.com", return_to="/sessions/forest"),
+        Request({"type": "http", "headers": []}),
         response,
     )
 
@@ -141,6 +149,79 @@ async def test_magic_link_request_binds_token_to_an_httponly_browser_cookie(monk
     assert browser_cookie["httponly"] is True
     assert browser_cookie["samesite"].lower() == "lax"
     assert browser_cookie["path"] == f"{configured.api_prefix}/auth/magic-link/consume"
+
+
+@pytest.mark.asyncio
+async def test_pending_oauth_link_magic_request_is_bound_to_target_account(monkeypatch) -> None:
+    configured = settings()
+    target_user_id = "50000000-0000-4000-8000-000000000001"
+    captured: dict[str, object] = {}
+
+    async def capture_send_magic_link(**kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(router, "get_settings", lambda: configured)
+    monkeypatch.setattr(
+        router.oauth,
+        "get_oauth_link_intent",
+        AsyncMock(return_value=SimpleNamespace(
+            email="target@example.com",
+            target_user_id=target_user_id,
+        )),
+    )
+    monkeypatch.setattr(router.magic, "send_magic_link", capture_send_magic_link)
+    request = Request({
+        "type": "http",
+        "headers": [(b"cookie", b"orna_oauth_link=opaque-link-intent")],
+    })
+
+    await router.request_magic_link(
+        MagicLinkRequest(email="wrong@example.com", return_to="/membership"),
+        request,
+        Response(),
+    )
+
+    assert captured["email"] == "target@example.com"
+    assert str(captured["expected_user_id"]) == target_user_id
+
+
+@pytest.mark.asyncio
+async def test_linking_magic_consume_cannot_register_a_replacement_account(monkeypatch) -> None:
+    configured = settings()
+    target_user_id = "50000000-0000-4000-8000-000000000001"
+    monkeypatch.setattr(router, "get_settings", lambda: configured)
+    monkeypatch.setattr(
+        router.magic,
+        "consume_magic_link",
+        AsyncMock(return_value={
+            "email": "target@example.com",
+            "return_to": "/membership",
+            "expected_user_id": target_user_id,
+        }),
+    )
+    authenticate = AsyncMock(
+        return_value=(SimpleNamespace(user=SimpleNamespace(id=target_user_id)), "refresh", False)
+    )
+    monkeypatch.setattr(router.service, "authenticate_magic_link", authenticate)
+    monkeypatch.setattr(router, "_set_auth_cookies", lambda *args: None)
+    monkeypatch.setattr(router, "_clear_magic_browser_cookie", lambda *args: None)
+    monkeypatch.setattr(
+        router,
+        "_mark_pending_oauth_link_reauthenticated",
+        AsyncMock(),
+    )
+
+    await router.consume_magic_link(
+        Request({"type": "http", "headers": []}),
+        "x" * 32,
+        AsyncMock(),
+    )
+
+    authenticate.assert_awaited_once_with(
+        ANY,
+        "target@example.com",
+        expected_user_id=target_user_id,
+    )
 
 
 @pytest.mark.asyncio

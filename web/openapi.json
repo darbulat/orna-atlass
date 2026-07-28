@@ -2599,6 +2599,98 @@
         "title": "MembershipUpdate",
         "type": "object"
       },
+      "OAuthLinkCancelledResponse": {
+        "properties": {
+          "status": {
+            "const": "cancelled",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "OAuthLinkCancelledResponse",
+        "type": "object"
+      },
+      "OAuthLinkConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "confirmed"
+        ],
+        "title": "OAuthLinkConfirmRequest",
+        "type": "object"
+      },
+      "OAuthLinkPendingResponse": {
+        "properties": {
+          "pending": {
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "google",
+                  "apple",
+                  "facebook"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "ready": {
+            "default": false,
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pending"
+        ],
+        "title": "OAuthLinkPendingResponse",
+        "type": "object"
+      },
+      "OAuthLinkResponse": {
+        "properties": {
+          "provider": {
+            "enum": [
+              "google",
+              "apple",
+              "facebook"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "return_to": {
+            "title": "Return To",
+            "type": "string"
+          },
+          "status": {
+            "const": "linked",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "provider",
+          "return_to"
+        ],
+        "title": "OAuthLinkResponse",
+        "type": "object"
+      },
       "OAuthProvidersResponse": {
         "properties": {
           "providers": {
@@ -6165,6 +6257,179 @@
           }
         },
         "summary": "Apple Oauth Callback",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/oauth/link/cancel": {
+      "post": {
+        "operationId": "cancel_oauth_link_api_v1_auth_oauth_link_cancel_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "orna_oauth_link",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Oauth Link"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthLinkCancelledResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Oauth Link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/oauth/link/confirm": {
+      "post": {
+        "operationId": "confirm_oauth_link_api_v1_auth_oauth_link_confirm_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "orna_oauth_link",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Oauth Link"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthLinkConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Confirm Oauth Link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/oauth/link/pending": {
+      "get": {
+        "operationId": "pending_oauth_link_api_v1_auth_oauth_link_pending_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "orna_oauth_link",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Oauth Link"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthLinkPendingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pending Oauth Link",
         "tags": [
           "auth"
         ]

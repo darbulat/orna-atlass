@@ -34,5 +34,7 @@ decision.
 
 ## Index
 
-There are no product change specs yet. `TEMPLATE.md` is scaffolding and does not describe an
-implemented or accepted feature.
+- [`oauth-account-linking.md`](oauth-account-linking.md) — accepted explicit linking flow after a
+  verified OAuth email conflicts with an existing account.
+
+`TEMPLATE.md` is scaffolding and does not describe an implemented or accepted feature.

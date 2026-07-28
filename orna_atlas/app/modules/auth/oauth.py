@@ -10,6 +10,7 @@ import secrets
 import time
 from typing import Any, Literal
 from urllib.parse import urlencode
+from uuid import UUID
 
 import httpx
 import jwt
@@ -24,6 +25,8 @@ from orna_atlas.app.integrations.redis import get_redis_client
 
 OAuthProvider = Literal["google", "apple", "facebook"]
 OAUTH_STATE_TTL_SECONDS = 600
+OAUTH_LINK_TTL_SECONDS = 15 * 60
+OAUTH_LINK_COOKIE = "orna_oauth_link"
 JWKS_CACHE_TTL_SECONDS = 300
 JWKS_CACHE_MAX_ENTRIES = 8
 
@@ -47,6 +50,33 @@ class VerifiedIdentity:
     subject: str
     email: str
     email_verified: bool
+
+
+@dataclass(frozen=True)
+class OAuthLinkIntent:
+    provider: OAuthProvider
+    subject: str
+    email: str
+    target_user_id: UUID
+    return_to: str
+    reauthenticated_user_id: UUID | None
+
+
+_MARK_LINK_REAUTHENTICATED_SCRIPT = """
+-- oauth_link_mark_reauthenticated_v1
+local stored = redis.call('GET', KEYS[1])
+if not stored then return 0 end
+local ok, payload = pcall(cjson.decode, stored)
+if not ok or type(payload) ~= 'table' then
+  redis.call('DEL', KEYS[1])
+  return 0
+end
+if payload.state ~= 'pending' or payload.target_user_id ~= ARGV[1] then return 0 end
+payload.state = 'reauthenticated'
+payload.reauthenticated_user_id = ARGV[1]
+redis.call('SET', KEYS[1], cjson.encode(payload), 'XX', 'KEEPTTL')
+return 1
+"""
 
 
 _PROVIDER_AUTH_URLS: dict[OAuthProvider, str] = {
@@ -94,6 +124,141 @@ def _safe_return_to(value: str | None) -> str:
 def _oauth_state_key(raw_state: str) -> str:
     digest = hashlib.sha256(raw_state.encode()).hexdigest()
     return f"oauth:state:{digest}"
+
+
+def _oauth_link_key(raw_intent: str) -> str:
+    digest = hashlib.sha256(raw_intent.encode()).hexdigest()
+    return f"oauth:link:{digest}"
+
+
+def _parse_oauth_link_intent(stored: bytes | str) -> OAuthLinkIntent:
+    try:
+        payload = json.loads(stored)
+        if not isinstance(payload, dict):
+            raise ValueError("invalid OAuth link intent")
+        provider = payload.get("provider")
+        subject = payload.get("subject")
+        email = payload.get("email")
+        return_to = payload.get("return_to")
+        state = payload.get("state")
+        if provider not in {"google", "apple", "facebook"}:
+            raise ValueError("invalid provider")
+        if not all(isinstance(value, str) and value for value in (subject, email, return_to)):
+            raise ValueError("missing OAuth link field")
+        target_user_id = UUID(payload["target_user_id"])
+        reauthenticated = payload.get("reauthenticated_user_id")
+        if state not in {"pending", "reauthenticated"}:
+            raise ValueError("invalid OAuth link state")
+        reauthenticated_user_id = UUID(reauthenticated) if reauthenticated else None
+        if state == "reauthenticated" and reauthenticated_user_id != target_user_id:
+            raise ValueError("invalid OAuth link reauthentication")
+        if state == "pending" and reauthenticated_user_id is not None:
+            raise ValueError("invalid pending OAuth link intent")
+        return OAuthLinkIntent(
+            provider=provider,
+            subject=subject,
+            email=email,
+            target_user_id=target_user_id,
+            return_to=_safe_return_to(return_to),
+            reauthenticated_user_id=reauthenticated_user_id,
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise AuthenticationError("Invalid or expired OAuth link intent") from exc
+
+
+async def register_oauth_link_intent(
+    identity: VerifiedIdentity, *, target_user_id: UUID, return_to: str
+) -> str:
+    if not identity.email_verified:
+        raise AuthenticationError("OAuth provider must supply a verified email address")
+    client = get_redis_client()
+    try:
+        for _ in range(3):
+            raw_intent = secrets.token_urlsafe(32)
+            payload = json.dumps(
+                {
+                    "provider": identity.provider,
+                    "subject": identity.subject,
+                    "email": identity.email,
+                    "target_user_id": str(target_user_id),
+                    "return_to": _safe_return_to(return_to),
+                    "state": "pending",
+                    "reauthenticated_user_id": None,
+                },
+                separators=(",", ":"),
+            )
+            if await client.set(
+                _oauth_link_key(raw_intent), payload, ex=OAUTH_LINK_TTL_SECONDS, nx=True
+            ):
+                return raw_intent
+        raise AuthenticationError("OAuth link intent could not be registered")
+    except RedisError as exc:
+        raise ServiceUnavailableError("OAuth link service unavailable") from exc
+    finally:
+        try:
+            await client.aclose()
+        except RedisError:
+            pass
+
+
+async def get_oauth_link_intent(raw_intent: str) -> OAuthLinkIntent | None:
+    client = get_redis_client()
+    try:
+        stored = await client.get(_oauth_link_key(raw_intent))
+    except RedisError as exc:
+        raise ServiceUnavailableError("OAuth link service unavailable") from exc
+    finally:
+        try:
+            await client.aclose()
+        except RedisError:
+            pass
+    return _parse_oauth_link_intent(stored) if stored is not None else None
+
+
+async def mark_oauth_link_reauthenticated(raw_intent: str, user_id: UUID) -> bool:
+    client = get_redis_client()
+    try:
+        result = await client.eval(
+            _MARK_LINK_REAUTHENTICATED_SCRIPT,
+            1,
+            _oauth_link_key(raw_intent),
+            str(user_id),
+        )
+        return bool(result)
+    except RedisError as exc:
+        raise ServiceUnavailableError("OAuth link service unavailable") from exc
+    finally:
+        try:
+            await client.aclose()
+        except RedisError:
+            pass
+
+
+async def consume_oauth_link_intent(raw_intent: str) -> OAuthLinkIntent | None:
+    client = get_redis_client()
+    try:
+        stored = await client.getdel(_oauth_link_key(raw_intent))
+    except RedisError as exc:
+        raise ServiceUnavailableError("OAuth link service unavailable") from exc
+    finally:
+        try:
+            await client.aclose()
+        except RedisError:
+            pass
+    return _parse_oauth_link_intent(stored) if stored is not None else None
+
+
+async def cancel_oauth_link_intent(raw_intent: str) -> bool:
+    client = get_redis_client()
+    try:
+        return bool(await client.delete(_oauth_link_key(raw_intent)))
+    except RedisError as exc:
+        raise ServiceUnavailableError("OAuth link service unavailable") from exc
+    finally:
+        try:
+            await client.aclose()
+        except RedisError:
+            pass
 
 
 async def register_oauth_state(

@@ -2063,6 +2063,7 @@ a:focus-visible {
 }
 .account-page .site-nav,
 .account-hero,
+.account-link-card,
 .account-dashboard,
 .account-page > .auth-notice,
 .account-page > .form-message {
@@ -2122,6 +2123,34 @@ a:focus-visible {
   margin: 0 0 .3rem;
   max-width: 390px;
 }
+.account-link-card {
+  align-items: center;
+  background: rgba(224, 243, 232, .97);
+  border: 1px solid rgba(237,247,242,.2);
+  border-radius: 24px;
+  color: #13231c;
+  display: flex;
+  gap: 28px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding: clamp(22px, 3vw, 34px);
+}
+.account-link-card .eyebrow { color: #487064; margin: 0 0 8px; }
+.account-link-card h2 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.5rem, 2.8vw, 2.25rem);
+  font-weight: 400;
+  margin: 0 0 8px;
+}
+.account-link-card p { line-height: 1.55; margin: 0; max-width: 720px; }
+.account-link-actions { display: flex; flex: 0 0 auto; gap: 10px; }
+.account-link-actions button { min-height: 44px; }
+.account-link-actions .account-link-cancel {
+  background: transparent;
+  border-color: rgba(19,35,28,.24);
+  color: #253c32;
+}
+.account-link-actions button:disabled { cursor: wait; opacity: .55; }
 .account-dashboard {
   display: grid;
   gap: 18px;
@@ -2331,6 +2360,8 @@ a:focus-visible {
 .account-page > .form-message { margin-top: 18px; }
 @media (max-width: 860px) {
   .account-hero { grid-template-columns: 1fr; }
+  .account-link-card { align-items: stretch; flex-direction: column; }
+  .account-link-actions { flex-wrap: wrap; }
   .account-dashboard { grid-template-columns: 1fr; }
   .account-soundmark { margin-bottom: 50px; }
 }

@@ -27,7 +27,13 @@ from orna_atlas.app.core.domain_errors import (
     ServiceUnavailableError,
 )
 from orna_atlas.app.core.rate_limit import auth_rate_limit
-from orna_atlas.app.core.security import ACCESS_COOKIE, REFRESH_COOKIE, CurrentUser, get_current_user
+from orna_atlas.app.core.security import (
+    ACCESS_COOKIE,
+    REFRESH_COOKIE,
+    CurrentUser,
+    get_current_user,
+    get_optional_active_user,
+)
 from orna_atlas.app.db.session import get_db_session
 from orna_atlas.app.modules.auth import magic, oauth, service
 from orna_atlas.app.modules.auth.oauth import OAuthProvider
@@ -40,6 +46,10 @@ from orna_atlas.app.modules.auth.schemas import (
     LogoutResponse,
     MagicLinkAccepted,
     MagicLinkRequest,
+    OAuthLinkCancelledResponse,
+    OAuthLinkConfirmRequest,
+    OAuthLinkPendingResponse,
+    OAuthLinkResponse,
     OAuthProvidersResponse,
     PasswordResetConfirm,
     PasswordResetRequest,
@@ -73,6 +83,57 @@ def _clear_oauth_state_cookie(
         httponly=True,
         samesite=_oauth_cookie_samesite(provider),
     )
+
+
+def _set_oauth_link_cookie(response: Response, raw_intent: str, settings: Settings) -> None:
+    response.set_cookie(
+        oauth.OAUTH_LINK_COOKIE,
+        raw_intent,
+        max_age=oauth.OAUTH_LINK_TTL_SECONDS,
+        path=f"{settings.api_prefix}/auth",
+        secure=settings.auth_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def _clear_oauth_link_cookie(response: Response, settings: Settings) -> None:
+    response.delete_cookie(
+        oauth.OAUTH_LINK_COOKIE,
+        path=f"{settings.api_prefix}/auth",
+        secure=settings.auth_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def _oauth_link_error_response(status_code: int, detail: str) -> JSONResponse:
+    response = JSONResponse(status_code=status_code, content={"detail": detail})
+    response.headers["Cache-Control"] = "no-store"
+    _clear_oauth_link_cookie(response, get_settings())
+    return response
+
+
+async def _mark_pending_oauth_link_reauthenticated(
+    request: Request, user_id: UUID
+) -> None:
+    raw_intent = request.cookies.get(oauth.OAUTH_LINK_COOKIE)
+    if not raw_intent:
+        return
+    try:
+        await oauth.mark_oauth_link_reauthenticated(raw_intent, user_id)
+    except ServiceUnavailableError:
+        logger.warning("OAuth link reauthentication marker unavailable")
+
+
+async def _require_oauth_link_origin(request: Request) -> None:
+    configured = urlsplit(get_settings().oauth_frontend_url)
+    expected = f"{configured.scheme}://{configured.netloc}"
+    if request.headers.get("origin") != expected:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid request origin",
+        )
 
 
 def _frontend_redirect(return_to: str, *, provider: str, error: str | None = None) -> str:
@@ -216,20 +277,136 @@ async def oauth_providers(response: Response) -> OAuthProvidersResponse:
     return OAuthProvidersResponse(providers=oauth.configured_providers(get_settings()))
 
 
+@router.get("/oauth/link/pending", response_model=OAuthLinkPendingResponse)
+async def pending_oauth_link(
+    response: Response,
+    raw_intent: str | None = Cookie(default=None, alias=oauth.OAUTH_LINK_COOKIE),
+    current_user: CurrentUser | None = Depends(get_optional_active_user),
+) -> OAuthLinkPendingResponse:
+    response.headers["Cache-Control"] = "no-store"
+    if not raw_intent:
+        return OAuthLinkPendingResponse(pending=False)
+    try:
+        intent = await oauth.get_oauth_link_intent(raw_intent)
+    except AuthenticationError:
+        _clear_oauth_link_cookie(response, get_settings())
+        return OAuthLinkPendingResponse(pending=False)
+    if intent is None:
+        _clear_oauth_link_cookie(response, get_settings())
+        return OAuthLinkPendingResponse(pending=False)
+    current_user_id = UUID(current_user.id) if current_user is not None else None
+    ready = (
+        current_user_id == intent.target_user_id
+        and intent.reauthenticated_user_id == intent.target_user_id
+    )
+    return OAuthLinkPendingResponse(
+        pending=True,
+        provider=intent.provider,
+        ready=ready,
+    )
+
+
+@router.post(
+    "/oauth/link/confirm",
+    response_model=OAuthLinkResponse,
+    dependencies=[Depends(auth_rate_limit), Depends(_require_oauth_link_origin)],
+)
+async def confirm_oauth_link(
+    data: OAuthLinkConfirmRequest,
+    response: Response,
+    raw_intent: str | None = Cookie(default=None, alias=oauth.OAUTH_LINK_COOKIE),
+    current_user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> OAuthLinkResponse | JSONResponse:
+    del data  # Literal[True] plus extra="forbid" makes confirmation explicit.
+    response.headers["Cache-Control"] = "no-store"
+    if not raw_intent:
+        return _oauth_link_error_response(
+            status.HTTP_400_BAD_REQUEST,
+            "OAuth link expired",
+        )
+    try:
+        intent = await oauth.consume_oauth_link_intent(raw_intent)
+        if intent is None:
+            raise AuthenticationError("OAuth link expired")
+        await service.link_oauth_identity(
+            session,
+            current_user_id=UUID(current_user.id),
+            intent=intent,
+        )
+    except AuthenticationError:
+        return _oauth_link_error_response(
+            status.HTTP_403_FORBIDDEN,
+            "OAuth link requires account authentication",
+        )
+    except ConflictError:
+        return _oauth_link_error_response(
+            status.HTTP_409_CONFLICT,
+            "OAuth link conflict",
+        )
+    except SQLAlchemyError:
+        try:
+            await session.rollback()
+        except Exception:  # Terminal cookie cleanup must survive a broken DB connection.
+            logger.exception("OAuth-link rollback failed")
+        return _oauth_link_error_response(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "OAuth link could not be completed",
+        )
+    _clear_oauth_link_cookie(response, get_settings())
+    return OAuthLinkResponse(
+        status="linked",
+        provider=intent.provider,
+        return_to=intent.return_to,
+    )
+
+
+@router.post(
+    "/oauth/link/cancel",
+    response_model=OAuthLinkCancelledResponse,
+    dependencies=[Depends(auth_rate_limit), Depends(_require_oauth_link_origin)],
+)
+async def cancel_oauth_link(
+    response: Response,
+    raw_intent: str | None = Cookie(default=None, alias=oauth.OAUTH_LINK_COOKIE),
+) -> OAuthLinkCancelledResponse:
+    response.headers["Cache-Control"] = "no-store"
+    if raw_intent:
+        await oauth.cancel_oauth_link_intent(raw_intent)
+    _clear_oauth_link_cookie(response, get_settings())
+    return OAuthLinkCancelledResponse(status="cancelled")
+
+
 @router.post(
     "/magic-link/request",
     response_model=MagicLinkAccepted,
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(auth_rate_limit)],
 )
-async def request_magic_link(data: MagicLinkRequest, response: Response) -> MagicLinkAccepted:
+async def request_magic_link(
+    data: MagicLinkRequest,
+    request: Request,
+    response: Response,
+) -> MagicLinkAccepted:
     settings = get_settings()
     browser_nonce = secrets.token_urlsafe(32)
+    email = str(data.email)
+    expected_user_id: UUID | None = None
+    raw_intent = request.cookies.get(oauth.OAUTH_LINK_COOKIE)
+    if raw_intent:
+        try:
+            intent = await oauth.get_oauth_link_intent(raw_intent)
+        except AuthenticationError:
+            intent = None
+        if intent is not None:
+            email = intent.email
+            expected_user_id = intent.target_user_id
     await magic.send_magic_link(
         settings=settings,
-        email=str(data.email),
+        email=email,
         return_to=data.return_to,
         browser_nonce=browser_nonce,
+        expected_user_id=expected_user_id,
     )
     response.headers["Cache-Control"] = "no-store"
     response.set_cookie(
@@ -302,7 +479,9 @@ async def consume_magic_link(
             _clear_magic_browser_cookie(response, settings)
             return response
         payload, refresh_token, created = await service.authenticate_magic_link(
-            session, claims["email"]
+            session,
+            claims["email"],
+            expected_user_id=claims.get("expected_user_id"),
         )
         response = RedirectResponse(
             _magic_frontend_redirect(
@@ -311,6 +490,9 @@ async def consume_magic_link(
             status_code=status.HTTP_303_SEE_OTHER,
         )
         _set_auth_cookies(response, payload, refresh_token)
+        await _mark_pending_oauth_link_reauthenticated(
+            request, UUID(str(payload.user.id))
+        )
         _clear_magic_browser_cookie(response, settings)
         return response
     except (AuthenticationError, ServiceUnavailableError):
@@ -409,6 +591,31 @@ async def _complete_oauth_callback(
                 status_code=status.HTTP_303_SEE_OTHER,
             )
             _set_auth_cookies(response, payload, refresh_token)
+            await _mark_pending_oauth_link_reauthenticated(
+                request, UUID(str(payload.user.id))
+            )
+    except service.OAuthLinkRequired as exc:
+        try:
+            raw_intent = await oauth.register_oauth_link_intent(
+                exc.identity,
+                target_user_id=exc.target_user_id,
+                return_to=claims["return_to"],
+            )
+        except ServiceUnavailableError:
+            response = RedirectResponse(
+                _frontend_redirect(
+                    claims["return_to"], provider=provider, error="unavailable"
+                ),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        else:
+            response = RedirectResponse(
+                _frontend_redirect(
+                    claims["return_to"], provider=provider, error="account_conflict"
+                ),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+            _set_oauth_link_cookie(response, raw_intent, settings)
     except ConflictError:
         response = RedirectResponse(
             _frontend_redirect(
@@ -553,6 +760,7 @@ async def login(
         user_agent=request.headers.get("user-agent"),
     )
     _set_auth_cookies(response, payload, refresh_token)
+    await _mark_pending_oauth_link_reauthenticated(request, UUID(str(payload.user.id)))
     return payload
 
 

@@ -23,7 +23,7 @@ from orna_atlas.app.core.security import (
 from orna_atlas.app.db.session import AsyncSessionLocal
 from orna_atlas.app.modules.admin.repository import add_audit_event
 from orna_atlas.app.modules.auth import account_tokens, repository
-from orna_atlas.app.modules.auth.oauth import VerifiedIdentity
+from orna_atlas.app.modules.auth.oauth import OAuthLinkIntent, VerifiedIdentity
 from orna_atlas.app.modules.auth.schemas import LoginRequest, RegisterRequest, TokenResponse
 from orna_atlas.app.modules.users import repository as users_repository
 from orna_atlas.app.modules.users.models import User
@@ -33,6 +33,13 @@ logger = logging.getLogger(__name__)
 
 
 _DUMMY_PASSWORD_HASH = hash_password("orna-invalid-credential-canary")
+
+
+class OAuthLinkRequired(ConflictError):
+    def __init__(self, *, target_user_id: UUID, identity: VerifiedIdentity) -> None:
+        super().__init__("An account with this email uses a different sign-in method")
+        self.target_user_id = target_user_id
+        self.identity = identity
 
 
 async def request_email_verification(session: AsyncSession, user_id: UUID) -> None:
@@ -283,11 +290,17 @@ async def authenticate_password_login(
 
 
 async def authenticate_magic_link(
-    session: AsyncSession, email: str
+    session: AsyncSession,
+    email: str,
+    *,
+    expected_user_id: UUID | str | None = None,
 ) -> tuple[TokenResponse, str, bool]:
     user = await users_repository.get_by_email(session, email)
     created = False
     event_type = "auth.magic_link_login_succeeded"
+    if expected_user_id is not None:
+        if user is None or user.id != UUID(str(expected_user_id)):
+            raise AuthenticationError("Magic link no longer matches the existing account")
     if user is None:
         try:
             user = await users_repository.create(
@@ -334,9 +347,7 @@ async def authenticate_oauth_identity(
     else:
         user = await users_repository.get_by_email(session, identity.email)
         if user is not None:
-            raise ConflictError(
-                "An account with this email uses a different sign-in method"
-            )
+            raise OAuthLinkRequired(target_user_id=user.id, identity=identity)
         try:
             user = await users_repository.create(
                 session,
@@ -374,6 +385,74 @@ async def authenticate_oauth_identity(
         metadata={"provider": identity.provider},
     )
     return await issue_token_pair(session, user)
+
+
+async def link_oauth_identity(
+    session: AsyncSession, *, current_user_id: UUID, intent: OAuthLinkIntent
+) -> None:
+    if (
+        intent.target_user_id != current_user_id
+        or intent.reauthenticated_user_id != current_user_id
+    ):
+        raise AuthenticationError("OAuth link requires recent account authentication")
+    user = await users_repository.get_by_id_for_update(session, current_user_id)
+    if (
+        user is None
+        or not user.is_active
+        or user.email.lower() != intent.email.lower()
+    ):
+        raise AuthenticationError("OAuth link intent does not match the active account")
+    stored_identity = await repository.get_oauth_identity(
+        session, intent.provider, intent.subject
+    )
+    if stored_identity is not None:
+        if stored_identity.user_id == current_user_id:
+            return
+        raise ConflictError("OAuth identity is already linked to another account")
+    user_provider_identity = await repository.get_oauth_identity_for_user_provider(
+        session, current_user_id, intent.provider
+    )
+    if user_provider_identity is not None:
+        if user_provider_identity.subject == intent.subject:
+            return
+        raise ConflictError("A different provider identity is already linked")
+    try:
+        await repository.create_oauth_identity(
+            session,
+            user_id=current_user_id,
+            provider=intent.provider,
+            subject=intent.subject,
+            email=intent.email,
+        )
+        await add_audit_event(
+            session,
+            event_type="auth.oauth_identity_linked",
+            subject_type="user",
+            subject_id=str(current_user_id),
+            actor_user_id=current_user_id,
+            metadata={"provider": intent.provider},
+        )
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        race_identity = await repository.get_oauth_identity(
+            session, intent.provider, intent.subject
+        )
+        if race_identity is not None:
+            if race_identity.user_id == current_user_id:
+                return
+            raise ConflictError("OAuth identity is already linked to another account")
+        race_user_provider = await repository.get_oauth_identity_for_user_provider(
+            session, current_user_id, intent.provider
+        )
+        if (
+            race_user_provider is not None
+            and race_user_provider.subject == intent.subject
+        ):
+            return
+        if race_user_provider is not None:
+            raise ConflictError("A different provider identity is already linked")
+        raise
 
 
 async def issue_token_pair(session: AsyncSession, user: User) -> tuple[TokenResponse, str]:

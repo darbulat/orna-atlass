@@ -15,6 +15,8 @@ export type Membership = components["schemas"]["MembershipRead"];
 export type TokenResponse = components["schemas"]["TokenResponse"];
 export type OAuthProvider = "google" | "apple" | "facebook";
 export type OAuthProvidersResponse = components["schemas"]["OAuthProvidersResponse"];
+export type OAuthLinkPendingResponse = components["schemas"]["OAuthLinkPendingResponse"];
+export type OAuthLinkResponse = components["schemas"]["OAuthLinkResponse"];
 
 function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -50,6 +52,59 @@ export async function fetchOAuthProviders(): Promise<OAuthProvidersResponse> {
       (provider, index, providers) => providers.indexOf(provider) === index,
     ) as OAuthProvider[],
   };
+}
+
+
+export async function fetchPendingOAuthLink(): Promise<OAuthLinkPendingResponse> {
+  const payload = await apiRequest<unknown>("/api/v1/auth/oauth/link/pending");
+  if (
+    typeof payload !== "object"
+    || payload === null
+    || !("pending" in payload)
+    || typeof payload.pending !== "boolean"
+    || !("ready" in payload)
+    || typeof payload.ready !== "boolean"
+    || (payload.pending && (
+      !("provider" in payload)
+      || (payload.provider !== "google"
+        && payload.provider !== "apple"
+        && payload.provider !== "facebook")
+    ))
+  ) {
+    throw new Error("Invalid OAuth link response");
+  }
+  return payload as OAuthLinkPendingResponse;
+}
+
+
+export function confirmOAuthLink(): Promise<OAuthLinkResponse> {
+  return apiRequest<OAuthLinkResponse>("/api/v1/auth/oauth/link/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmed: true }),
+  }).then((payload) => {
+    if (
+      payload.status !== "linked"
+      || typeof payload.return_to !== "string"
+      || (payload.provider !== "google"
+        && payload.provider !== "apple"
+        && payload.provider !== "facebook")
+    ) {
+      throw new Error("Invalid OAuth link confirmation response");
+    }
+    return payload;
+  });
+}
+
+
+export function cancelOAuthLink(): Promise<components["schemas"]["OAuthLinkCancelledResponse"]> {
+  return apiRequest<components["schemas"]["OAuthLinkCancelledResponse"]>(
+    "/api/v1/auth/oauth/link/cancel",
+    { method: "POST" },
+  ).then((payload) => {
+    if (payload.status !== "cancelled") throw new Error("Invalid OAuth link cancellation response");
+    return payload;
+  });
 }
 
 export function requestMagicLink(email: string, returnTo: string): Promise<{ accepted: true }> {
