@@ -58,6 +58,8 @@ const mobileLocationCardCount = 2;
 const focusedLocationHeight = 1500000;
 const minimumGlobeZoomDistance = 50000;
 const maximumGlobeZoomDistance = 52000000;
+const markerHeight = 20000;
+const selectedMarkerHeight = 30000;
 const markerDragThresholdPixels = 8;
 
 function useMobileViewport() {
@@ -558,7 +560,11 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       viewer.entities.add({
         id: entityId,
         name: isPoint(item) ? item.name : `${item.count} locations`,
-        position: Cartesian3.fromDegrees(item.longitude, item.latitude, selected ? 110000 : 85000),
+        position: Cartesian3.fromDegrees(
+          item.longitude,
+          item.latitude,
+          selected ? selectedMarkerHeight : markerHeight,
+        ),
         point: {
           pixelSize: selected ? 20 : hovered ? 17 : item.type === "cluster" ? 16 : 12,
           color: markerColor,
@@ -644,6 +650,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       data-inertia-zoom="0.8"
       data-imagery-layer="street"
       data-marker-drag-threshold={markerDragThresholdPixels}
+      data-maximum-marker-height={selectedMarkerHeight}
       data-minimum-zoom-distance={minimumGlobeZoomDistance}
       data-pole-clamp="z-axis"
       data-touch-controls="centered"

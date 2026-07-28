@@ -31,6 +31,10 @@ test("atlas globe exposes closer zoom and requests the street imagery layer", as
 
   const globe = page.getByLabel("Interactive Cesium globe");
   await expect(globe).toHaveAttribute("data-minimum-zoom-distance", "50000");
+  await expect(globe).toHaveAttribute("data-maximum-marker-height", "30000");
+  const minimumZoomDistance = Number(await globe.getAttribute("data-minimum-zoom-distance"));
+  const maximumMarkerHeight = Number(await globe.getAttribute("data-maximum-marker-height"));
+  expect(maximumMarkerHeight).toBeLessThan(minimumZoomDistance);
   await expect(globe).toHaveAttribute("data-imagery-layer", "street");
   await streetLayerRequest;
 });
