@@ -17,6 +17,10 @@ class User(Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    @property
+    def email_verified(self) -> bool:
+        return self.email_verified_at is not None
     role: Mapped[str] = mapped_column(
         String(32), default="member", nullable=False, index=True
     )

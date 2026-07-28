@@ -37,6 +37,40 @@ only; protected records are reported as not found.
 
 - Access tokens are short-lived and may arrive through a Bearer header or httpOnly cookie.
 - Refresh tokens are stored only as hashes, rotated on use, and revoked on logout.
+- Password-account mailbox verification and password recovery use opaque, bounded-lifetime,
+  single-use tokens. Public recovery responses never disclose account existence, active state or
+  sign-in method, and raw tokens never appear in URL query strings or logs. Token activation occurs
+  only after successful delivery; confirmation claims a token before the database transition. A
+  known pre-commit failure releases the claim, while an ambiguous `COMMIT` result burns it fail-closed.
+  A bounded finalized-version tombstone prevents delayed older deliveries from reactivating after a
+  newer token was used. Mutating Redis transitions are idempotent for the exact token and claim
+  identity so an unknown transport outcome can be retried without widening replay access. An
+  activation retry never deletes a token that has already advanced to claimed or finalized, even
+  when confirmation advances concurrently between attempts. If cancellation is recorded after a
+  successful claim, compensating rollback is best-effort: its failure leaves the claim fail-closed
+  but never replaces the original task cancellation with a live service error. Repeated
+  cancellation while PostgreSQL rollback and token finalization/rollback are running cannot
+  interrupt those bounded compensations or replace the first recorded cancellation. The first
+  cancellation is retained across repeated Redis-operation cancellation, including client-close
+  cleanup after the mutation has settled, and cancellation-only compensation has an internal
+  two-second deadline; an unfinished child is cancelled and observed without indefinitely retaining
+  the request task. These rules apply to both verification and reset.
+- Password reset revalidates the active password account, replaces its password hash, revokes all
+  refresh sessions and does not create a replacement session. Existing access tokens expire at
+  their normal short TTL, and the confirming browser's auth cookies are cleared. A commit-unknown
+  response also expires both HttpOnly auth cookies before returning, so reload cannot restore a
+  possibly revoked session; only a definitive sanitized invalid-token `400` preserves them. Recovery
+  request loading and error state is scoped to its navigation generation, so leaving the recovery
+  route invalidates delayed continuations. Browser-history exit from a consumed reset fragment also
+  invalidates any pending confirmation and clears the reset token, busy state and local account view.
+  Entering a verification or reset fragment is also an ownership boundary: prior callback ownership
+  and sensitive reset fields are discarded before selecting exactly one new owner, and a fragment
+  containing both recognized token keys is rejected without confirmation requests. Earlier
+  password-login, magic-link and verification-delivery continuations cannot publish state or retain
+  control of the destination action's busy indicator; abandoning an in-flight reset for a new
+  callback also clears authenticated UI because the earlier reset outcome can become unknown.
+- Email verification status does not itself grant membership and does not block login unless a
+  separately accepted product policy introduces that restriction.
 - Editors do not inherit admin publication or user-management permissions.
 - The local admin header is a development-only escape hatch and is invalid production configuration.
 - The first production admin is promoted from an existing active account by the one-time,

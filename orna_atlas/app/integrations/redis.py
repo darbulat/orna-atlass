@@ -4,7 +4,12 @@ from orna_atlas.app.core.config import get_settings
 
 
 def get_redis_client() -> Redis:
-    return Redis.from_url(get_settings().redis_url, decode_responses=True)
+    return Redis.from_url(
+        get_settings().redis_url,
+        decode_responses=True,
+        socket_connect_timeout=5.0,
+        socket_timeout=5.0,
+    )
 
 
 async def invalidate_cache(

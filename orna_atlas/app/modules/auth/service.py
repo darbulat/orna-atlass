@@ -1,10 +1,18 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
+import logging
+from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orna_atlas.app.core.async_utils import finish_cancelled_compensation
 from orna_atlas.app.core.config import get_settings
-from orna_atlas.app.core.domain_errors import AuthenticationError, ConflictError
+from orna_atlas.app.core.domain_errors import (
+    AuthenticationError,
+    ConflictError,
+    ServiceUnavailableError,
+)
 from orna_atlas.app.core.security import (
     create_access_token,
     hash_password,
@@ -12,16 +20,215 @@ from orna_atlas.app.core.security import (
     new_refresh_token,
     verify_password,
 )
+from orna_atlas.app.db.session import AsyncSessionLocal
 from orna_atlas.app.modules.admin.repository import add_audit_event
-from orna_atlas.app.modules.auth import repository
+from orna_atlas.app.modules.auth import account_tokens, repository
 from orna_atlas.app.modules.auth.oauth import VerifiedIdentity
 from orna_atlas.app.modules.auth.schemas import LoginRequest, RegisterRequest, TokenResponse
 from orna_atlas.app.modules.users import repository as users_repository
 from orna_atlas.app.modules.users.models import User
 from orna_atlas.app.modules.users.schemas import UserRead
 
+logger = logging.getLogger(__name__)
+
 
 _DUMMY_PASSWORD_HASH = hash_password("orna-invalid-credential-canary")
+
+
+async def request_email_verification(session: AsyncSession, user_id: UUID) -> None:
+    user = await users_repository.get_by_id(session, user_id)
+    if user is None or not user.is_active:
+        raise AuthenticationError("User is unavailable")
+    if user.email_verified_at is not None:
+        return
+    await account_tokens.send_email_verification(
+        settings=get_settings(),
+        user_id=user.id,
+        email=user.email,
+    )
+
+
+async def confirm_email_verification(session: AsyncSession, raw_token: str) -> User:
+    claim = await account_tokens.claim_token("email_verification", raw_token)
+    if claim is None:
+        raise AuthenticationError("Invalid or expired email verification token")
+    claims = claim.claims
+    try:
+        try:
+            user_id = UUID(claims["user_id"])
+        except (KeyError, ValueError) as exc:
+            raise AuthenticationError("Invalid or expired email verification token") from exc
+        user = await users_repository.get_by_id_for_update(session, user_id)
+        if (
+            user is None
+            or not user.is_active
+            or user.email.lower() != claims.get("email", "").lower()
+        ):
+            raise AuthenticationError("Invalid or expired email verification token")
+        if user.email_verified_at is None:
+            user.email_verified_at = datetime.now(UTC)
+            await add_audit_event(
+                session,
+                event_type="auth.email_verified",
+                subject_type="user",
+                subject_id=str(user.id),
+                actor_user_id=user.id,
+            )
+    except BaseException as exc:
+        if isinstance(exc, asyncio.CancelledError):
+            await finish_cancelled_compensation(session.rollback())
+            await finish_cancelled_compensation(
+                account_tokens.rollback_token_claim(
+                    "email_verification", raw_token, claim.claim_id
+                )
+            )
+            raise exc
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        try:
+            await account_tokens.rollback_token_claim(
+                "email_verification", raw_token, claim.claim_id
+            )
+        except ServiceUnavailableError:
+            pass
+        raise
+    try:
+        await session.commit()
+    except BaseException as exc:
+        if isinstance(exc, asyncio.CancelledError):
+            await finish_cancelled_compensation(session.rollback())
+            await finish_cancelled_compensation(
+                account_tokens.finalize_token_claim(
+                    "email_verification", raw_token, claim.claim_id
+                )
+            )
+            raise exc
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        try:
+            await account_tokens.finalize_token_claim(
+                "email_verification", raw_token, claim.claim_id
+            )
+        except ServiceUnavailableError:
+            pass
+        raise
+    try:
+        await account_tokens.finalize_token_claim(
+            "email_verification", raw_token, claim.claim_id
+        )
+    except ServiceUnavailableError:
+        pass
+    return user
+
+
+async def request_password_reset(session: AsyncSession, email: str) -> None:
+    user = await users_repository.get_by_email(session, email.lower())
+    if user is None or not user.is_active or not user.password_hash:
+        return
+    await account_tokens.send_password_reset(
+        settings=get_settings(),
+        user_id=user.id,
+        email=user.email,
+    )
+
+
+async def deliver_password_reset(email: str) -> None:
+    """Run neutral password-reset delivery outside the request response path."""
+    try:
+        async with AsyncSessionLocal() as session:
+            await request_password_reset(session, email)
+    except ServiceUnavailableError:
+        logger.warning("Password reset delivery unavailable")
+    except Exception:
+        logger.error("Password reset delivery failed")
+
+
+async def confirm_password_reset(
+    session: AsyncSession,
+    raw_token: str,
+    new_password: str,
+) -> User:
+    claim = await account_tokens.claim_token("password_reset", raw_token)
+    if claim is None:
+        raise AuthenticationError("Invalid or expired password reset token")
+    claims = claim.claims
+    try:
+        try:
+            user_id = UUID(claims["user_id"])
+        except (KeyError, ValueError) as exc:
+            raise AuthenticationError("Invalid or expired password reset token") from exc
+        user = await users_repository.get_by_id_for_update(session, user_id)
+        if (
+            user is None
+            or not user.is_active
+            or not user.password_hash
+            or user.email.lower() != claims.get("email", "").lower()
+        ):
+            raise AuthenticationError("Invalid or expired password reset token")
+        user.password_hash = hash_password(new_password)
+        await repository.revoke_all_for_user(session, user.id)
+        await add_audit_event(
+            session,
+            event_type="auth.password_reset",
+            subject_type="user",
+            subject_id=str(user.id),
+            actor_user_id=user.id,
+        )
+    except BaseException as exc:
+        if isinstance(exc, asyncio.CancelledError):
+            await finish_cancelled_compensation(session.rollback())
+            await finish_cancelled_compensation(
+                account_tokens.rollback_token_claim(
+                    "password_reset", raw_token, claim.claim_id
+                )
+            )
+            raise exc
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        try:
+            await account_tokens.rollback_token_claim(
+                "password_reset", raw_token, claim.claim_id
+            )
+        except ServiceUnavailableError:
+            pass
+        raise
+    try:
+        await session.commit()
+    except BaseException as exc:
+        if isinstance(exc, asyncio.CancelledError):
+            await finish_cancelled_compensation(session.rollback())
+            await finish_cancelled_compensation(
+                account_tokens.finalize_token_claim(
+                    "password_reset", raw_token, claim.claim_id
+                )
+            )
+            raise exc
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        try:
+            await account_tokens.finalize_token_claim(
+                "password_reset", raw_token, claim.claim_id
+            )
+        except ServiceUnavailableError:
+            pass
+        if isinstance(exc, Exception):
+            raise ServiceUnavailableError("Password reset outcome is unavailable") from exc
+        raise
+    try:
+        await account_tokens.finalize_token_claim(
+            "password_reset", raw_token, claim.claim_id
+        )
+    except ServiceUnavailableError:
+        pass
+    return user
 
 
 async def register(session: AsyncSession, data: RegisterRequest) -> User:
@@ -47,7 +254,7 @@ async def register(session: AsyncSession, data: RegisterRequest) -> User:
 
 
 async def authenticate(session: AsyncSession, data: LoginRequest) -> User:
-    user = await users_repository.get_by_email(session, str(data.email))
+    user = await users_repository.get_by_email_for_update(session, str(data.email))
     encoded = user.password_hash if user is not None and user.password_hash else _DUMMY_PASSWORD_HASH
     password_valid = verify_password(data.password, encoded)
     if user is None or not user.is_active or not user.password_hash or not password_valid:
@@ -170,18 +377,23 @@ async def authenticate_oauth_identity(
 
 
 async def issue_token_pair(session: AsyncSession, user: User) -> tuple[TokenResponse, str]:
+    locked_user = await users_repository.get_by_id_for_update(session, user.id)
+    if locked_user is None or not locked_user.is_active:
+        raise AuthenticationError("User is unavailable")
+    user = locked_user
     access_token, expires_at = create_access_token(user.id, user.role, user.email)
     refresh_token = new_refresh_token()
     refresh_expires = datetime.now(UTC) + timedelta(days=get_settings().refresh_token_ttl_days)
     await repository.create_refresh_token(
         session, user_id=user.id, token_hash=hash_token(refresh_token), expires_at=refresh_expires
     )
+    user_read = UserRead.model_validate(user)
     await session.commit()
     return (
         TokenResponse(
             access_token=access_token,
             expires_at=expires_at,
-            user=UserRead.model_validate(user),
+            user=user_read,
         ),
         refresh_token,
     )
@@ -190,11 +402,15 @@ async def issue_token_pair(session: AsyncSession, user: User) -> tuple[TokenResp
 async def rotate_refresh_token(
     session: AsyncSession, raw_token: str
 ) -> tuple[TokenResponse, str]:
-    stored = await repository.get_refresh_token(session, hash_token(raw_token))
+    token_hash = hash_token(raw_token)
+    candidate = await repository.find_refresh_token(session, token_hash)
+    if candidate is None:
+        raise AuthenticationError("Invalid refresh token")
+    user = await users_repository.get_by_id_for_update(session, candidate.user_id)
+    stored = await repository.get_refresh_token(session, token_hash)
     if stored is None or not stored.is_valid:
         raise AuthenticationError("Invalid refresh token")
-    user = stored.user
-    if not user.is_active:
+    if user is None or not user.is_active:
         raise AuthenticationError("User is unavailable")
     await repository.revoke(session, stored)
     return await issue_token_pair(session, user)

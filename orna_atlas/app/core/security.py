@@ -12,7 +12,8 @@ from uuid import UUID
 import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fastapi import Cookie, Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
+from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
 from jwt.algorithms import RSAAlgorithm
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -257,11 +258,17 @@ def _bearer_token(authorization: str | None, cookie_token: str | None) -> str | 
     return cookie_token
 
 
+_bearer_auth = HTTPBearer(auto_error=False, scheme_name="HTTPBearer")
+_access_cookie_auth = APIKeyCookie(
+    name=ACCESS_COOKIE, auto_error=False, scheme_name="APIKeyCookie"
+)
+
+
 async def get_optional_user(
-    authorization: str | None = Header(default=None),
-    access_cookie: str | None = Cookie(default=None, alias=ACCESS_COOKIE),
+    bearer: HTTPAuthorizationCredentials | None = Depends(_bearer_auth),
+    access_cookie: str | None = Depends(_access_cookie_auth),
 ) -> CurrentUser | None:
-    token = _bearer_token(authorization, access_cookie)
+    token = bearer.credentials if bearer is not None else access_cookie
     return decode_access_token(token) if token else None
 
 

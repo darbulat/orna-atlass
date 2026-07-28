@@ -88,6 +88,7 @@ test("signed-in account is a responsive dashboard with clear access and next act
         email: "member@example.com",
         role: "member",
         is_active: true,
+        email_verified: true,
         created_at: "2026-07-19T00:00:00Z",
       }),
     });
@@ -158,6 +159,7 @@ test("OAuth success is only announced after the authenticated account is confirm
         email: "member@example.com",
         role: "member",
         is_active: true,
+        email_verified: true,
         created_at: "2026-07-19T00:00:00Z",
       }),
     });
@@ -171,7 +173,7 @@ test("OAuth success is only announced after the authenticated account is confirm
   });
   await page.goto("/membership?oauth=success&oauth_provider=google");
 
-  await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your account", exact: true })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Signed in with Google" })).toBeVisible();
   await expect(page).toHaveURL(/\/membership$/);
 });
@@ -187,6 +189,7 @@ test("magic-link signup and login outcomes are announced after account confirmat
         email: "member@example.com",
         role: "member",
         is_active: true,
+        email_verified: true,
         created_at: "2026-07-19T00:00:00Z",
       }),
     });
@@ -201,7 +204,7 @@ test("magic-link signup and login outcomes are announced after account confirmat
 
   for (const outcome of ["signup", "login"]) {
     await page.goto(`/membership?magic=${outcome}`);
-    await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your account", exact: true })).toBeVisible();
     await expect(page.getByRole("status").filter({ hasText: "Signed in with your email link" })).toBeVisible();
     await expect(page).toHaveURL(/\/membership$/);
     await page.goto("/about");
@@ -245,6 +248,7 @@ test("OAuth success survives a membership status outage", async ({ page }) => {
         email: "member@example.com",
         role: "member",
         is_active: true,
+        email_verified: true,
         created_at: "2026-07-19T00:00:00Z",
       }),
     });
@@ -254,7 +258,7 @@ test("OAuth success survives a membership status outage", async ({ page }) => {
   });
   await page.goto("/membership?oauth=success&oauth_provider=google");
 
-  await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your account", exact: true })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Signed in with Google" })).toBeVisible();
   await expect(page.locator("main .auth-notice").filter({ hasText: "temporarily unavailable" })).toBeVisible();
   await expect(page.getByText("Plan", { exact: true }).locator("..")).toContainText("Unavailable");
@@ -304,7 +308,7 @@ test("email login keeps membership fields loading until entitlements arrive", as
   await page.getByLabel("Password", { exact: true }).fill("valid-password");
   await page.getByRole("button", { name: "Continue" }).click();
 
-  await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your account", exact: true })).toBeVisible();
   await expect(page.getByText("Plan", { exact: true }).locator("..")).toContainText("Loading…");
   await expect(page.getByText("Status", { exact: true }).locator("..")).toContainText("Loading…");
   await expect(page.getByRole("heading", { name: "Checking your listening access…" })).toBeVisible();
@@ -338,6 +342,7 @@ test("a stale membership response cannot cross an auth session boundary", async 
         email: "first@example.com",
         role: "member",
         is_active: true,
+        email_verified: true,
         created_at: "2026-07-19T00:00:00Z",
       }),
     });
@@ -358,6 +363,7 @@ test("a stale membership response cannot cross an auth session boundary", async 
           email: "second@example.com",
           role: "member",
           is_active: true,
+          email_verified: true,
           created_at: "2026-07-19T00:00:00Z",
         },
       }),
@@ -385,7 +391,7 @@ test("a stale membership response cannot cross an auth session boundary", async 
   await page.getByLabel("Password account email", { exact: true }).fill("stale@example.com");
   await page.getByLabel("Password", { exact: true }).fill("stale-password");
   releaseInitialUser?.();
-  await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your account", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByText("Loading account…")).toHaveCount(0);
   await expect(page.getByLabel("Password account email", { exact: true })).toHaveValue("");
@@ -400,4 +406,590 @@ test("a stale membership response cannot cross an auth session boundary", async 
   await page.waitForTimeout(100);
   await expect(page.getByText("Plan", { exact: true }).locator("..")).toContainText("second-plan");
   await expect(page.getByText("Plan", { exact: true }).locator("..")).not.toContainText("first-plan");
+});
+
+
+test("email verification clears the fragment before requests and survives account reload outage", async ({ page }) => {
+  const token = "v".repeat(43);
+  let confirmationBody: unknown;
+  let currentUserRequests = 0;
+  await page.route("**/api/v1/auth/email-verification/confirm", async (route) => {
+    expect(new URL(page.url()).hash).toBe("");
+    confirmationBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "verified" }),
+    });
+  });
+  await page.route("**/api/v1/users/me", async (route) => {
+    currentUserRequests += 1;
+    expect(new URL(page.url()).hash).toBe("");
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto(`/membership#verify_email_token=${token}`);
+
+  await expect(page).toHaveURL(/\/membership$/);
+  await expect.poll(() => currentUserRequests).toBeGreaterThanOrEqual(2);
+  await expect(page.getByRole("status").filter({ hasText: "Your email address is verified." })).toBeVisible();
+  expect(confirmationBody).toEqual({ token });
+});
+
+
+test("password recovery request uses a neutral accepted state", async ({ page }) => {
+  let requestBody: unknown;
+  await page.route("**/api/v1/auth/password-reset/request", async (route) => {
+    requestBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ accepted: true }),
+    });
+  });
+
+  await page.goto("/membership?mode=login");
+  await page.getByRole("link", { name: "Forgot your password?" }).click();
+  await expect(page.getByRole("heading", { name: "Recover your password" })).toBeVisible();
+  await page.getByLabel("Account email").fill("missing@example.com");
+  await page.getByRole("button", { name: "Send reset link" }).click();
+
+  await expect(page.getByRole("status")).toContainText(
+    "If a password account exists for that email, a reset link has been sent.",
+  );
+  expect(requestBody).toEqual({ email: "missing@example.com" });
+});
+
+
+test("leaving recovery ignores a stale password-reset request failure", async ({ page }) => {
+  let releaseRequest!: () => void;
+  const blocked = new Promise<void>((resolve) => { releaseRequest = resolve; });
+  await page.route("**/api/v1/auth/password-reset/request", async (route) => {
+    await blocked;
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto("/membership?mode=forgot");
+  await page.getByLabel("Account email").fill("listener@example.com");
+  await page.getByRole("button", { name: "Send reset link" }).click();
+  await page.getByRole("link", { name: "Return to sign in" }).click();
+  releaseRequest();
+
+  await expect(page.getByRole("heading", { name: "Sign in to ORNA Atlas" })).toBeVisible();
+  await expect(page.getByText("Password recovery is temporarily unavailable.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+});
+
+
+test("browser Back releases recovery busy state and ignores its stale failure", async ({ page }) => {
+  let releaseRequest!: () => void;
+  const blocked = new Promise<void>((resolve) => { releaseRequest = resolve; });
+  await page.route("**/api/v1/auth/password-reset/request", async (route) => {
+    await blocked;
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto("/membership?mode=login");
+  await page.getByRole("link", { name: "Forgot your password?" }).click();
+  await page.getByLabel("Account email").fill("listener@example.com");
+  await page.getByRole("button", { name: "Send reset link" }).click();
+  await page.goBack();
+
+  await expect(page.getByRole("heading", { name: "Sign in to ORNA Atlas" })).toBeVisible();
+  const magicLinkForm = page.locator("form").filter({ has: page.getByLabel("Email address") });
+  const passwordForm = page.locator("form").filter({
+    has: page.getByLabel("Password account email", { exact: true }),
+  });
+  await expect(magicLinkForm.getByRole("button")).toBeEnabled();
+  await expect(passwordForm.getByRole("button")).toBeEnabled();
+  releaseRequest();
+  await expect(page.getByText("Password recovery is temporarily unavailable.")).toHaveCount(0);
+});
+
+
+test("password reset removes the fragment before requests and returns to an empty sign-in", async ({ page }) => {
+  const token = "r".repeat(43);
+  let confirmationBody: unknown;
+  await page.route("**/api/v1/auth/password-reset/confirm", async (route) => {
+    expect(new URL(page.url()).hash).toBe("");
+    confirmationBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "password_reset" }),
+    });
+  });
+
+  await page.goto(`/membership#reset_password_token=${token}`);
+  await expect(page).toHaveURL(/\/membership$/);
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await page.getByLabel("New password", { exact: true }).fill("a secure new password");
+  await page.getByLabel("Confirm new password").fill("a secure new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+
+  await expect(page).toHaveURL(/\/membership\?mode=login$/);
+  await expect(page.getByRole("status")).toContainText(
+    "Your password was reset. Sign in with your new password.",
+  );
+  await expect(page.getByLabel("Password", { exact: true })).toHaveValue("");
+  expect(confirmationBody).toEqual({ token, password: "a secure new password" });
+});
+
+
+test("password reset discards a token after an ambiguous transport outcome", async ({ page }) => {
+  const token = "r".repeat(43);
+  let attempts = 0;
+  await page.route("**/api/v1/auth/password-reset/confirm", async (route) => {
+    attempts += 1;
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto(`/membership#reset_password_token=${token}`);
+  await page.getByLabel("New password", { exact: true }).fill("a secure new password");
+  await page.getByLabel("Confirm new password").fill("a secure new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+
+  await expect(page).toHaveURL(/\/membership\?mode=login$/);
+  await expect(page.getByRole("heading", { name: "Sign in to ORNA Atlas" })).toBeVisible();
+  await expect(page.getByText(
+    "We could not confirm whether your password changed.",
+    { exact: false },
+  )).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toHaveCount(0);
+  expect(attempts).toBe(1);
+});
+
+
+test("ambiguous password reset fails closed for an authenticated account", async ({ page }) => {
+  const token = "r".repeat(43);
+  let currentUserRequests = 0;
+  await page.route("**/api/v1/users/me", async (route) => {
+    currentUserRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-01-01T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "free", status: "active", is_entitled: false }),
+    });
+  });
+  await page.route("**/api/v1/auth/password-reset/confirm", async (route) => {
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto(`/membership#reset_password_token=${token}`);
+  await expect.poll(() => currentUserRequests).toBeGreaterThan(0);
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await page.getByLabel("New password", { exact: true }).fill("a secure new password");
+  await page.getByLabel("Confirm new password").fill("a secure new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+
+  await expect(page).toHaveURL(/\/membership\?mode=login$/);
+  await expect(page.getByRole("heading", { name: "Sign in to ORNA Atlas" })).toBeVisible();
+  await expect(page.getByText("member@example.com")).toHaveCount(0);
+});
+
+
+test("leaving a pending ambiguous reset cannot restore an authenticated dashboard", async ({ page }) => {
+  const token = "r".repeat(43);
+  let releaseConfirmation!: () => void;
+  const confirmationBlocked = new Promise<void>((resolve) => { releaseConfirmation = resolve; });
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-01-01T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "free", status: "active", is_entitled: false }),
+    });
+  });
+  await page.route("**/api/v1/auth/password-reset/confirm", async (route) => {
+    await confirmationBlocked;
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto(`/membership#reset_password_token=${token}`);
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await page.getByLabel("New password", { exact: true }).fill("a secure new password");
+  await page.getByLabel("Confirm new password").fill("a secure new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+  await page.getByRole("link", { name: "Return to sign in" }).click();
+  releaseConfirmation();
+
+  await expect(page.getByRole("heading", { name: "Sign in to ORNA Atlas" })).toBeVisible();
+  await expect(page.getByText("member@example.com")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Your account", exact: true })).not.toBeVisible();
+});
+
+
+test("same-route membership navigation follows query changes and browser history", async ({ page }) => {
+  await page.goto("/membership?mode=login");
+  await expect(page.getByRole("heading", { name: "Sign in to ORNA Atlas" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Create a free account" }).click();
+  await expect(page).toHaveURL(/\/membership\?mode=register$/);
+  await expect(page.getByRole("heading", { name: "Create your free ORNA account" })).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/membership\?mode=login$/);
+  await expect(page.getByRole("heading", { name: "Sign in to ORNA Atlas" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Forgot your password?" }).click();
+  await expect(page.getByRole("heading", { name: "Recover your password" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Sign in to ORNA Atlas" })).toBeVisible();
+});
+
+
+test("same-route recovery handles post-mount fragments and reset exit", async ({ page }) => {
+  const verificationToken = "v".repeat(43);
+  let releaseConfirmation!: () => void;
+  const confirmationBlocked = new Promise<void>((resolve) => { releaseConfirmation = resolve; });
+  await page.route("**/api/v1/auth/email-verification/confirm", async (route) => {
+    expect(new URL(page.url()).hash).toBe("");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "verified" }),
+    });
+  });
+  await page.route("**/api/v1/auth/password-reset/confirm", async (route) => {
+    await confirmationBlocked;
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto("/membership?mode=login");
+  await expect(page.getByRole("heading", { name: "Sign in to ORNA Atlas" })).toBeVisible();
+  await page.evaluate((token) => {
+    window.location.hash = `verify_email_token=${token}`;
+  }, verificationToken);
+  await expect(page).toHaveURL(/\/membership\?mode=login$/);
+  await expect(page.getByText("Your email address is verified.")).toBeVisible();
+
+  await page.evaluate((token) => {
+    window.location.hash = `reset_password_token=${token}`;
+  }, "r".repeat(43));
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await page.getByLabel("New password", { exact: true }).fill("a secure new password");
+  await page.getByLabel("Confirm new password").fill("a secure new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+  await page.goBack();
+  releaseConfirmation();
+  await expect(page.getByRole("heading", { name: "Sign in to ORNA Atlas" })).toBeVisible();
+  await expect(page.getByText("We could not confirm whether the password changed.")).toHaveCount(0);
+});
+
+
+test("a new verification fragment discards an ambiguous pending reset owner", async ({ page }) => {
+  let releaseReset!: () => void;
+  let releaseVerification!: () => void;
+  let verificationRequests = 0;
+  let currentUserRequests = 0;
+  const resetBlocked = new Promise<void>((resolve) => { releaseReset = resolve; });
+  const verificationBlocked = new Promise<void>((resolve) => { releaseVerification = resolve; });
+  await page.route("**/api/v1/users/me", async (route) => {
+    currentUserRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-01-01T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "free", status: "active", is_entitled: false }),
+    });
+  });
+  await page.route("**/api/v1/auth/password-reset/confirm", async (route) => {
+    await resetBlocked;
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+  await page.route("**/api/v1/auth/email-verification/confirm", async (route) => {
+    verificationRequests += 1;
+    await verificationBlocked;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "verified" }),
+    });
+  });
+
+  await page.goto(`/membership#reset_password_token=${"r".repeat(43)}`);
+  await expect.poll(() => currentUserRequests).toBeGreaterThan(0);
+  await page.getByLabel("New password", { exact: true }).fill("a secure new password");
+  await page.getByLabel("Confirm new password").fill("a secure new password");
+  await page.getByRole("button", { name: "Reset password" }).click();
+  await page.evaluate((token) => {
+    window.location.hash = `verify_email_token=${token}`;
+  }, "v".repeat(43));
+
+  await expect.poll(() => verificationRequests).toBe(1);
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toHaveCount(0);
+  releaseVerification();
+  await expect(page.getByText("Your email address is verified.")).toBeVisible();
+  await expect(page.getByText("member@example.com")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Your account", exact: true })).not.toBeVisible();
+  releaseReset();
+  await expect(page.getByText("We could not confirm whether the password changed.")).toHaveCount(0);
+  await expect(page.getByText("member@example.com")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toHaveCount(0);
+});
+
+
+test("a dual-key callback fragment is rejected without choosing two owners", async ({ page }) => {
+  let verificationRequests = 0;
+  let resetRequests = 0;
+  await page.route("**/api/v1/auth/email-verification/confirm", async (route) => {
+    verificationRequests += 1;
+    await route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+  });
+  await page.route("**/api/v1/auth/password-reset/confirm", async (route) => {
+    resetRequests += 1;
+    await route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto(
+    `/membership#verify_email_token=${"v".repeat(43)}&reset_password_token=${"r".repeat(43)}`,
+  );
+
+  await expect(page.getByRole("heading", { name: "Sign in or create your account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toHaveCount(0);
+  await page.waitForTimeout(250);
+  expect(verificationRequests).toBe(0);
+  expect(resetRequests).toBe(0);
+});
+
+
+test("browser history restores a bare membership URL to its default mode", async ({ page }) => {
+  await page.goto("/membership");
+  await page.getByRole("link", { name: "Subscribe" }).click();
+  await expect(page).toHaveURL(/\/membership\?mode=register$/);
+  await expect(page.getByRole("heading", { name: "Create your free ORNA account" })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/membership$/);
+  await expect(page.getByRole("heading", { name: "Sign in or create your account" })).toBeVisible();
+});
+
+
+test("entering reset invalidates a pending password login", async ({ page }) => {
+  let releaseLogin!: () => void;
+  const loginBlocked = new Promise<void>((resolve) => { releaseLogin = resolve; });
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await loginBlocked;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        access_token: "stale-login-token",
+        token_type: "bearer",
+        expires_at: "2026-07-19T19:00:00Z",
+        user: {
+          id: "50000000-0000-4000-8000-000000000003",
+          email: "stale-login@example.com",
+          role: "member",
+          is_active: true,
+          email_verified: true,
+          created_at: "2026-07-19T00:00:00Z",
+        },
+      }),
+    });
+  });
+
+  await page.goto("/membership?mode=login");
+  await page.getByLabel("Password account email", { exact: true }).fill("stale-login@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("valid-password");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.evaluate(() => { window.location.hash = `reset_password_token=${"r".repeat(43)}`; });
+  await expect(page.getByRole("button", { name: "Reset password" })).toBeEnabled();
+  releaseLogin();
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await expect(page.getByText("stale-login@example.com")).toHaveCount(0);
+});
+
+
+test("entering reset invalidates a pending magic-link request", async ({ page }) => {
+  let releaseMagicLink!: () => void;
+  const magicLinkBlocked = new Promise<void>((resolve) => { releaseMagicLink = resolve; });
+  await page.route("**/api/v1/auth/magic-link/request", async (route) => {
+    await magicLinkBlocked;
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ accepted: true }),
+    });
+  });
+
+  await page.goto("/membership?mode=login");
+  await page.getByLabel("Email address", { exact: true }).fill("magic@example.com");
+  await page.getByRole("button", { name: "Email me a sign-in link" }).click();
+  await page.evaluate(() => { window.location.hash = `reset_password_token=${"r".repeat(43)}`; });
+  await expect(page.getByRole("button", { name: "Reset password" })).toBeEnabled();
+  releaseMagicLink();
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await expect(page.getByText("Check your email. The one-time sign-in link expires in 15 minutes.")).toHaveCount(0);
+});
+
+
+test("unknown same-route membership mode resets stale auth UI", async ({ page }) => {
+  await page.goto("/membership?mode=register");
+  await expect(page.getByRole("heading", { name: "Create your free ORNA account" })).toBeVisible();
+  await page.evaluate(() => {
+    window.history.pushState(null, "", "/membership?mode=bogus");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page.getByRole("heading", { name: "Sign in or create your account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create your free ORNA account" })).toHaveCount(0);
+});
+
+
+test("verification delivery does not relabel the sign-out action", async ({ page }) => {
+  let releaseVerification!: () => void;
+  const verificationBlocked = new Promise<void>((resolve) => { releaseVerification = resolve; });
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: false,
+        created_at: "2026-01-01T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/membership/me", async (route) => {
+    await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  });
+  await page.route("**/api/v1/auth/email-verification/request", async (route) => {
+    await verificationBlocked;
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ accepted: true }),
+    });
+  });
+  await page.route("**/api/v1/auth/email-verification/confirm", async (route) => {
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto("/membership");
+  await page.getByRole("button", { name: /Verify email/ }).click();
+  await expect(page.getByRole("button", { name: /Sending/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await page.evaluate(() => { window.location.hash = `verify_email_token=${"v".repeat(43)}`; });
+  await expect(page.getByText("Email verification is temporarily unavailable.")).toBeVisible();
+  releaseVerification();
+  await expect(page.getByRole("button", { name: /Verify email/ })).toBeEnabled();
+  await expect(page.getByText("Check your email. The verification link expires in 24 hours.")).toHaveCount(0);
+});
+
+
+test("verification rejects a wrong success literal", async ({ page }) => {
+  const token = "v".repeat(43);
+  await page.route("**/api/v1/auth/email-verification/confirm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "password_reset" }),
+    });
+  });
+
+  await page.goto(`/membership#verify_email_token=${token}`);
+  await expect(page.getByText("Email verification is temporarily unavailable. Please try again.")).toBeVisible();
+  await expect(page.getByText("Your email address is verified.")).toHaveCount(0);
+});
+
+
+test("verification cannot be overwritten by a stale initial account load", async ({ page }) => {
+  const token = "v".repeat(43);
+  let userRequests = 0;
+  let releaseInitial!: () => void;
+  let staleResponseCompleted = false;
+  const initialBlocked = new Promise<void>((resolve) => { releaseInitial = resolve; });
+  const user = (verified: boolean) => ({
+    id: "50000000-0000-4000-8000-000000000001",
+    email: "member@example.com",
+    role: "member",
+    is_active: true,
+    email_verified: verified,
+    created_at: "2026-01-01T00:00:00Z",
+  });
+
+  await page.route("**/api/v1/auth/email-verification/confirm", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "verified" }),
+    });
+  });
+  await page.route("**/api/v1/users/me", async (route) => {
+    const requestNumber = ++userRequests;
+    if (requestNumber === 1) await initialBlocked;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(user(requestNumber !== 1)),
+    });
+    if (requestNumber === 1) staleResponseCompleted = true;
+  });
+  await page.route("**/api/v1/membership/me", async (route) => {
+    await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto(`/membership#verify_email_token=${token}`);
+  await expect.poll(() => userRequests).toBe(2);
+  await expect(page.getByText("Your email address is verified.")).toBeVisible();
+  releaseInitial();
+  await expect.poll(() => staleResponseCompleted).toBe(true);
+  await expect(page.getByText("Verified", { exact: true })).toBeVisible();
+  await expect(page.getByText("Not verified", { exact: true })).toHaveCount(0);
+});
+
+
+test("recovery links expose 44px touch targets on a narrow phone", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto("/membership?mode=login");
+  const forgot = page.getByRole("link", { name: "Forgot your password?" });
+  await expect(forgot).toBeVisible();
+  expect((await forgot.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+
+  await forgot.click();
+  const back = page.getByRole("link", { name: "Return to sign in" });
+  await expect(back).toBeVisible();
+  expect((await back.boundingBox())?.height).toBeGreaterThanOrEqual(44);
 });

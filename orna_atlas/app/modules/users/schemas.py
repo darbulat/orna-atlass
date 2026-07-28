@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 class UserRead(BaseModel):
     id: UUID
     email: EmailStr
+    email_verified: bool
     role: Literal["member", "editor", "admin"]
     is_active: bool
     created_at: datetime

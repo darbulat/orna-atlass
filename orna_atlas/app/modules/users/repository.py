@@ -11,8 +11,28 @@ async def get_by_id(session: AsyncSession, user_id: UUID) -> User | None:
     return await session.get(User, user_id)
 
 
+async def get_by_id_for_update(session: AsyncSession, user_id: UUID) -> User | None:
+    result = await session.execute(
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_by_email(session: AsyncSession, email: str) -> User | None:
     result = await session.execute(select(User).where(User.email == email.lower()))
+    return result.scalar_one_or_none()
+
+
+async def get_by_email_for_update(session: AsyncSession, email: str) -> User | None:
+    result = await session.execute(
+        select(User)
+        .where(User.email == email.lower())
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     return result.scalar_one_or_none()
 
 

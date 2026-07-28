@@ -1,6 +1,6 @@
 import type { components } from "./generated";
 import { runExplicitAuthentication } from "./auth-refresh";
-import { fetchJson } from "./client";
+import { ApiError, fetchJson } from "./client";
 import { apiUrl } from "./sessions";
 import {
   beginAccountAuthBoundary,
@@ -60,6 +60,72 @@ export function requestMagicLink(email: string, returnTo: string): Promise<{ acc
   }).then((payload) => {
     if (payload.accepted !== true) throw new Error("Invalid magic-link response");
     return payload;
+  });
+}
+
+function acceptedAccountEmail(path: string, body?: object): Promise<{ accepted: true }> {
+  return apiRequest<{ accepted: true }>(path, {
+    method: "POST",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  }).then((payload) => {
+    if (payload.accepted !== true) throw new Error("Invalid account email response");
+    return payload;
+  });
+}
+
+export function requestEmailVerification(): Promise<{ accepted: true }> {
+  return acceptedAccountEmail("/api/v1/auth/email-verification/request");
+}
+
+export function confirmEmailVerification(
+  token: string,
+): Promise<components["schemas"]["EmailVerificationResponse"]> {
+  return apiRequest<components["schemas"]["EmailVerificationResponse"]>(
+    "/api/v1/auth/email-verification/confirm",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    },
+  ).then((payload) => {
+    if (payload.status !== "verified") throw new Error("Invalid email verification response");
+    return payload;
+  });
+}
+
+export function requestPasswordReset(email: string): Promise<{ accepted: true }> {
+  return acceptedAccountEmail("/api/v1/auth/password-reset/request", { email });
+}
+
+export function confirmPasswordReset(
+  token: string,
+  password: string,
+): Promise<components["schemas"]["PasswordResetResponse"]> {
+  const boundary = beginAccountAuthBoundary();
+  return runExplicitAuthentication(async () => {
+    try {
+      const response = await apiRequest<components["schemas"]["PasswordResetResponse"]>(
+        "/api/v1/auth/password-reset/confirm",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, password }),
+        },
+      );
+      if (response.status !== "password_reset") {
+        throw new Error("Invalid password reset response");
+      }
+      completeAccountAuthBoundary(boundary, "anonymous");
+      return response;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 400) {
+        cancelAccountAuthBoundary(boundary);
+      } else {
+        completeAccountAuthBoundary(boundary, "anonymous");
+      }
+      throw error;
+    }
   });
 }
 
