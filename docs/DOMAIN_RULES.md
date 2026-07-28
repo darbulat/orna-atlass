@@ -37,6 +37,14 @@ only; protected records are reported as not found.
 
 - Access tokens are short-lived and may arrive through a Bearer header or httpOnly cookie.
 - Refresh tokens are stored only as hashes, rotated on use, and revoked on logout.
+- An external identity is identified by `provider + subject`; matching email is discovery evidence,
+  not proof that an identity belongs to an existing ORNA account. An OAuth email conflict creates a
+  short-lived, opaque, server-side intent addressed by a token digest. Linking requires a new
+  authentication of the recorded target account after the conflict and a separate explicit
+  confirmation. The intent is single-use on confirmation or cancellation, browser-supplied email,
+  user ID and provider subject are never trusted, and an identity linked to another user is never
+  moved. Magic-link reauthentication during this flow is login-only and remains bound to the
+  recorded target user even if the account is deleted before consumption.
 - Password-account mailbox verification and password recovery use opaque, bounded-lifetime,
   single-use tokens. Public recovery responses never disclose account existence, active state or
   sign-in method, and raw tokens never appear in URL query strings or logs. Token activation occurs

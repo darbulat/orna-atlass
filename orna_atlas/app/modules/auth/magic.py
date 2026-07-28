@@ -6,6 +6,7 @@ import secrets
 import smtplib
 import ssl
 from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
+from uuid import UUID
 
 from redis.exceptions import RedisError
 
@@ -71,23 +72,28 @@ def _send_email(settings: Settings, recipient: str, callback_url: str) -> None:
 
 
 async def send_magic_link(
-    *, settings: Settings, email: str, return_to: str | None, browser_nonce: str
+    *,
+    settings: Settings,
+    email: str,
+    return_to: str | None,
+    browser_nonce: str,
+    expected_user_id: UUID | str | None = None,
 ) -> None:
     if not settings.smtp_host or not settings.smtp_from_email:
         raise ServiceUnavailableError("Magic-link email delivery is not configured")
     raw_token = secrets.token_urlsafe(32)
     key = _token_key(raw_token)
-    transaction = json.dumps(
-        {
-            "email": email.lower(),
-            "return_to": safe_return_to(return_to),
-            "browser_nonce_digest": _browser_nonce_digest(browser_nonce),
-        },
-        separators=(",", ":"),
-    )
+    transaction = {
+        "email": email.lower(),
+        "return_to": safe_return_to(return_to),
+        "browser_nonce_digest": _browser_nonce_digest(browser_nonce),
+    }
+    if expected_user_id is not None:
+        transaction["expected_user_id"] = str(expected_user_id)
+    payload = json.dumps(transaction, separators=(",", ":"))
     client = get_redis_client()
     try:
-        stored = await client.set(key, transaction, ex=MAGIC_LINK_TTL_SECONDS, nx=True)
+        stored = await client.set(key, payload, ex=MAGIC_LINK_TTL_SECONDS, nx=True)
         if not stored:
             raise AuthenticationError("Magic-link token could not be registered")
         try:
@@ -137,8 +143,14 @@ async def consume_magic_link(
         payload = json.loads(consumed)
         email = payload.get("email")
         return_to = payload.get("return_to")
+        expected_user_id = payload.get("expected_user_id")
         if not isinstance(email, str) or not email or not isinstance(return_to, str):
             raise ValueError("missing magic-link transaction field")
-        return {"email": email.lower(), "return_to": safe_return_to(return_to)}
+        if expected_user_id is not None:
+            expected_user_id = str(UUID(expected_user_id))
+        result = {"email": email.lower(), "return_to": safe_return_to(return_to)}
+        if expected_user_id is not None:
+            result["expected_user_id"] = expected_user_id
+        return result
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise AuthenticationError("Invalid or expired magic link") from exc

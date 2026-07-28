@@ -12,8 +12,9 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from jwt.algorithms import RSAAlgorithm
 from pydantic import ValidationError
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from starlette.requests import Request
+from starlette.responses import Response
 
 from orna_atlas.app.core.config import Settings
 from orna_atlas.app.core.domain_errors import (
@@ -21,6 +22,7 @@ from orna_atlas.app.core.domain_errors import (
     ConflictError,
     ServiceUnavailableError,
 )
+from orna_atlas.app.core.security import CurrentUser
 from orna_atlas.app.main import app
 from orna_atlas.app.modules.auth import oauth, router as auth_router, service
 
@@ -300,11 +302,158 @@ async def test_social_login_refuses_implicit_link_to_existing_email(monkeypatch)
     create_identity = AsyncMock()
     monkeypatch.setattr(service.repository, "create_oauth_identity", create_identity)
 
-    with pytest.raises(ConflictError, match="different sign-in method"):
+    with pytest.raises(service.OAuthLinkRequired) as exc_info:
         await service.authenticate_oauth_identity(db, identity)
 
+    assert exc_info.value.target_user_id == user.id
+    assert exc_info.value.identity == identity
     create_identity.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reauthenticated_user_explicitly_links_oauth_identity(monkeypatch) -> None:
+    user = SimpleNamespace(
+        id=uuid4(),
+        email="listener@example.com",
+        role="member",
+        is_active=True,
+    )
+    intent = oauth.OAuthLinkIntent(
+        provider="google",
+        subject="provider-user-123",
+        email="listener@example.com",
+        target_user_id=user.id,
+        return_to="/library",
+        reauthenticated_user_id=user.id,
+    )
+    session = AsyncMock()
+    monkeypatch.setattr(
+        service.users_repository,
+        "get_by_id_for_update",
+        AsyncMock(return_value=user),
+    )
+    monkeypatch.setattr(service.repository, "get_oauth_identity", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        service.repository,
+        "get_oauth_identity_for_user_provider",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    create_identity = AsyncMock()
+    monkeypatch.setattr(service.repository, "create_oauth_identity", create_identity)
+    audit = AsyncMock()
+    monkeypatch.setattr(service, "add_audit_event", audit)
+
+    await service.link_oauth_identity(session, current_user_id=user.id, intent=intent)
+
+    create_identity.assert_awaited_once_with(
+        session,
+        user_id=user.id,
+        provider="google",
+        subject="provider-user-123",
+        email="listener@example.com",
+    )
+    audit.assert_awaited_once_with(
+        session,
+        event_type="auth.oauth_identity_linked",
+        subject_type="user",
+        subject_id=str(user.id),
+        actor_user_id=user.id,
+        metadata={"provider": "google"},
+    )
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_oauth_link_uniqueness_race_resolves_as_idempotent_success(monkeypatch) -> None:
+    user_id = uuid4()
+    user = SimpleNamespace(id=user_id, email="listener@example.com", is_active=True)
+    intent = oauth.OAuthLinkIntent(
+        provider="google",
+        subject="provider-user-123",
+        email="listener@example.com",
+        target_user_id=user_id,
+        return_to="/membership",
+        reauthenticated_user_id=user_id,
+    )
+    winner = SimpleNamespace(user_id=user_id, provider="google", subject=intent.subject)
+    session = AsyncMock()
+    monkeypatch.setattr(
+        service.users_repository,
+        "get_by_id_for_update",
+        AsyncMock(return_value=user),
+    )
+    monkeypatch.setattr(
+        service.repository,
+        "get_oauth_identity",
+        AsyncMock(side_effect=[None, winner]),
+    )
+    monkeypatch.setattr(
+        service.repository,
+        "get_oauth_identity_for_user_provider",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        service.repository,
+        "create_oauth_identity",
+        AsyncMock(side_effect=IntegrityError("insert", {}, Exception("unique"))),
+    )
+    audit = AsyncMock()
+    monkeypatch.setattr(service, "add_audit_event", audit)
+
+    await service.link_oauth_identity(session, current_user_id=user_id, intent=intent)
+
+    session.rollback.assert_awaited_once()
+    session.commit.assert_not_awaited()
+    audit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_oauth_link_race_never_moves_subject_from_another_account(monkeypatch) -> None:
+    user_id = uuid4()
+    other_user_id = uuid4()
+    user = SimpleNamespace(id=user_id, email="listener@example.com", is_active=True)
+    intent = oauth.OAuthLinkIntent(
+        provider="google",
+        subject="provider-user-123",
+        email="listener@example.com",
+        target_user_id=user_id,
+        return_to="/membership",
+        reauthenticated_user_id=user_id,
+    )
+    winner = SimpleNamespace(user_id=other_user_id, provider="google", subject=intent.subject)
+    session = AsyncMock()
+    monkeypatch.setattr(
+        service.users_repository,
+        "get_by_id_for_update",
+        AsyncMock(return_value=user),
+    )
+    monkeypatch.setattr(
+        service.repository,
+        "get_oauth_identity",
+        AsyncMock(side_effect=[None, winner]),
+    )
+    monkeypatch.setattr(
+        service.repository,
+        "get_oauth_identity_for_user_provider",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        service.repository,
+        "create_oauth_identity",
+        AsyncMock(side_effect=IntegrityError("insert", {}, Exception("unique"))),
+    )
+
+    with pytest.raises(ConflictError, match="another account"):
+        await service.link_oauth_identity(
+            session,
+            current_user_id=user_id,
+            intent=intent,
+        )
+
+    session.rollback.assert_awaited_once()
+    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -514,6 +663,87 @@ async def test_oauth_state_is_single_use(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_oauth_link_intent_requires_matching_post_conflict_authentication(monkeypatch) -> None:
+    class FakeRedis:
+        def __init__(self) -> None:
+            self.values: dict[str, bytes] = {}
+
+        async def set(self, key: str, value: str, *, ex: int, nx: bool) -> bool:
+            assert ex == oauth.OAUTH_LINK_TTL_SECONDS
+            assert nx is True
+            if key in self.values:
+                return False
+            self.values[key] = value.encode()
+            return True
+
+        async def get(self, key: str) -> bytes | None:
+            return self.values.get(key)
+
+        async def eval(self, script: str, numkeys: int, key: str, user_id: str) -> int:
+            assert "oauth_link_mark_reauthenticated_v1" in script
+            assert numkeys == 1
+            stored = self.values.get(key)
+            if stored is None:
+                return 0
+            payload = json.loads(stored)
+            if payload["target_user_id"] != user_id or payload["state"] != "pending":
+                return 0
+            payload["state"] = "reauthenticated"
+            payload["reauthenticated_user_id"] = user_id
+            self.values[key] = json.dumps(payload).encode()
+            return 1
+
+        async def getdel(self, key: str) -> bytes | None:
+            return self.values.pop(key, None)
+
+        async def delete(self, key: str) -> int:
+            return 1 if self.values.pop(key, None) is not None else 0
+
+        async def aclose(self) -> None:
+            return None
+
+    client = FakeRedis()
+    monkeypatch.setattr(oauth, "get_redis_client", lambda: client)
+    target_user_id = uuid4()
+    other_user_id = uuid4()
+    identity = oauth.VerifiedIdentity(
+        provider="google",
+        subject="provider-user-123",
+        email="listener@example.com",
+        email_verified=True,
+    )
+
+    raw_intent = await oauth.register_oauth_link_intent(
+        identity,
+        target_user_id=target_user_id,
+        return_to="/library",
+    )
+
+    assert raw_intent.encode() not in next(iter(client.values)).encode()
+    pending = await oauth.get_oauth_link_intent(raw_intent)
+    assert pending is not None
+    assert pending.provider == "google"
+    assert pending.target_user_id == target_user_id
+    assert pending.return_to == "/library"
+    assert pending.reauthenticated_user_id is None
+    assert await oauth.mark_oauth_link_reauthenticated(raw_intent, other_user_id) is False
+    assert await oauth.mark_oauth_link_reauthenticated(raw_intent, target_user_id) is True
+
+    ready = await oauth.consume_oauth_link_intent(raw_intent)
+    assert ready is not None
+    assert ready.reauthenticated_user_id == target_user_id
+    assert await oauth.consume_oauth_link_intent(raw_intent) is None
+
+    cancelled_intent = await oauth.register_oauth_link_intent(
+        identity,
+        target_user_id=target_user_id,
+        return_to="/membership",
+    )
+    assert await oauth.cancel_oauth_link_intent(cancelled_intent) is True
+    assert await oauth.get_oauth_link_intent(cancelled_intent) is None
+
+
+@pytest.mark.asyncio
 async def test_callback_redirects_controlled_provider_failure_and_clears_state_cookie(
     monkeypatch,
 ) -> None:
@@ -559,6 +789,307 @@ async def test_callback_redirects_controlled_provider_failure_and_clears_state_c
     assert "sensitive-authorization-code" not in location
     assert "provider+token" not in location
     assert "Max-Age=0" in response.headers["set-cookie"]
+
+
+@pytest.mark.asyncio
+async def test_callback_creates_opaque_link_intent_for_existing_account(monkeypatch) -> None:
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/v1/auth/oauth/google/callback",
+            "headers": [(b"cookie", b"orna_oauth_state_google=opaque-state")],
+        }
+    )
+    identity = oauth.VerifiedIdentity(
+        provider="google",
+        subject="provider-user-123",
+        email="listener@example.com",
+        email_verified=True,
+    )
+    target_user_id = uuid4()
+    monkeypatch.setattr(
+        oauth,
+        "consume_oauth_state",
+        AsyncMock(
+            return_value={
+                "provider": "google",
+                "nonce": "nonce",
+                "code_verifier": "verifier",
+                "return_to": "/library",
+            }
+        ),
+    )
+    monkeypatch.setattr(oauth, "exchange_code", AsyncMock(return_value=identity))
+    monkeypatch.setattr(
+        service,
+        "authenticate_oauth_identity",
+        AsyncMock(
+            side_effect=service.OAuthLinkRequired(
+                target_user_id=target_user_id,
+                identity=identity,
+            )
+        ),
+    )
+    register_link = AsyncMock(return_value="opaque-link-intent")
+    monkeypatch.setattr(oauth, "register_oauth_link_intent", register_link)
+    monkeypatch.setattr(auth_router, "get_settings", lambda: oauth_settings(AUTH_COOKIE_SECURE=True))
+
+    response = await auth_router._complete_oauth_callback(
+        "google",
+        request,
+        "opaque-state",
+        "authorization-code",
+        None,
+        AsyncMock(),
+    )
+
+    register_link.assert_awaited_once_with(
+        identity,
+        target_user_id=target_user_id,
+        return_to="/library",
+    )
+    assert response.status_code == 303
+    assert "oauth_error=account_conflict" in response.headers["location"]
+    assert "provider-user-123" not in response.headers["location"]
+    assert "listener%40example.com" not in response.headers["location"]
+    cookies = response.headers.getlist("set-cookie")
+    link_cookie = next(cookie for cookie in cookies if cookie.startswith("orna_oauth_link="))
+    assert "opaque-link-intent" in link_cookie
+    assert "HttpOnly" in link_cookie
+    assert "Secure" in link_cookie
+    assert "SameSite=lax" in link_cookie
+    assert "Path=/api/v1/auth" in link_cookie
+
+
+@pytest.mark.asyncio
+async def test_successful_oauth_login_marks_pending_link_reauthenticated(monkeypatch) -> None:
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/v1/auth/oauth/apple/callback",
+            "headers": [
+                (
+                    b"cookie",
+                    b"orna_oauth_state_apple=opaque-state; orna_oauth_link=opaque-link-intent",
+                )
+            ],
+        }
+    )
+    user_id = uuid4()
+    payload = SimpleNamespace(user=SimpleNamespace(id=user_id))
+    monkeypatch.setattr(
+        oauth,
+        "consume_oauth_state",
+        AsyncMock(
+            return_value={
+                "provider": "apple",
+                "nonce": "nonce",
+                "code_verifier": "verifier",
+                "return_to": "/membership",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        oauth,
+        "exchange_code",
+        AsyncMock(
+            return_value=oauth.VerifiedIdentity(
+                provider="apple",
+                subject="apple-user",
+                email="listener@example.com",
+                email_verified=True,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "authenticate_oauth_identity",
+        AsyncMock(return_value=(payload, "refresh")),
+    )
+    monkeypatch.setattr(auth_router, "_set_auth_cookies", lambda *args: None)
+    mark = AsyncMock(return_value=True)
+    monkeypatch.setattr(oauth, "mark_oauth_link_reauthenticated", mark)
+
+    response = await auth_router._complete_oauth_callback(
+        "apple",
+        request,
+        "opaque-state",
+        "authorization-code",
+        None,
+        AsyncMock(),
+    )
+
+    assert response.status_code == 303
+    mark.assert_awaited_once_with("opaque-link-intent", user_id)
+
+
+@pytest.mark.asyncio
+async def test_pending_and_confirm_routes_require_ready_matching_intent(monkeypatch) -> None:
+    user_id = uuid4()
+    current_user = CurrentUser(id=str(user_id), email="listener@example.com")
+    intent = oauth.OAuthLinkIntent(
+        provider="google",
+        subject="provider-user-123",
+        email="listener@example.com",
+        target_user_id=user_id,
+        return_to="/library",
+        reauthenticated_user_id=user_id,
+    )
+    monkeypatch.setattr(oauth, "get_oauth_link_intent", AsyncMock(return_value=intent))
+
+    pending_response = await auth_router.pending_oauth_link(
+        Response(), "opaque-link-intent", current_user
+    )
+    assert pending_response.pending is True
+    assert pending_response.provider == "google"
+    assert pending_response.ready is True
+
+    monkeypatch.setattr(oauth, "consume_oauth_link_intent", AsyncMock(return_value=intent))
+    link_identity = AsyncMock()
+    monkeypatch.setattr(service, "link_oauth_identity", link_identity)
+    response = Response()
+
+    linked = await auth_router.confirm_oauth_link(
+        auth_router.OAuthLinkConfirmRequest(confirmed=True),
+        response,
+        "opaque-link-intent",
+        current_user,
+        AsyncMock(),
+    )
+
+    assert linked.status == "linked"
+    assert linked.provider == "google"
+    assert linked.return_to == "/library"
+    link_identity.assert_awaited_once_with(
+        ANY,
+        current_user_id=user_id,
+        intent=intent,
+    )
+    assert "Max-Age=0" in response.headers["set-cookie"]
+
+
+@pytest.mark.asyncio
+async def test_failed_oauth_link_confirmation_clears_consumed_cookie(monkeypatch) -> None:
+    user_id = uuid4()
+    current_user = CurrentUser(id=str(user_id), email="listener@example.com")
+    intent = oauth.OAuthLinkIntent(
+        provider="google",
+        subject="provider-user-123",
+        email="listener@example.com",
+        target_user_id=user_id,
+        return_to="/membership",
+        reauthenticated_user_id=user_id,
+    )
+    monkeypatch.setattr(
+        oauth,
+        "consume_oauth_link_intent",
+        AsyncMock(return_value=intent),
+    )
+    monkeypatch.setattr(
+        service,
+        "link_oauth_identity",
+        AsyncMock(side_effect=AuthenticationError("stale")),
+    )
+
+    result = await auth_router.confirm_oauth_link(
+        auth_router.OAuthLinkConfirmRequest(confirmed=True),
+        Response(),
+        "opaque-link-intent",
+        current_user,
+        AsyncMock(),
+    )
+
+    assert result.status_code == 403
+    assert "Max-Age=0" in result.headers["set-cookie"]
+    assert "listener@example.com" not in result.body.decode()
+    assert "provider-user-123" not in result.body.decode()
+
+
+@pytest.mark.asyncio
+async def test_oauth_link_database_failure_is_terminal_and_clears_cookie(monkeypatch) -> None:
+    user_id = uuid4()
+    intent = oauth.OAuthLinkIntent(
+        provider="google",
+        subject="provider-user-123",
+        email="listener@example.com",
+        target_user_id=user_id,
+        return_to="/membership",
+        reauthenticated_user_id=user_id,
+    )
+    monkeypatch.setattr(
+        oauth,
+        "consume_oauth_link_intent",
+        AsyncMock(return_value=intent),
+    )
+    monkeypatch.setattr(
+        service,
+        "link_oauth_identity",
+        AsyncMock(side_effect=SQLAlchemyError("database unavailable")),
+    )
+    session = AsyncMock()
+
+    result = await auth_router.confirm_oauth_link(
+        auth_router.OAuthLinkConfirmRequest(confirmed=True),
+        Response(),
+        "opaque-link-intent",
+        CurrentUser(id=str(user_id), email="listener@example.com"),
+        session,
+    )
+
+    assert result.status_code == 503
+    assert "Max-Age=0" in result.headers["set-cookie"]
+    session.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancel_oauth_link_consumes_intent_and_clears_cookie(monkeypatch) -> None:
+    cancel = AsyncMock(return_value=True)
+    monkeypatch.setattr(oauth, "cancel_oauth_link_intent", cancel)
+    response = Response()
+
+    result = await auth_router.cancel_oauth_link(response, "opaque-link-intent")
+
+    assert result.status == "cancelled"
+    cancel.assert_awaited_once_with("opaque-link-intent")
+    assert "Max-Age=0" in response.headers["set-cookie"]
+
+
+@pytest.mark.asyncio
+async def test_password_login_marks_only_matching_pending_link_as_reauthenticated(monkeypatch) -> None:
+    user_id = uuid4()
+    payload = SimpleNamespace(
+        access_token="access",
+        user=SimpleNamespace(id=user_id),
+    )
+    monkeypatch.setattr(
+        service,
+        "authenticate_password_login",
+        AsyncMock(return_value=(payload, "refresh")),
+    )
+    monkeypatch.setattr(auth_router, "_set_auth_cookies", lambda *args: None)
+    mark = AsyncMock(return_value=True)
+    monkeypatch.setattr(oauth, "mark_oauth_link_reauthenticated", mark)
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/auth/login",
+            "headers": [(b"cookie", b"orna_oauth_link=opaque-link-intent")],
+            "client": ("127.0.0.1", 1234),
+        }
+    )
+
+    result = await auth_router.login(
+        SimpleNamespace(email="listener@example.com", password="correct-password"),
+        request,
+        Response(),
+        AsyncMock(),
+    )
+
+    assert result is payload
+    mark.assert_awaited_once_with("opaque-link-intent", user_id)
 
 
 @pytest.mark.asyncio

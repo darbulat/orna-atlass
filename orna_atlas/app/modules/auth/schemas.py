@@ -70,5 +70,27 @@ class OAuthProvidersResponse(BaseModel):
     providers: list[Literal["google", "apple", "facebook"]]
 
 
+class OAuthLinkPendingResponse(BaseModel):
+    pending: bool
+    provider: Literal["google", "apple", "facebook"] | None = None
+    ready: bool = False
+
+
+class OAuthLinkConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmed: Literal[True]
+
+
+class OAuthLinkResponse(BaseModel):
+    status: Literal["linked"]
+    provider: Literal["google", "apple", "facebook"]
+    return_to: str
+
+
+class OAuthLinkCancelledResponse(BaseModel):
+    status: Literal["cancelled"]
+
+
 class LogoutResponse(BaseModel):
     status: str = "logged_out"

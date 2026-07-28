@@ -482,6 +482,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/oauth/link/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Oauth Link */
+        post: operations["cancel_oauth_link_api_v1_auth_oauth_link_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/link/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Oauth Link */
+        post: operations["confirm_oauth_link_api_v1_auth_oauth_link_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/link/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pending Oauth Link */
+        get: operations["pending_oauth_link_api_v1_auth_oauth_link_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/oauth/providers": {
         parameters: {
             query?: never;
@@ -1843,6 +1894,49 @@ export interface components {
              * @enum {string}
              */
             status: "inactive" | "active" | "cancelled" | "expired";
+        };
+        /** OAuthLinkCancelledResponse */
+        OAuthLinkCancelledResponse: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "cancelled";
+        };
+        /** OAuthLinkConfirmRequest */
+        OAuthLinkConfirmRequest: {
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
+        };
+        /** OAuthLinkPendingResponse */
+        OAuthLinkPendingResponse: {
+            /** Pending */
+            pending: boolean;
+            /** Provider */
+            provider?: ("google" | "apple" | "facebook") | null;
+            /**
+             * Ready
+             * @default false
+             */
+            ready: boolean;
+        };
+        /** OAuthLinkResponse */
+        OAuthLinkResponse: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "google" | "apple" | "facebook";
+            /** Return To */
+            return_to: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "linked";
         };
         /** OAuthProvidersResponse */
         OAuthProvidersResponse: {
@@ -3463,6 +3557,103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    cancel_oauth_link_api_v1_auth_oauth_link_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                orna_oauth_link?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthLinkCancelledResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_oauth_link_api_v1_auth_oauth_link_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                orna_oauth_link?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthLinkConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthLinkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pending_oauth_link_api_v1_auth_oauth_link_pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                orna_oauth_link?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthLinkPendingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

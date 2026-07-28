@@ -63,6 +63,18 @@ async def get_oauth_identity(
     return result.scalar_one_or_none()
 
 
+async def get_oauth_identity_for_user_provider(
+    session: AsyncSession, user_id: UUID, provider: str
+) -> OAuthIdentity | None:
+    result = await session.execute(
+        select(OAuthIdentity).where(
+            OAuthIdentity.user_id == user_id,
+            OAuthIdentity.provider == provider,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def create_oauth_identity(
     session: AsyncSession,
     *,

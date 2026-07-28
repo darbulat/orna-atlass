@@ -7,11 +7,14 @@ import { FormEvent, ReactNode, Suspense, useEffect, useRef, useState } from "rea
 import { SiteHeader } from "../../components/site-header";
 import { ApiError, apiErrorMessage } from "../../lib/api/client";
 import {
+  cancelOAuthLink,
   confirmEmailVerification,
+  confirmOAuthLink,
   confirmPasswordReset,
   fetchCurrentUser,
   fetchMembership,
   fetchOAuthProviders,
+  fetchPendingOAuthLink,
   login,
   logout,
   oauthStartUrl,
@@ -20,6 +23,7 @@ import {
   requestMagicLink,
   requestPasswordReset,
   type Membership,
+  type OAuthLinkPendingResponse,
   type OAuthProvider,
   type User,
 } from "../../lib/api/auth";
@@ -78,7 +82,7 @@ function oauthFailureMessage(provider: OAuthProvider | null, reason: string | nu
   const label = provider ? providerLabels[provider] : "Social";
   if (reason === "cancelled") return `${label} sign-in was cancelled.`;
   if (reason === "account_conflict") {
-    return "An account with this email already exists. Use its original sign-in method.";
+    return `An ORNA account already uses this email. Sign in to your existing account to connect ${label}.`;
   }
   if (reason === "unavailable") {
     return `${label} sign-in is temporarily unavailable. Please try again later.`;
@@ -184,6 +188,8 @@ function MembershipPageContent() {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [configuredProviders, setConfiguredProviders] = useState<OAuthProvider[] | null>(null);
   const [providerLoadError, setProviderLoadError] = useState(false);
+  const [oauthLink, setOauthLink] = useState<OAuthLinkPendingResponse | null>(null);
+  const [oauthLinkBusy, setOauthLinkBusy] = useState(false);
   const [authReturnTo, setAuthReturnTo] = useState("/membership");
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [verificationToken, setVerificationToken] = useState<string | null>(null);
@@ -192,6 +198,7 @@ function MembershipPageContent() {
   const [recoveryRequestMessage, setRecoveryRequestMessage] = useState<string | null>(null);
   const [isFailClosedAnonymous, setIsFailClosedAnonymous] = useState(false);
   const authGeneration = useRef(0);
+  const oauthLinkGeneration = useRef(0);
   const recoveryGeneration = useRef(0);
   const resetTokenActive = useRef(false);
   const resetConfirmationPending = useRef(false);
@@ -344,6 +351,24 @@ function MembershipPageContent() {
         if (!active) return;
         setConfiguredProviders([]);
         setProviderLoadError(true);
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const generation = oauthLinkGeneration.current;
+    void fetchPendingOAuthLink()
+      .then((pending) => {
+        if (!active || generation !== oauthLinkGeneration.current) return;
+        setOauthLink(pending.pending ? pending : null);
+        if (pending.pending && !pending.ready) {
+          setMode("login");
+          setEntryMode("login");
+        }
+      })
+      .catch(() => {
+        if (active && generation === oauthLinkGeneration.current) setOauthLink(null);
       });
     return () => { active = false; };
   }, []);
@@ -554,7 +579,10 @@ function MembershipPageContent() {
     }));
     try {
       const params = new URLSearchParams(window.location.search);
-      await requestMagicLink(email, internalReturnTo(params.get("returnTo")));
+      await requestMagicLink(
+        email,
+        oauthLink?.pending ? "/membership" : internalReturnTo(params.get("returnTo")),
+      );
       if (generation === authGeneration.current) setMagicLinkSent(true);
     } catch (error) {
       if (generation === authGeneration.current) {
@@ -590,6 +618,23 @@ function MembershipPageContent() {
       setUser(token.user);
       setAccountLoadError(null);
       setPassword("");
+      let pendingLink: OAuthLinkPendingResponse | null = null;
+      const linkGeneration = oauthLinkGeneration.current;
+      try {
+        const refreshedLink = await fetchPendingOAuthLink();
+        if (
+          generation !== authGeneration.current
+          || linkGeneration !== oauthLinkGeneration.current
+        ) return;
+        pendingLink = refreshedLink.pending ? refreshedLink : null;
+        setOauthLink(pendingLink);
+      } catch {
+        if (
+          generation !== authGeneration.current
+          || linkGeneration !== oauthLinkGeneration.current
+        ) return;
+        setOauthLink(null);
+      }
       if (mode === "register" && !token.user.email_verified) {
         try {
           await requestEmailVerification();
@@ -620,7 +665,11 @@ function MembershipPageContent() {
       } finally {
         if (generation === authGeneration.current) setIsLoadingMembership(false);
       }
-      if (generation === authGeneration.current && returnTo !== "/membership") {
+      if (
+        generation === authGeneration.current
+        && returnTo !== "/membership"
+        && !pendingLink?.pending
+      ) {
         router.replace(returnTo);
       }
     } catch (error) {
@@ -628,6 +677,68 @@ function MembershipPageContent() {
       setMessage(apiErrorMessage(error, "Authentication failed"));
     } finally {
       if (generation === authGeneration.current) setBusy(false);
+    }
+  }
+
+  async function confirmPendingOAuthLink() {
+    if (!oauthLink?.pending || !oauthLink.ready || !oauthLink.provider) return;
+    const providerLabel = providerLabels[oauthLink.provider];
+    const generation = ++oauthLinkGeneration.current;
+    setOauthLinkBusy(true);
+    setMessage(null);
+    try {
+      const linked = await confirmOAuthLink();
+      if (generation !== oauthLinkGeneration.current) return;
+      setOauthLink(null);
+      setOauthMessage({
+        text: `${providerLabels[linked.provider]} is now connected to your ORNA account.`,
+        error: false,
+      });
+      const destination = internalReturnTo(linked.return_to);
+      if (destination !== "/membership") router.replace(destination);
+    } catch (error) {
+      if (generation !== oauthLinkGeneration.current) return;
+      const terminalUnavailable = (
+        error instanceof ApiError
+        && error.status === 503
+        && typeof error.detail === "object"
+        && error.detail !== null
+        && "detail" in error.detail
+        && error.detail.detail === "OAuth link could not be completed"
+      );
+      if (
+        error instanceof ApiError
+        && typeof error.status === "number"
+        && [400, 403, 409].includes(error.status)
+      ) {
+        setOauthLink(null);
+        setMessage(`That connection request expired or no longer matches this account. Start ${providerLabel} sign-in again.`);
+      } else if (terminalUnavailable) {
+        setOauthLink(null);
+        setMessage(`${providerLabel} could not be connected. Start ${providerLabel} sign-in again before retrying.`);
+      } else {
+        setMessage(apiErrorMessage(error, `${providerLabel} could not be connected. Please try again.`));
+      }
+    } finally {
+      if (generation === oauthLinkGeneration.current) setOauthLinkBusy(false);
+    }
+  }
+
+  async function cancelPendingOAuthLink() {
+    if (!oauthLink?.pending) return;
+    const generation = ++oauthLinkGeneration.current;
+    setOauthLinkBusy(true);
+    setMessage(null);
+    try {
+      await cancelOAuthLink();
+      if (generation !== oauthLinkGeneration.current) return;
+      setOauthLink(null);
+      setOauthMessage(null);
+    } catch (error) {
+      if (generation !== oauthLinkGeneration.current) return;
+      setMessage(apiErrorMessage(error, "The connection request could not be cancelled."));
+    } finally {
+      if (generation === oauthLinkGeneration.current) setOauthLinkBusy(false);
     }
   }
 
@@ -808,6 +919,46 @@ function MembershipPageContent() {
           <p>Manage your listening access and return to the landscapes you have saved.</p>
         </header>
 
+        {oauthLink?.pending && oauthLink.provider ? (
+          <section
+            className="account-link-card"
+            aria-label={`Connect ${providerLabels[oauthLink.provider]}`}
+          >
+            <div>
+              <p className="eyebrow">New sign-in method</p>
+              <h2>Connect {providerLabels[oauthLink.provider]}</h2>
+              <p>
+                {oauthLink.ready
+                  ? `Connect ${providerLabels[oauthLink.provider]} to ${user.email}. Future sign-ins can use either method.`
+                  : `For your security, sign out and sign back in to ${user.email} before connecting ${providerLabels[oauthLink.provider]}.`}
+              </p>
+            </div>
+            <div className="account-link-actions">
+              {oauthLink.ready ? (
+                <button
+                  type="button"
+                  onClick={confirmPendingOAuthLink}
+                  disabled={oauthLinkBusy}
+                >
+                  {oauthLinkBusy ? "Connecting…" : `Connect ${providerLabels[oauthLink.provider]}`}
+                </button>
+              ) : (
+                <button type="button" onClick={signOut} disabled={busy || oauthLinkBusy}>
+                  Sign out and verify
+                </button>
+              )}
+              <button
+                className="account-link-cancel"
+                type="button"
+                onClick={cancelPendingOAuthLink}
+                disabled={oauthLinkBusy}
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        ) : null}
+
         <div className="account-dashboard">
           <section
             className="account-overview"
@@ -906,6 +1057,9 @@ function MembershipPageContent() {
     : mode === "register"
       ? "Create a free account. Payment details are not required and public listening remains anonymous."
       : "Sign in securely and create a free account while public listening remains anonymous.";
+  const availableProviders = configuredProviders?.filter(
+    (provider) => provider !== oauthLink?.provider,
+  ) ?? null;
 
   return (
     <main className="auth-page" id="main-content">
@@ -919,6 +1073,17 @@ function MembershipPageContent() {
 
         {registrationComplete ? <AuthNotice>Your free account was created. Sign in to continue.</AuthNotice> : null}
         {oauthMessage ? <AuthNotice error={oauthMessage.error}>{oauthMessage.text}</AuthNotice> : null}
+        {oauthLink?.pending && oauthLink.provider ? (
+          <button
+            className="auth-link-cancel"
+            type="button"
+            onClick={cancelPendingOAuthLink}
+            disabled={oauthLinkBusy}
+            aria-label={`Cancel ${providerLabels[oauthLink.provider]} linking`}
+          >
+            {oauthLinkBusy ? "Cancelling…" : "Cancel connection request"}
+          </button>
+        ) : null}
         {isLoadingAccount ? <AuthNotice>Loading account…</AuthNotice> : null}
         {accountLoadError ? <AuthNotice error>{accountLoadError}</AuthNotice> : null}
         {magicLinkSent ? (
@@ -937,7 +1102,9 @@ function MembershipPageContent() {
             onChange={(event) => setEmail(event.target.value)}
           />
           <button className="auth-continue" type="submit" disabled={busy}>
-            {busy ? "Please wait…" : "Email me a sign-in link"}
+            {busy
+              ? "Please wait…"
+              : oauthLink?.pending ? "Send a sign-in link" : "Email me a sign-in link"}
           </button>
         </form>
 
@@ -954,19 +1121,21 @@ function MembershipPageContent() {
           >
             Sign in
           </button>
-          <button
-            type="button"
-            aria-pressed={mode === "register"}
-            onClick={() => {
-              setMode("register");
-              setEntryMode("register");
-              window.dispatchEvent(new CustomEvent("orna:analytics", {
-                detail: { name: "signup_started", placement: "membership_form" },
-              }));
-            }}
-          >
-            Create account
-          </button>
+          {!oauthLink?.pending ? (
+            <button
+              type="button"
+              aria-pressed={mode === "register"}
+              onClick={() => {
+                setMode("register");
+                setEntryMode("register");
+                window.dispatchEvent(new CustomEvent("orna:analytics", {
+                  detail: { name: "signup_started", placement: "membership_form" },
+                }));
+              }}
+            >
+              Create account
+            </button>
+          ) : null}
         </div>
 
         <form className="auth-form" onSubmit={submit}>
@@ -989,12 +1158,16 @@ function MembershipPageContent() {
           ) : null}
         </form>
 
-        {configuredProviders && configuredProviders.length > 0 ? (
+        {availableProviders && availableProviders.length > 0 ? (
           <>
             <div className="auth-divider"><span>or</span></div>
             <div className="auth-social" role="group" aria-label="Continue with a social account">
-              {configuredProviders.map((provider) => (
-                <SocialLink key={provider} provider={provider} returnTo={authReturnTo} />
+              {availableProviders.map((provider) => (
+                <SocialLink
+                  key={provider}
+                  provider={provider}
+                  returnTo={oauthLink?.pending ? "/membership" : authReturnTo}
+                />
               ))}
             </div>
           </>
