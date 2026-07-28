@@ -22,3 +22,30 @@ export function accumulateWheelZoomHeight(
   const nextHeight = targetHeight * Math.exp(boundedDelta * wheelZoomSensitivity);
   return Math.max(bounds.minimumHeight, Math.min(bounds.maximumHeight, nextHeight));
 }
+
+export function clampZoomScaleToActualBounds(
+  requestedScale: number,
+  actualHeightAtScale: (scale: number) => number,
+  bounds: WheelZoomBounds,
+): number {
+  const requestedHeight = actualHeightAtScale(requestedScale);
+  if (!Number.isFinite(requestedHeight)) return 1;
+  if (requestedHeight >= bounds.minimumHeight && requestedHeight <= bounds.maximumHeight) {
+    return requestedScale;
+  }
+
+  const isBelowMinimum = requestedHeight < bounds.minimumHeight;
+  let safeScale = 1;
+  let unsafeScale = requestedScale;
+  for (let iteration = 0; iteration < 32; iteration += 1) {
+    const candidateScale = (safeScale + unsafeScale) / 2;
+    const candidateHeight = actualHeightAtScale(candidateScale);
+    const violatesBound = !Number.isFinite(candidateHeight)
+      || (isBelowMinimum
+        ? candidateHeight < bounds.minimumHeight
+        : candidateHeight > bounds.maximumHeight);
+    if (violatesBound) unsafeScale = candidateScale;
+    else safeScale = candidateScale;
+  }
+  return safeScale;
+}

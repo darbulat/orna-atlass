@@ -21,7 +21,11 @@ import {
   listeningModes,
   type ListeningMode,
 } from "./listeningModes";
-import { accumulateWheelZoomHeight, normalizeWheelDelta } from "./globeZoom";
+import {
+  accumulateWheelZoomHeight,
+  clampZoomScaleToActualBounds,
+  normalizeWheelDelta,
+} from "./globeZoom";
 
 type AtlasView = "globe" | "map" | "list";
 
@@ -211,6 +215,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
           CameraEventType,
           Cartesian2,
           Cartesian3,
+          Cartographic,
           EllipsoidTerrainProvider,
           ImageryLayer,
           ScreenSpaceEventHandler,
@@ -305,11 +310,30 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
           );
           const start = Cartesian3.clone(viewer.camera.position);
           const fromTarget = Cartesian3.subtract(start, cursorTarget, new Cartesian3());
+          const scaledFromTarget = new Cartesian3();
+          const destination = new Cartesian3();
+          const destinationCartographic = new Cartographic();
+          const requestedScale = zoomTargetHeight / currentHeight;
+          const boundedScale = clampZoomScaleToActualBounds(
+            requestedScale,
+            (scale) => {
+              Cartesian3.multiplyByScalar(fromTarget, scale, scaledFromTarget);
+              Cartesian3.add(cursorTarget, scaledFromTarget, destination);
+              return viewer!.scene.globe.ellipsoid.cartesianToCartographic(
+                destination,
+                destinationCartographic,
+              )?.height ?? Number.NaN;
+            },
+            {
+              minimumHeight: minimumGlobeZoomDistance,
+              maximumHeight: maximumGlobeZoomDistance,
+            },
+          );
           zoomTargetPosition = Cartesian3.add(
             cursorTarget,
             Cartesian3.multiplyByScalar(
               fromTarget,
-              zoomTargetHeight / currentHeight,
+              boundedScale,
               new Cartesian3(),
             ),
             new Cartesian3(),
