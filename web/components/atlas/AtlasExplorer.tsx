@@ -24,6 +24,7 @@ import {
 import {
   accumulateWheelZoomHeight,
   centeredZoomScale,
+  clampPositionToHeightBounds,
   clampZoomScaleToActualBounds,
   cursorAnchoredRotationFraction,
   normalizeWheelDelta,
@@ -401,10 +402,25 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
             ? rotatePositionTowardTarget(start, cursorTarget, rotationFraction)
             : start;
           const centeredPosition = scalePositionFromGlobeCenter(rotatedPosition, boundedScale);
+          const boundedPosition = clampPositionToHeightBounds(
+            centeredPosition,
+            {
+              minimumHeight: minimumGlobeZoomDistance,
+              maximumHeight: maximumGlobeZoomDistance,
+            },
+            (position) => viewer!.scene.globe.ellipsoid.cartesianToCartographic(
+              Cartesian3.fromElements(position.x, position.y, position.z, destination),
+              destinationCartographic,
+            ),
+            (position) => viewer!.scene.globe.ellipsoid.cartographicToCartesian(
+              new Cartographic(position.longitude, position.latitude, position.height),
+              destination,
+            ),
+          );
           zoomTargetPosition = new Cartesian3(
-            centeredPosition.x,
-            centeredPosition.y,
-            centeredPosition.z,
+            boundedPosition.x,
+            boundedPosition.y,
+            boundedPosition.z,
           );
           if (zoomAnimationFrame !== null) return;
           const step = () => {

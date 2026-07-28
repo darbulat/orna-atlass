@@ -1,9 +1,11 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const { Cartesian3, Cartographic, Ellipsoid } = require("cesium");
 
 const {
   accumulateWheelZoomHeight,
   centeredZoomScale,
+  clampPositionToHeightBounds,
   clampZoomScaleToActualBounds,
   cursorAnchoredRotationFraction,
   normalizeWheelDelta,
@@ -76,6 +78,52 @@ test("zooming in rotates the centered camera toward the pointer target", () => {
     cursorAnchoredRotationFraction(cameraDistance, targetDistance, angleBefore, 24_000_000),
     0,
   );
+});
+
+test("pointer rotation re-clamps the final WGS84 cartographic height", () => {
+  const ellipsoid = Ellipsoid.WGS84;
+  const bounds = { minimumHeight: 350_000, maximumHeight: 52_000_000 };
+  const camera = Cartesian3.fromDegrees(0, 60, 640_000);
+  const pointerTarget = Cartesian3.fromDegrees(0, 40, 0);
+  const currentHeight = ellipsoid.cartesianToCartographic(camera).height;
+  const cameraMagnitude = Cartesian3.magnitude(camera);
+  const requestedScale = centeredZoomScale(
+    cameraMagnitude,
+    currentHeight,
+    bounds.minimumHeight,
+  );
+  const scratchPosition = new Cartesian3();
+  const scratchCartographic = new Cartographic();
+  const boundedScale = clampZoomScaleToActualBounds(
+    requestedScale,
+    (scale) => ellipsoid.cartesianToCartographic(
+      Cartesian3.multiplyByScalar(camera, scale, scratchPosition),
+      scratchCartographic,
+    ).height,
+    bounds,
+  );
+  const rotationFraction = cursorAnchoredRotationFraction(
+    cameraMagnitude,
+    Cartesian3.magnitude(pointerTarget),
+    Cartesian3.angleBetween(camera, pointerTarget),
+    cameraMagnitude * boundedScale,
+  );
+  const rotated = rotatePositionTowardTarget(camera, pointerTarget, rotationFraction);
+  const destination = scalePositionFromGlobeCenter(rotated, boundedScale);
+  const destinationCartographic = ellipsoid.cartesianToCartographic(destination);
+
+  assert.ok(destinationCartographic.height < bounds.minimumHeight);
+  const clamped = clampPositionToHeightBounds(
+    destination,
+    bounds,
+    (position) => ellipsoid.cartesianToCartographic(position),
+    (position) => ellipsoid.cartographicToCartesian(position),
+  );
+  const clampedCartographic = ellipsoid.cartesianToCartographic(clamped);
+  assert.ok(clampedCartographic.height >= bounds.minimumHeight - 0.001);
+  assert.ok(clampedCartographic.height <= bounds.minimumHeight + 0.001);
+  assert.ok(Math.abs(clampedCartographic.longitude - destinationCartographic.longitude) < 1e-12);
+  assert.ok(Math.abs(clampedCartographic.latitude - destinationCartographic.latitude) < 1e-12);
 });
 
 test("an accumulated centered zoom clamps the destination's actual height", () => {

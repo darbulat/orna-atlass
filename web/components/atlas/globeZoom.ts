@@ -13,6 +13,12 @@ type CartesianPosition = {
   z: number;
 };
 
+type CartographicPosition = {
+  longitude: number;
+  latitude: number;
+  height: number;
+};
+
 export function normalizeWheelDelta(deltaY: number, deltaMode: number, pageHeight: number): number {
   if (deltaMode === 1) return deltaY * wheelLineHeightPixels;
   if (deltaMode === 2) return deltaY * pageHeight;
@@ -48,6 +54,28 @@ export function scalePositionFromGlobeCenter(
     y: position.y * scale,
     z: position.z * scale,
   };
+}
+
+export function clampPositionToHeightBounds(
+  position: CartesianPosition,
+  bounds: WheelZoomBounds,
+  toCartographic: (position: CartesianPosition) => CartographicPosition | null | undefined,
+  toCartesian: (position: CartographicPosition) => CartesianPosition,
+): CartesianPosition {
+  const cartographic = toCartographic(position);
+  if (
+    !cartographic
+    || !Number.isFinite(cartographic.longitude)
+    || !Number.isFinite(cartographic.latitude)
+    || !Number.isFinite(cartographic.height)
+  ) return { ...position };
+
+  const boundedHeight = Math.max(
+    bounds.minimumHeight,
+    Math.min(bounds.maximumHeight, cartographic.height),
+  );
+  if (boundedHeight === cartographic.height) return { ...position };
+  return toCartesian({ ...cartographic, height: boundedHeight });
 }
 
 export function cursorAnchoredRotationFraction(
