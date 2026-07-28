@@ -44,7 +44,7 @@ add `--adopt-legacy-seed`; collection/session links are still left untouched.
 Connect to the deployment server before running the server Compose commands below:
 
 ```bash
-ssh root@31.59.106.143
+ssh root@94.183.151.61
 ```
 
 For a shared development server backed by external S3-compatible storage, set
