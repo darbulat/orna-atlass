@@ -160,7 +160,7 @@ test("mobile home navigation leaves the inline player controls clickable", async
   await expect(page.getByRole("region", { name: "Session player" })).toHaveCount(0);
 });
 
-test("home globe header keeps exploration public and sign-in optional", async ({ page }) => {
+test("home globe header routes account access through Subscribe", async ({ page }) => {
   await page.goto("/");
 
   const navigation = page.getByRole("navigation", { name: "Primary navigation" });
@@ -169,7 +169,7 @@ test("home globe header keeps exploration public and sign-in optional", async ({
   await expect(navigation.getByRole("link", { name: "About", exact: true })).toHaveAttribute("href", "/about");
   await expect(navigation.getByRole("button", { name: "Open search", exact: true })).toBeEnabled();
   await expect(page.getByRole("contentinfo")).toHaveCount(1);
-  await expect(navigation.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
+  await expect(navigation.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(0);
   await expect(navigation.getByRole("link", { name: "Subscribe", exact: true })).toHaveAttribute(
     "href",
     "/membership?mode=register",
@@ -177,7 +177,7 @@ test("home globe header keeps exploration public and sign-in optional", async ({
   await expect(page.getByRole("region", { name: "ORNA Atlas" }).getByRole("button", { name: "Listen", exact: true })).toBeEnabled();
 });
 
-test("header search and sign-in open accessible overlays without replacing the atlas", async ({ page }) => {
+test("header search opens an accessible overlay without replacing the atlas", async ({ page }) => {
   await page.goto("/");
   const navigation = page.getByRole("navigation", { name: "Primary navigation" });
   const atlas = page.locator(".atlas-reference-ui");
@@ -196,15 +196,7 @@ test("header search and sign-in open accessible overlays without replacing the a
   await expect(page.locator("nav.site-nav")).not.toHaveAttribute("aria-hidden", "true");
   await expect(page.locator("main#main-content")).not.toHaveAttribute("aria-hidden", "true");
 
-  const loginTrigger = navigation.getByRole("button", { name: "Sign in", exact: true });
-  await loginTrigger.click();
-  const loginDialog = page.getByRole("dialog", { name: "Sign in without leaving the atlas" });
-  await expect(loginDialog).toBeVisible();
-  await expect(atlas).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(loginDialog).toHaveCount(0);
-  await expect(loginTrigger).toBeFocused();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("dialog", { name: "Sign in without leaving the atlas" })).toHaveCount(0);
 });
 
 test("header search carries its query from editorial pages into the atlas", async ({ page }) => {
@@ -229,7 +221,7 @@ test("home globe header stays reachable on a 320px viewport", async ({ page }) =
 
   const navigation = page.getByRole("navigation", { name: "Primary navigation" });
   const controls = navigation.getByRole("link").or(navigation.getByRole("button"));
-  await expect(controls).toHaveCount(7);
+  await expect(controls).toHaveCount(6);
   for (const control of await controls.all()) {
     const box = await control.boundingBox();
     expect(box).not.toBeNull();
@@ -435,7 +427,7 @@ test("about mobile calls to action provide 44px touch targets", async ({ page })
   await page.goto("/about");
 
   const callsToAction = page.locator(".about-nav a, .about-nav button, .about-enter");
-  expect(await callsToAction.count()).toBeGreaterThanOrEqual(8);
+  expect(await callsToAction.count()).toBeGreaterThanOrEqual(7);
 
   for (const link of await callsToAction.all()) {
     const box = await link.boundingBox();
@@ -1263,8 +1255,8 @@ test("password sign-in invalidates an old-account mutation before the login requ
   accountBoundaries = await page.evaluate(() => (
     (window as typeof window & { __accountBoundaries?: number }).__accountBoundaries ?? 0
   ));
+  await page.getByRole("link", { name: "Subscribe" }).click();
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.getByRole("link", { name: "Use password or social sign-in" }).click();
   await page.getByLabel("Password account email").fill("other-member@example.com");
   const passwordInput = page.getByLabel("Password", { exact: true });
   await passwordInput.fill("secret-password");
@@ -1473,8 +1465,8 @@ test("password sign-in aborts a hung older refresh before installing the new acc
   const boundariesBeforeLogin = await page.evaluate(() => (
     (window as typeof window & { __accountBoundaries?: number }).__accountBoundaries ?? 0
   ));
+  await page.getByRole("link", { name: "Subscribe" }).click();
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.getByRole("link", { name: "Use password or social sign-in" }).click();
   await page.getByLabel("Password account email").fill("other-member@example.com");
   const passwordInput = page.getByLabel("Password", { exact: true });
   await passwordInput.fill("secret-password");
@@ -2424,7 +2416,7 @@ test("account library discards old-account successes and reloads after an authen
   await expect(page.getByText("Current account recording").first()).toBeVisible();
 });
 
-test("homepage discovery links reach collections, sign-in, and subscription entry points", async ({ page }) => {
+test("homepage discovery links reach collections and the subscription entry point", async ({ page }) => {
   await page.goto("/");
   await page.waitForLoadState("networkidle");
   const collectionsLink = page.getByRole("link", { name: "See all collections" });
@@ -2432,14 +2424,6 @@ test("homepage discovery links reach collections, sign-in, and subscription entr
   await page.goto("/collections");
   await expect(page).toHaveURL(/\/collections$/);
   await expect(page.getByRole("heading", { name: "Collections", level: 1 })).toBeVisible();
-  await page.goto("/");
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  const passwordSignInLink = page.getByRole("dialog", { name: "Sign in without leaving the atlas" })
-    .getByRole("link", { name: "Use password or social sign-in" });
-  await expect(passwordSignInLink).toHaveAttribute("href", "/membership?mode=login");
-  await page.goto("/membership?mode=login");
-  await expect(page).toHaveURL(/\/membership\?mode=login/);
   await page.goto("/");
   await page.waitForLoadState("networkidle");
   await expect(page.getByRole("link", { name: "Subscribe" })).toHaveAttribute("href", "/membership?mode=register");
