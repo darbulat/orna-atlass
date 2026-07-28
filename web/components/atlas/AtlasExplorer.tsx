@@ -52,12 +52,14 @@ type CesiumGlobeProps = {
   onSelectPoint: (point: AtlasPoint) => void;
 };
 
-const satelliteImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
+const streetImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer";
 const desktopLocationCardCount = 5;
 const mobileLocationCardCount = 2;
 const focusedLocationHeight = 1500000;
-const minimumGlobeZoomDistance = 350000;
+const minimumGlobeZoomDistance = 50000;
 const maximumGlobeZoomDistance = 52000000;
+const markerHeight = 20000;
+const selectedMarkerHeight = 30000;
 const markerDragThresholdPixels = 8;
 
 function useMobileViewport() {
@@ -161,6 +163,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
   const cesiumRef = useRef<CesiumModule | null>(null);
   const cancelWheelZoomRef = useRef<() => void>(() => undefined);
   const pointByEntityIdRef = useRef(new Map<string, AtlasPoint>());
+  const selectedEntityIdRef = useRef<string | null>(null);
   const onSelectRef = useRef(onSelectPoint);
   const [isWebglUnavailable, setIsWebglUnavailable] = useState(false);
   const [isViewerReady, setIsViewerReady] = useState(false);
@@ -224,6 +227,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
           Cartographic,
           EllipsoidTerrainProvider,
           ImageryLayer,
+          SceneTransforms,
           ScreenSpaceEventHandler,
           ScreenSpaceEventType,
           TileMapServiceImageryProvider,
@@ -321,6 +325,25 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
             "data-camera-position-direction",
             [cameraPositionDirection.x, cameraPositionDirection.y, cameraPositionDirection.z].join(","),
           );
+          host.parentElement?.setAttribute(
+            "data-camera-height",
+            viewer.camera.positionCartographic.height.toString(),
+          );
+          const selectedEntity = selectedEntityIdRef.current
+            ? viewer.entities.getById(selectedEntityIdRef.current)
+            : undefined;
+          const selectedPosition = selectedEntity?.position?.getValue(viewer.clock.currentTime);
+          const selectedWindowPosition = selectedPosition
+            ? SceneTransforms.worldToWindowCoordinates(viewer.scene, selectedPosition)
+            : undefined;
+          if (selectedWindowPosition) {
+            host.parentElement?.setAttribute(
+              "data-selected-marker-position",
+              `${selectedWindowPosition.x},${selectedWindowPosition.y}`,
+            );
+          } else {
+            host.parentElement?.removeAttribute("data-selected-marker-position");
+          }
         };
         removeScenePreRenderListener = viewer.scene.preRender.addEventListener(() => {
           lockCameraToGlobeCenter();
@@ -476,14 +499,14 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
         setIsViewerReady(true);
 
         try {
-          const satelliteProvider = await ArcGisMapServerImageryProvider.fromUrl(satelliteImageryUrl, {
+          const streetProvider = await ArcGisMapServerImageryProvider.fromUrl(streetImageryUrl, {
             enablePickFeatures: false,
           });
           if (!isDisposed && viewer && !viewer.isDestroyed()) {
-            viewer.imageryLayers.add(new ImageryLayer(satelliteProvider));
+            viewer.imageryLayers.add(new ImageryLayer(streetProvider));
           }
         } catch {
-          // Keep the local NaturalEarth globe interactive when satellite imagery is unavailable.
+          // Keep the local NaturalEarth globe interactive when street imagery is unavailable.
         }
       } catch {
         if (!isDisposed) {
@@ -533,6 +556,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
 
     viewer.entities.removeAll();
     pointByEntityIdRef.current.clear();
+    selectedEntityIdRef.current = null;
 
     points.forEach((item) => {
       const entityId = `${item.type}-${item.id}`;
@@ -554,11 +578,18 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       if (isPoint(item)) {
         pointByEntityIdRef.current.set(entityId, item);
       }
+      if (selected) {
+        selectedEntityIdRef.current = entityId;
+      }
 
       viewer.entities.add({
         id: entityId,
         name: isPoint(item) ? item.name : `${item.count} locations`,
-        position: Cartesian3.fromDegrees(item.longitude, item.latitude, selected ? 110000 : 85000),
+        position: Cartesian3.fromDegrees(
+          item.longitude,
+          item.latitude,
+          selected ? selectedMarkerHeight : markerHeight,
+        ),
         point: {
           pixelSize: selected ? 20 : hovered ? 17 : item.type === "cluster" ? 16 : 12,
           color: markerColor,
@@ -642,7 +673,10 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       data-focus-height={focusedLocationHeight}
       data-inertia-spin="0.9"
       data-inertia-zoom="0.8"
+      data-imagery-layer="street"
       data-marker-drag-threshold={markerDragThresholdPixels}
+      data-maximum-marker-height={selectedMarkerHeight}
+      data-minimum-zoom-distance={minimumGlobeZoomDistance}
       data-pole-clamp="z-axis"
       data-touch-controls="centered"
       data-zoom-anchor="pointer-rotate"
