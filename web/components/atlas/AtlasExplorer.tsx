@@ -163,6 +163,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
   const cesiumRef = useRef<CesiumModule | null>(null);
   const cancelWheelZoomRef = useRef<() => void>(() => undefined);
   const pointByEntityIdRef = useRef(new Map<string, AtlasPoint>());
+  const selectedEntityIdRef = useRef<string | null>(null);
   const onSelectRef = useRef(onSelectPoint);
   const [isWebglUnavailable, setIsWebglUnavailable] = useState(false);
   const [isViewerReady, setIsViewerReady] = useState(false);
@@ -226,6 +227,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
           Cartographic,
           EllipsoidTerrainProvider,
           ImageryLayer,
+          SceneTransforms,
           ScreenSpaceEventHandler,
           ScreenSpaceEventType,
           TileMapServiceImageryProvider,
@@ -323,6 +325,25 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
             "data-camera-position-direction",
             [cameraPositionDirection.x, cameraPositionDirection.y, cameraPositionDirection.z].join(","),
           );
+          host.parentElement?.setAttribute(
+            "data-camera-height",
+            viewer.camera.positionCartographic.height.toString(),
+          );
+          const selectedEntity = selectedEntityIdRef.current
+            ? viewer.entities.getById(selectedEntityIdRef.current)
+            : undefined;
+          const selectedPosition = selectedEntity?.position?.getValue(viewer.clock.currentTime);
+          const selectedWindowPosition = selectedPosition
+            ? SceneTransforms.worldToWindowCoordinates(viewer.scene, selectedPosition)
+            : undefined;
+          if (selectedWindowPosition) {
+            host.parentElement?.setAttribute(
+              "data-selected-marker-position",
+              `${selectedWindowPosition.x},${selectedWindowPosition.y}`,
+            );
+          } else {
+            host.parentElement?.removeAttribute("data-selected-marker-position");
+          }
         };
         removeScenePreRenderListener = viewer.scene.preRender.addEventListener(() => {
           lockCameraToGlobeCenter();
@@ -535,6 +556,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
 
     viewer.entities.removeAll();
     pointByEntityIdRef.current.clear();
+    selectedEntityIdRef.current = null;
 
     points.forEach((item) => {
       const entityId = `${item.type}-${item.id}`;
@@ -555,6 +577,9 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
 
       if (isPoint(item)) {
         pointByEntityIdRef.current.set(entityId, item);
+      }
+      if (selected) {
+        selectedEntityIdRef.current = entityId;
       }
 
       viewer.entities.add({

@@ -39,6 +39,41 @@ test("atlas globe exposes closer zoom and requests the street imagery layer", as
   await streetLayerRequest;
 });
 
+test("atlas markers remain selectable at the closest globe zoom", async ({ page }) => {
+  await page.goto("/atlas");
+
+  const stage = page.getByLabel("Interactive Cesium globe");
+  const canvas = page.locator(".cesium-widget canvas");
+  const zoomIn = page.getByRole("button", { name: "Zoom in" });
+  await expect(canvas).toBeVisible();
+  await expect(page.locator(".atlas-side-panel")).toHaveCount(0);
+
+  const canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  await page.mouse.move(
+    canvasBox!.x + canvasBox!.width / 2,
+    canvasBox!.y + canvasBox!.height / 2,
+  );
+  for (let attempt = 0; attempt < 13; attempt += 1) {
+    await page.mouse.wheel(0, -600);
+    await page.waitForTimeout(500);
+  }
+  await zoomIn.click();
+  await page.waitForTimeout(500);
+
+  await expect.poll(async () => Number(await stage.getAttribute("data-camera-height"))).toBeLessThanOrEqual(50500);
+  await expect(zoomIn).toBeDisabled();
+  await expect(stage).toHaveAttribute("data-selected-marker-position", /.+/);
+  const markerPosition = (await stage.getAttribute("data-selected-marker-position"))!
+    .split(",")
+    .map(Number);
+  await page.mouse.click(
+    canvasBox!.x + markerPosition[0],
+    canvasBox!.y + markerPosition[1],
+  );
+  await expect(page.locator(".atlas-side-panel")).toBeVisible();
+});
+
 test("home page opens on a selected interactive globe before marketing content", async ({ page }) => {
   let grantRequests = 0;
   let authRequests = 0;
