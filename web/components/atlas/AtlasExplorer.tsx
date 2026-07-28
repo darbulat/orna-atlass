@@ -52,11 +52,11 @@ type CesiumGlobeProps = {
   onSelectPoint: (point: AtlasPoint) => void;
 };
 
-const satelliteImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
+const streetImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer";
 const desktopLocationCardCount = 5;
 const mobileLocationCardCount = 2;
 const focusedLocationHeight = 1500000;
-const minimumGlobeZoomDistance = 350000;
+const minimumGlobeZoomDistance = 50000;
 const maximumGlobeZoomDistance = 52000000;
 const markerDragThresholdPixels = 8;
 
@@ -476,14 +476,14 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
         setIsViewerReady(true);
 
         try {
-          const satelliteProvider = await ArcGisMapServerImageryProvider.fromUrl(satelliteImageryUrl, {
+          const streetProvider = await ArcGisMapServerImageryProvider.fromUrl(streetImageryUrl, {
             enablePickFeatures: false,
           });
           if (!isDisposed && viewer && !viewer.isDestroyed()) {
-            viewer.imageryLayers.add(new ImageryLayer(satelliteProvider));
+            viewer.imageryLayers.add(new ImageryLayer(streetProvider));
           }
         } catch {
-          // Keep the local NaturalEarth globe interactive when satellite imagery is unavailable.
+          // Keep the local NaturalEarth globe interactive when street imagery is unavailable.
         }
       } catch {
         if (!isDisposed) {
@@ -642,7 +642,9 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       data-focus-height={focusedLocationHeight}
       data-inertia-spin="0.9"
       data-inertia-zoom="0.8"
+      data-imagery-layer="street"
       data-marker-drag-threshold={markerDragThresholdPixels}
+      data-minimum-zoom-distance={minimumGlobeZoomDistance}
       data-pole-clamp="z-axis"
       data-touch-controls="centered"
       data-zoom-anchor="pointer-rotate"

@@ -22,6 +22,19 @@ function boxesOverlap(first: BoundingBox, second: BoundingBox) {
     && first.y + first.height > second.y;
 }
 
+test("atlas globe exposes closer zoom and requests the street imagery layer", async ({ page }) => {
+  const streetLayerRequest = page.waitForRequest((request) => (
+    request.url().includes("/World_Street_Map/MapServer")
+  ));
+
+  await page.goto("/atlas");
+
+  const globe = page.getByLabel("Interactive Cesium globe");
+  await expect(globe).toHaveAttribute("data-minimum-zoom-distance", "50000");
+  await expect(globe).toHaveAttribute("data-imagery-layer", "street");
+  await streetLayerRequest;
+});
+
 test("home page opens on a selected interactive globe before marketing content", async ({ page }) => {
   let grantRequests = 0;
   let authRequests = 0;
