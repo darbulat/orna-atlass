@@ -5,7 +5,9 @@ const {
   accumulateWheelZoomHeight,
   centeredZoomScale,
   clampZoomScaleToActualBounds,
+  cursorAnchoredRotationFraction,
   normalizeWheelDelta,
+  rotatePositionTowardTarget,
   scalePositionFromGlobeCenter,
 } = require("../../.next-codex-unit/components/atlas/globeZoom.js");
 
@@ -45,6 +47,35 @@ test("centered wheel zoom changes distance without changing the camera ray", () 
   assert.equal(destination.y / position.y, scale);
   assert.equal(destination.z / position.z, scale);
   assert.equal(centeredZoomScale(Number.NaN, 16_000_000, 8_000_000), 1);
+});
+
+test("zooming in rotates the centered camera toward the pointer target", () => {
+  const camera = { x: 22_000_000, y: 0, z: 0 };
+  const pointerTarget = { x: 5_300_000, y: 3_200_000, z: 0 };
+  const cameraDistance = Math.hypot(camera.x, camera.y, camera.z);
+  const targetDistance = Math.hypot(pointerTarget.x, pointerTarget.y, pointerTarget.z);
+  const angleBefore = Math.acos(camera.x * pointerTarget.x / (cameraDistance * targetDistance));
+  const nextCameraDistance = 18_000_000;
+  const rotationFraction = cursorAnchoredRotationFraction(
+    cameraDistance,
+    targetDistance,
+    angleBefore,
+    nextCameraDistance,
+  );
+  const rotated = rotatePositionTowardTarget(camera, pointerTarget, rotationFraction);
+  const rotatedDistance = Math.hypot(rotated.x, rotated.y, rotated.z);
+  const angleAfter = Math.acos(
+    (rotated.x * pointerTarget.x + rotated.y * pointerTarget.y + rotated.z * pointerTarget.z)
+      / (rotatedDistance * targetDistance),
+  );
+
+  assert.ok(rotationFraction > 0 && rotationFraction < 1);
+  assert.ok(angleAfter < angleBefore);
+  assert.ok(Math.abs(rotatedDistance - cameraDistance) < 0.000001);
+  assert.equal(
+    cursorAnchoredRotationFraction(cameraDistance, targetDistance, angleBefore, 24_000_000),
+    0,
+  );
 });
 
 test("an accumulated centered zoom clamps the destination's actual height", () => {

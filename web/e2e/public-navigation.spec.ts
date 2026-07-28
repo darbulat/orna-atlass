@@ -1029,7 +1029,7 @@ test("globe exposes accessible bounded zoom and reset controls", async ({ page, 
   await expect(stage).toHaveAttribute("data-marker-drag-threshold", "8");
   await expect(stage).toHaveAttribute("data-pole-clamp", "z-axis");
   await expect(stage).toHaveAttribute("data-touch-controls", "centered");
-  await expect(stage).toHaveAttribute("data-zoom-anchor", "globe-center");
+  await expect(stage).toHaveAttribute("data-zoom-anchor", "pointer-rotate");
   await expect(page.locator(".cesium-host")).toHaveCSS("cursor", "grab");
   await expect(page.locator(".globe-stage")).toHaveCSS("touch-action", "none");
   await expect(controls.getByRole("button", { name: "Zoom in" })).toBeVisible();
@@ -1053,6 +1053,11 @@ test("manual camera controls keep the globe fixed to the stage center", async ({
   const canvas = page.locator(".cesium-widget canvas");
   await expect(canvas).toBeVisible();
   await expect(stage).toHaveAttribute("data-camera-center-error", /.+/);
+  await expect(stage).toHaveAttribute("data-camera-position-direction", /.+/);
+
+  const cameraDirectionBeforeZoom = (await stage.getAttribute("data-camera-position-direction"))!
+    .split(",")
+    .map(Number);
 
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
@@ -1062,6 +1067,16 @@ test("manual camera controls keep the globe fixed to the stage center", async ({
   await expect.poll(async () => Number(
     await stage.getAttribute("data-camera-center-error"),
   )).toBeLessThan(0.000001);
+  await expect.poll(async () => {
+    const direction = (await stage.getAttribute("data-camera-position-direction"))!
+      .split(",")
+      .map(Number);
+    const dot = direction.reduce(
+      (sum, component, index) => sum + component * cameraDirectionBeforeZoom[index],
+      0,
+    );
+    return Math.acos(Math.min(1, Math.max(-1, dot)));
+  }).toBeGreaterThan(0.005);
 
   await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
   await page.mouse.down();
