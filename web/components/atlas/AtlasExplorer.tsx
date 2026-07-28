@@ -24,8 +24,11 @@ import {
 import {
   accumulateWheelZoomHeight,
   centeredZoomScale,
+  clampPositionToHeightBounds,
   clampZoomScaleToActualBounds,
+  cursorAnchoredRotationFraction,
   normalizeWheelDelta,
+  rotatePositionTowardTarget,
   scalePositionFromGlobeCenter,
 } from "./globeZoom";
 
@@ -216,6 +219,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
         const {
           ArcGisMapServerImageryProvider,
           CameraEventType,
+          Cartesian2,
           Cartesian3,
           Cartographic,
           EllipsoidTerrainProvider,
@@ -301,6 +305,10 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
             Cartesian3.negate(viewer.camera.positionWC, new Cartesian3()),
             new Cartesian3(),
           );
+          const cameraPositionDirection = Cartesian3.normalize(
+            viewer.camera.positionWC,
+            new Cartesian3(),
+          );
           const alignment = Math.min(
             1,
             Math.max(-1, Cartesian3.dot(viewer.camera.directionWC, directionToCenter)),
@@ -308,6 +316,10 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
           host.parentElement?.setAttribute(
             "data-camera-center-error",
             Math.acos(alignment).toString(),
+          );
+          host.parentElement?.setAttribute(
+            "data-camera-position-direction",
+            [cameraPositionDirection.x, cameraPositionDirection.y, cameraPositionDirection.z].join(","),
           );
         };
         removeScenePreRenderListener = viewer.scene.preRender.addEventListener(() => {
@@ -339,6 +351,8 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
         wheelHandler = (event: WheelEvent) => {
           if (!viewer || viewer.isDestroyed()) return;
           event.preventDefault();
+          const ray = viewer.camera.getPickRay(new Cartesian2(event.offsetX, event.offsetY));
+          const cursorTarget = ray ? viewer.scene.globe.pick(ray, viewer.scene) : undefined;
           const currentHeight = viewer.camera.positionCartographic.height;
           const wheelDelta = normalizeWheelDelta(
             event.deltaY,
@@ -375,11 +389,38 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
               maximumHeight: maximumGlobeZoomDistance,
             },
           );
-          const centeredPosition = scalePositionFromGlobeCenter(start, boundedScale);
+          const cameraMagnitude = Cartesian3.magnitude(start);
+          const rotationFraction = wheelDelta < 0 && cursorTarget
+            ? cursorAnchoredRotationFraction(
+                cameraMagnitude,
+                Cartesian3.magnitude(cursorTarget),
+                Cartesian3.angleBetween(start, cursorTarget),
+                cameraMagnitude * boundedScale,
+              )
+            : 0;
+          const rotatedPosition = cursorTarget
+            ? rotatePositionTowardTarget(start, cursorTarget, rotationFraction)
+            : start;
+          const centeredPosition = scalePositionFromGlobeCenter(rotatedPosition, boundedScale);
+          const boundedPosition = clampPositionToHeightBounds(
+            centeredPosition,
+            {
+              minimumHeight: minimumGlobeZoomDistance,
+              maximumHeight: maximumGlobeZoomDistance,
+            },
+            (position) => viewer!.scene.globe.ellipsoid.cartesianToCartographic(
+              Cartesian3.fromElements(position.x, position.y, position.z, destination),
+              destinationCartographic,
+            ),
+            (position) => viewer!.scene.globe.ellipsoid.cartographicToCartesian(
+              new Cartographic(position.longitude, position.latitude, position.height),
+              destination,
+            ),
+          );
           zoomTargetPosition = new Cartesian3(
-            centeredPosition.x,
-            centeredPosition.y,
-            centeredPosition.z,
+            boundedPosition.x,
+            boundedPosition.y,
+            boundedPosition.z,
           );
           if (zoomAnimationFrame !== null) return;
           const step = () => {
@@ -604,7 +645,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       data-marker-drag-threshold={markerDragThresholdPixels}
       data-pole-clamp="z-axis"
       data-touch-controls="centered"
-      data-zoom-anchor="globe-center"
+      data-zoom-anchor="pointer-rotate"
     >
       <div ref={containerRef} className="cesium-host" />
       {hoveredPoint ? (
