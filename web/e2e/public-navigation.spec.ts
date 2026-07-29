@@ -106,7 +106,7 @@ test("atlas markers remain selectable at the closest globe zoom", async ({ page 
   await expect(page.locator(".atlas-side-panel")).toBeVisible();
 });
 
-test("home page opens on a selected interactive globe before marketing content", async ({ page }) => {
+test("home page opens on a selected interactive globe before discovery content", async ({ page }) => {
   let grantRequests = 0;
   let authRequests = 0;
   page.on("request", (request) => {
@@ -116,8 +116,6 @@ test("home page opens on a selected interactive globe before marketing content",
 
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { level: 1, name: "The living atlas of natural sound." })).toBeVisible();
-  await expect(page.getByText(/long-form field recordings from habitats around the world/i)).toBeVisible();
   const atlas = page.getByRole("region", { name: "ORNA Atlas" });
   await expect(atlas).toBeVisible();
   await expect(atlas.getByLabel("Interactive Cesium globe")).toBeVisible();
@@ -144,23 +142,14 @@ test("home page opens on a selected interactive globe before marketing content",
   await expect(page).toHaveURL(/\/$/);
 });
 
-test("mobile home intro stays clear of selected location copy in a short viewport", async ({ page }) => {
+test("home globe omits marketing copy over the interactive map", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 667 });
   await page.goto("/");
 
-  const intro = page.locator(".home-atlas-intro");
-  const selectedLocation = page.getByRole("region", { name: "ORNA Atlas" }).locator(".dawn-copy");
-  await expect(intro).toBeVisible();
-  await expect(selectedLocation).toBeVisible();
-
-  const [introBox, selectedLocationBox] = await Promise.all([
-    intro.boundingBox(),
-    selectedLocation.boundingBox(),
-  ]);
-  expect(introBox).not.toBeNull();
-  expect(selectedLocationBox).not.toBeNull();
-  expect(boxesOverlap(introBox!, selectedLocationBox!)).toBe(false);
-  expect(selectedLocationBox!.y - (introBox!.y + introBox!.height)).toBeGreaterThanOrEqual(16);
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await expect(atlas.locator(".dawn-copy")).toBeVisible();
+  await expect(page.locator(".home-atlas-intro")).toHaveCount(0);
+  await expect(page.getByText("The living atlas of natural sound.", { exact: true })).toHaveCount(0);
 });
 
 test("atlas globe tools remain disjoint and clickable above Cesium controls", async ({ page }) => {

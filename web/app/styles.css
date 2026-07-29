@@ -126,7 +126,6 @@ p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
   margin: 0 0 14px;
 }
 .atlas-page-intro > p:last-child { font-size: .96rem; line-height: 1.5; margin: 0; max-width: 390px; }
-.home-atlas-intro { left: 0; top: 132px; }
 .atlas-route-intro { left: 34px; top: 122px; }
 .atlas-shell > .site-nav {
   border-bottom: 1px solid rgba(237,247,242,.18);
@@ -229,12 +228,10 @@ p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
     min-width: 100%;
     padding: 0 14px;
   }
-  .home-atlas-intro { left: 0; right: 0; top: 112px; }
   .atlas-page-intro h1 { font-size: clamp(1.75rem, 9vw, 2.35rem); }
   .atlas-page-intro > p:last-child { font-size: .84rem; line-height: 1.4; max-width: 300px; }
   .atlas-shell > .site-nav { left: 18px; right: 18px; top: 18px; }
   .atlas-route-intro { left: 18px; right: 18px; top: 94px; }
-  .home-atlas-entry .atlas-live-left { top: 258px; }
   .story-grid, .proof-grid { grid-template-columns: 1fr; }
   .proof-grid div, .proof-grid div:first-child { border-left: 0; border-top: 1px solid rgba(255,255,255,.16); padding: 22px 0; }
   .pricing-section { border-radius: 22px; padding: 28px 20px; }
@@ -2064,9 +2061,6 @@ a:focus-visible {
   }
   .atlas-main-panel {
     grid-template-rows: minmax(560px, 78svh) auto;
-  }
-  .home-atlas-entry .atlas-main-panel {
-    grid-template-rows: minmax(660px, 78svh) auto;
   }
   .atlas-side-panel {
     grid-template-rows: auto;
