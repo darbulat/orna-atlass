@@ -62,30 +62,43 @@ test("atlas markers remain selectable at the closest globe zoom", async ({ page 
 
   const canvasBox = await canvas.boundingBox();
   expect(canvasBox).not.toBeNull();
+  await expect(stage).toHaveAttribute("data-camera-height", /.+/);
+  await expect.poll(async () => Math.abs(
+    Number(await stage.getAttribute("data-camera-height")) - 750000,
+  )).toBeLessThanOrEqual(7500);
   await expect(stage).toHaveAttribute("data-selected-marker-position", /.+/);
-  const initialMarkerPosition = (await stage.getAttribute("data-selected-marker-position"))!
-    .split(",")
-    .map(Number);
-  await page.mouse.move(
-    canvasBox!.x + initialMarkerPosition[0],
-    canvasBox!.y + initialMarkerPosition[1],
-  );
-  for (let attempt = 0; attempt < 13; attempt += 1) {
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const cameraHeight = Number(await stage.getAttribute("data-camera-height"));
+    if (cameraHeight <= 10100) break;
+    const markerPosition = (await stage.getAttribute("data-selected-marker-position"))!
+      .split(",")
+      .map(Number);
+    await page.mouse.move(
+      canvasBox!.x + markerPosition[0],
+      canvasBox!.y + markerPosition[1],
+    );
     await page.mouse.wheel(0, -600);
     await page.waitForTimeout(500);
   }
-  await zoomIn.click();
-  await page.waitForTimeout(500);
 
-  await expect(stage).toHaveAttribute("data-camera-height", /.+/);
   await expect.poll(async () => Math.abs(
     Number(await stage.getAttribute("data-camera-height")) - 10000,
   )).toBeLessThanOrEqual(100);
   await expect(zoomIn).toBeDisabled();
-  await expect(stage).toHaveAttribute("data-selected-marker-position", /.+/);
   const markerPosition = (await stage.getAttribute("data-selected-marker-position"))!
     .split(",")
     .map(Number);
+  expect(markerPosition.every(Number.isFinite)).toBe(true);
+  expect(markerPosition[0]).toBeGreaterThanOrEqual(0);
+  expect(markerPosition[0]).toBeLessThanOrEqual(canvasBox!.width);
+  expect(markerPosition[1]).toBeGreaterThanOrEqual(0);
+  expect(markerPosition[1]).toBeLessThanOrEqual(canvasBox!.height);
+  await page.mouse.move(
+    canvasBox!.x + markerPosition[0],
+    canvasBox!.y + markerPosition[1],
+  );
+  await expect(page.locator(".globe-marker-tooltip")).toBeVisible();
   await page.mouse.click(
     canvasBox!.x + markerPosition[0],
     canvasBox!.y + markerPosition[1],
