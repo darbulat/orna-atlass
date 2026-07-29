@@ -782,7 +782,7 @@ function MembershipPageContent() {
             </h1>
             <p>
               {isReset
-                ? "Use at least 12 characters. Completing this reset signs out every existing session."
+                ? "Use at least 8 characters. Completing this reset signs out every existing session."
                 : "Enter your account email. We’ll send a one-time link if a password account exists."}
             </p>
           </div>
@@ -801,7 +801,7 @@ function MembershipPageContent() {
                 <input
                   id="reset-password"
                   type="password"
-                  minLength={12}
+                  minLength={8}
                   maxLength={128}
                   autoComplete="new-password"
                   required
@@ -813,7 +813,7 @@ function MembershipPageContent() {
                 <input
                   id="reset-password-confirmation"
                   type="password"
-                  minLength={12}
+                  minLength={8}
                   maxLength={128}
                   autoComplete="new-password"
                   required
@@ -1142,7 +1142,7 @@ function MembershipPageContent() {
           <label htmlFor="membership-email">Password account email</label>
           <input id="membership-email" type="email" autoComplete="email" placeholder="you@example.com" required value={email} onChange={(event) => setEmail(event.target.value)} />
           <label htmlFor="membership-password">Password</label>
-          <input id="membership-password" type="password" minLength={mode === "register" ? 12 : 1} maxLength={128} autoComplete={mode === "register" ? "new-password" : "current-password"} required value={password} onChange={(event) => setPassword(event.target.value)} />
+          <input id="membership-password" type="password" minLength={mode === "register" ? 8 : 1} maxLength={128} autoComplete={mode === "register" ? "new-password" : "current-password"} required value={password} onChange={(event) => setPassword(event.target.value)} />
           <button className="auth-continue" type="submit" disabled={busy}>{busy ? "Please wait…" : "Continue"}</button>
           {mode === "login" ? (
             <Link
