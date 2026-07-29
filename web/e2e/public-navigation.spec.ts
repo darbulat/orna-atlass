@@ -144,6 +144,25 @@ test("home page opens on a selected interactive globe before marketing content",
   await expect(page).toHaveURL(/\/$/);
 });
 
+test("mobile home intro stays clear of selected location copy in a short viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 667 });
+  await page.goto("/");
+
+  const intro = page.locator(".home-atlas-intro");
+  const selectedLocation = page.getByRole("region", { name: "ORNA Atlas" }).locator(".dawn-copy");
+  await expect(intro).toBeVisible();
+  await expect(selectedLocation).toBeVisible();
+
+  const [introBox, selectedLocationBox] = await Promise.all([
+    intro.boundingBox(),
+    selectedLocation.boundingBox(),
+  ]);
+  expect(introBox).not.toBeNull();
+  expect(selectedLocationBox).not.toBeNull();
+  expect(boxesOverlap(introBox!, selectedLocationBox!)).toBe(false);
+  expect(selectedLocationBox!.y - (introBox!.y + introBox!.height)).toBeGreaterThanOrEqual(16);
+});
+
 test("atlas globe tools remain disjoint and clickable above Cesium controls", async ({ page }) => {
   for (const viewport of [
     { width: 1280, height: 800 },

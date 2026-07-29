@@ -2065,6 +2065,9 @@ a:focus-visible {
   .atlas-main-panel {
     grid-template-rows: minmax(560px, 78svh) auto;
   }
+  .home-atlas-entry .atlas-main-panel {
+    grid-template-rows: minmax(660px, 78svh) auto;
+  }
   .atlas-side-panel {
     grid-template-rows: auto;
   }
