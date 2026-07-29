@@ -39,6 +39,18 @@ test("atlas globe exposes closer zoom and requests the street imagery layer", as
   await streetLayerRequest;
 });
 
+test("selected location opens at a visibly closer globe zoom", async ({ page }) => {
+  await page.goto("/atlas");
+
+  const globe = page.getByLabel("Interactive Cesium globe");
+  await expect(page.locator(".cesium-widget canvas")).toBeVisible();
+  await expect(globe).toHaveAttribute("data-focus-height", "750000");
+  await expect(globe).toHaveAttribute("data-camera-height", /.+/);
+  await expect.poll(async () => Math.abs(
+    Number(await globe.getAttribute("data-camera-height")) - 750000,
+  )).toBeLessThanOrEqual(7500);
+});
+
 test("atlas markers remain selectable at the closest globe zoom", async ({ page }) => {
   await page.goto("/atlas");
 
@@ -690,7 +702,7 @@ test("enter recenters the resized globe on the selected location at a closer zoo
 
   const globe = page.getByLabel("Interactive Cesium globe");
   await expect(page.locator(".cesium-widget canvas")).toBeVisible();
-  await expect(globe).toHaveAttribute("data-focus-height", "1500000");
+  await expect(globe).toHaveAttribute("data-focus-height", "750000");
 
   await page.evaluate(() => {
     const cesiumWindow = window as typeof window & {
