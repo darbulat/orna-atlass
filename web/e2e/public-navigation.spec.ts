@@ -324,6 +324,25 @@ test("home globe header is one compact row with navigation inside a mobile menu"
   await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 320);
 });
 
+test.describe("mobile header without JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("server-renders the compact menu closed and keeps native navigation operable", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.goto("/about");
+
+    const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+    const menu = navigation.getByText("Menu", { exact: true });
+    const subscribe = navigation.getByRole("link", { name: "Subscribe" });
+    await expect(menu).toBeVisible();
+    await expect(subscribe).not.toBeVisible();
+
+    await menu.click();
+    await expect(subscribe).toBeVisible();
+    await expect(navigation.getByRole("link")).toHaveCount(4);
+  });
+});
+
 test("home globe fails closed for unavailable or malformed atlas responses", async ({ page, request }) => {
   test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
 
@@ -479,7 +498,9 @@ test("legal pages remain contained and navigable on a narrow phone", async ({ pa
     }));
     expect(metrics.scrollWidth).toBe(metrics.viewport);
 
-    const navigationLinks = page.locator(".legal-nav a, .site-footer nav a");
+    const navigationLinks = page.locator(
+      ".legal-nav > .site-wordmark, .legal-nav .site-menu-mobile a, .site-footer nav a",
+    );
     for (const link of await navigationLinks.all()) {
       const box = await link.boundingBox();
       expect(box).not.toBeNull();
@@ -520,7 +541,9 @@ test("about mobile calls to action provide 44px touch targets", async ({ page })
   await menu.click();
   await expect(menuDetails).toHaveAttribute("open", "");
 
-  const callsToAction = page.locator(".about-nav a, .about-nav button, .about-enter");
+  const callsToAction = page.locator(
+    ".about-nav > .site-wordmark, .about-nav .site-menu-mobile a, .about-enter",
+  );
   expect(await callsToAction.count()).toBeGreaterThanOrEqual(5);
 
   for (const link of await callsToAction.all()) {
