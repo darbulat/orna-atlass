@@ -8,7 +8,7 @@ from orna_atlas.app.modules.users.schemas import UserRead
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=12, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class LoginRequest(BaseModel):
@@ -48,7 +48,7 @@ class PasswordResetRequest(BaseModel):
 
 
 class PasswordResetConfirm(AccountTokenRequest):
-    password: str = Field(min_length=12, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class EmailVerificationResponse(BaseModel):

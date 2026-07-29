@@ -34,7 +34,11 @@ from orna_atlas.app.core.security import (
 from orna_atlas.app import main as main_module
 from orna_atlas.app.main import app
 from orna_atlas.app.modules.auth import service as auth_service
-from orna_atlas.app.modules.auth.schemas import LoginRequest
+from orna_atlas.app.modules.auth.schemas import (
+    LoginRequest,
+    PasswordResetConfirm,
+    RegisterRequest,
+)
 from orna_atlas.app.modules.memberships.models import Membership
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.users import service as users_service
@@ -48,6 +52,26 @@ def test_password_hash_is_salted_and_verifiable() -> None:
     assert first != second
     assert verify_password("correct horse battery staple", first)
     assert not verify_password("wrong password", first)
+
+
+def test_password_policy_allows_8_char_minimum_on_register() -> None:
+    request = RegisterRequest(email="member@example.com", password="12345678")
+    assert request.password == "12345678"
+
+
+def test_password_policy_rejects_short_passwords_on_register() -> None:
+    with pytest.raises(ValidationError):
+        RegisterRequest(email="member@example.com", password="1234567")
+
+
+def test_password_policy_allows_8_char_minimum_on_password_reset_confirm() -> None:
+    request = PasswordResetConfirm(token="a" * 32, password="12345678")
+    assert request.password == "12345678"
+
+
+def test_password_policy_rejects_short_passwords_on_password_reset_confirm() -> None:
+    with pytest.raises(ValidationError):
+        PasswordResetConfirm(token="a" * 32, password="1234567")
 
 
 @pytest.mark.asyncio
