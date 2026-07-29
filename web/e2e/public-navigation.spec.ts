@@ -22,21 +22,21 @@ function boxesOverlap(first: BoundingBox, second: BoundingBox) {
     && first.y + first.height > second.y;
 }
 
-test("atlas globe exposes closer zoom and requests the street imagery layer", async ({ page }) => {
-  const streetLayerRequest = page.waitForRequest((request) => (
-    request.url().includes("/World_Street_Map/MapServer")
+test("atlas globe exposes a 10 km floor and requests the World Imagery layer", async ({ page }) => {
+  const worldImageryRequest = page.waitForRequest((request) => (
+    request.url().includes("/World_Imagery/MapServer")
   ));
 
   await page.goto("/atlas");
 
   const globe = page.getByLabel("Interactive Cesium globe");
-  await expect(globe).toHaveAttribute("data-minimum-zoom-distance", "50000");
-  await expect(globe).toHaveAttribute("data-maximum-marker-height", "30000");
+  await expect(globe).toHaveAttribute("data-minimum-zoom-distance", "10000");
+  await expect(globe).toHaveAttribute("data-maximum-marker-height", "6000");
   const minimumZoomDistance = Number(await globe.getAttribute("data-minimum-zoom-distance"));
   const maximumMarkerHeight = Number(await globe.getAttribute("data-maximum-marker-height"));
   expect(maximumMarkerHeight).toBeLessThan(minimumZoomDistance);
-  await expect(globe).toHaveAttribute("data-imagery-layer", "street");
-  await streetLayerRequest;
+  await expect(globe).toHaveAttribute("data-imagery-layer", "world-imagery");
+  await worldImageryRequest;
 });
 
 test("selected location opens at a visibly closer globe zoom", async ({ page }) => {
@@ -62,23 +62,43 @@ test("atlas markers remain selectable at the closest globe zoom", async ({ page 
 
   const canvasBox = await canvas.boundingBox();
   expect(canvasBox).not.toBeNull();
-  await page.mouse.move(
-    canvasBox!.x + canvasBox!.width / 2,
-    canvasBox!.y + canvasBox!.height / 2,
-  );
-  for (let attempt = 0; attempt < 13; attempt += 1) {
+  await expect(stage).toHaveAttribute("data-camera-height", /.+/);
+  await expect.poll(async () => Math.abs(
+    Number(await stage.getAttribute("data-camera-height")) - 750000,
+  )).toBeLessThanOrEqual(7500);
+  await expect(stage).toHaveAttribute("data-selected-marker-position", /.+/);
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const cameraHeight = Number(await stage.getAttribute("data-camera-height"));
+    if (cameraHeight <= 10100) break;
+    const markerPosition = (await stage.getAttribute("data-selected-marker-position"))!
+      .split(",")
+      .map(Number);
+    await page.mouse.move(
+      canvasBox!.x + markerPosition[0],
+      canvasBox!.y + markerPosition[1],
+    );
     await page.mouse.wheel(0, -600);
     await page.waitForTimeout(500);
   }
-  await zoomIn.click();
-  await page.waitForTimeout(500);
 
-  await expect.poll(async () => Number(await stage.getAttribute("data-camera-height"))).toBeLessThanOrEqual(50500);
+  await expect.poll(async () => Math.abs(
+    Number(await stage.getAttribute("data-camera-height")) - 10000,
+  )).toBeLessThanOrEqual(100);
   await expect(zoomIn).toBeDisabled();
-  await expect(stage).toHaveAttribute("data-selected-marker-position", /.+/);
   const markerPosition = (await stage.getAttribute("data-selected-marker-position"))!
     .split(",")
     .map(Number);
+  expect(markerPosition.every(Number.isFinite)).toBe(true);
+  expect(markerPosition[0]).toBeGreaterThanOrEqual(0);
+  expect(markerPosition[0]).toBeLessThanOrEqual(canvasBox!.width);
+  expect(markerPosition[1]).toBeGreaterThanOrEqual(0);
+  expect(markerPosition[1]).toBeLessThanOrEqual(canvasBox!.height);
+  await page.mouse.move(
+    canvasBox!.x + markerPosition[0],
+    canvasBox!.y + markerPosition[1],
+  );
+  await expect(page.locator(".globe-marker-tooltip")).toBeVisible();
   await page.mouse.click(
     canvasBox!.x + markerPosition[0],
     canvasBox!.y + markerPosition[1],
