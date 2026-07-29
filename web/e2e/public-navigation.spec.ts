@@ -116,6 +116,8 @@ test("home page opens on a selected interactive globe before marketing content",
 
   await page.goto("/");
 
+  await expect(page.getByRole("heading", { level: 1, name: "The living atlas of natural sound." })).toBeVisible();
+  await expect(page.getByText(/long-form field recordings from habitats around the world/i)).toBeVisible();
   const atlas = page.getByRole("region", { name: "ORNA Atlas" });
   await expect(atlas).toBeVisible();
   await expect(atlas.getByLabel("Interactive Cesium globe")).toBeVisible();
@@ -244,14 +246,15 @@ test("mobile home navigation leaves the inline player controls clickable", async
   await expect(page.getByRole("region", { name: "Session player" })).toHaveCount(0);
 });
 
-test("home globe header routes account access through Subscribe", async ({ page }) => {
+test("home globe header omits duplicate search and routes account access through Subscribe", async ({ page }) => {
   await page.goto("/");
 
   const navigation = page.getByRole("navigation", { name: "Primary navigation" });
-  await expect(navigation.getByRole("link", { name: "Map", exact: true })).toHaveAttribute("href", "/#atlas-entry");
+  await expect(navigation.getByRole("link", { name: "Map", exact: true })).toHaveCount(0);
   await expect(navigation.getByRole("link", { name: "Collections", exact: true })).toHaveAttribute("href", "/collections");
   await expect(navigation.getByRole("link", { name: "About", exact: true })).toHaveAttribute("href", "/about");
-  await expect(navigation.getByRole("button", { name: "Open search", exact: true })).toBeEnabled();
+  await expect(navigation.getByRole("button", { name: /search/i })).toHaveCount(0);
+  await expect(navigation.getByRole("link", { name: /search/i })).toHaveCount(0);
   await expect(page.getByRole("contentinfo")).toHaveCount(1);
   await expect(navigation.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(0);
   await expect(navigation.getByRole("link", { name: "Subscribe", exact: true })).toHaveAttribute(
@@ -259,54 +262,51 @@ test("home globe header routes account access through Subscribe", async ({ page 
     "/membership?mode=register",
   );
   await expect(page.getByRole("region", { name: "ORNA Atlas" }).getByRole("button", { name: "Listen", exact: true })).toBeEnabled();
+  await expect(page.locator("#atlas-search")).toBeVisible();
 });
 
-test("header search opens an accessible overlay without replacing the atlas", async ({ page }) => {
-  await page.goto("/");
-  const navigation = page.getByRole("navigation", { name: "Primary navigation" });
-  const atlas = page.locator(".atlas-reference-ui");
-  const searchTrigger = navigation.getByRole("button", { name: "Open search" });
-  await searchTrigger.click();
-  const searchDialog = page.getByRole("dialog", { name: "Search locations and recordings" });
-  await expect(searchDialog).toBeVisible();
-  await expect(page.locator("nav.site-nav")).toHaveAttribute("aria-hidden", "true");
-  await expect(page.locator("main#main-content")).toHaveAttribute("aria-hidden", "true");
-  await expect(atlas).toBeVisible();
-  await searchDialog.getByLabel("Search", { exact: true }).fill("Pine");
-  await searchDialog.getByRole("button", { name: "Show results" }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.locator("#atlas-search")).toHaveValue("Pine");
-  await expect(searchTrigger).toBeFocused();
-  await expect(page.locator("nav.site-nav")).not.toHaveAttribute("aria-hidden", "true");
-  await expect(page.locator("main#main-content")).not.toHaveAttribute("aria-hidden", "true");
-
-  await expect(page.getByRole("dialog", { name: "Sign in without leaving the atlas" })).toHaveCount(0);
-});
-
-test("header search carries its query from editorial pages into the atlas", async ({ page }) => {
+test("editorial headers omit search while Atlas keeps its map search", async ({ page }) => {
   await page.goto("/about");
-  await page.getByRole("button", { name: "Open search" }).click();
-  const dialog = page.getByRole("dialog", { name: "Search locations and recordings" });
-  await dialog.getByLabel("Search", { exact: true }).fill("Pine");
-  await dialog.getByRole("button", { name: "Show results" }).click();
+  const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+  await expect(navigation.getByRole("button", { name: /search/i })).toHaveCount(0);
+  await expect(navigation.getByRole("link", { name: /search/i })).toHaveCount(0);
 
-  await expect(page).toHaveURL(/\/?search=Pine#atlas-search$/);
+  await page.goto("/atlas");
+  await expect(page.getByRole("heading", { level: 1, name: "Explore the world by sound." })).toBeVisible();
+  await expect(page.getByText(/search a place, choose a listening time/i)).toBeVisible();
   const atlasSearch = page.locator("#atlas-search");
-  await expect(atlasSearch).toHaveValue("Pine");
+  await expect(atlasSearch).toBeVisible();
   await atlasSearch.fill("Pin");
   await atlasSearch.fill("Pine");
   await expect(atlasSearch).toHaveValue("Pine");
   await expect(page.getByRole("button", { name: /Pine Marsh Harju \/ Wetland/ })).toBeVisible();
 });
 
-test("home globe header stays reachable on a 320px viewport", async ({ page }) => {
+test("home globe header is one compact row with navigation inside a mobile menu", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto("/");
 
   const navigation = page.getByRole("navigation", { name: "Primary navigation" });
-  const controls = navigation.getByRole("link").or(navigation.getByRole("button"));
-  await expect(controls).toHaveCount(6);
-  for (const control of await controls.all()) {
+  const wordmark = navigation.getByRole("link", { name: "ORNA Atlas" });
+  const menu = navigation.getByText("Menu", { exact: true });
+  await expect(wordmark).toBeVisible();
+  await expect(menu).toBeVisible();
+  const [wordmarkBox, menuBox, closedNavigationBox] = await Promise.all([
+    wordmark.boundingBox(),
+    menu.boundingBox(),
+    navigation.boundingBox(),
+  ]);
+  expect(wordmarkBox).not.toBeNull();
+  expect(menuBox).not.toBeNull();
+  expect(closedNavigationBox).not.toBeNull();
+  expect(Math.abs(wordmarkBox!.y - menuBox!.y)).toBeLessThanOrEqual(2);
+  expect(closedNavigationBox!.height).toBeLessThanOrEqual(60);
+  await expect(navigation.getByRole("link", { name: "Subscribe" })).not.toBeVisible();
+
+  await menu.click();
+  const menuLinks = navigation.getByRole("link").filter({ hasNotText: "ORNA Atlas" });
+  await expect(menuLinks).toHaveCount(3);
+  for (const control of await menuLinks.all()) {
     const box = await control.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.x).toBeGreaterThanOrEqual(0);
@@ -468,6 +468,11 @@ test("legal pages remain contained and navigable on a narrow phone", async ({ pa
 
   for (const path of ["/privacy", "/terms"]) {
     await page.goto(path);
+    const menu = page.getByText("Menu", { exact: true });
+    const menuDetails = menu.locator("..");
+    await expect(menuDetails).not.toHaveAttribute("open", "");
+    await menu.click();
+    await expect(menuDetails).toHaveAttribute("open", "");
     const metrics = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,
@@ -509,9 +514,14 @@ test("home and manifesto share editorial display typography", async ({ page }) =
 test("about mobile calls to action provide 44px touch targets", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/about");
+  const menu = page.getByText("Menu", { exact: true });
+  const menuDetails = menu.locator("..");
+  await expect(menuDetails).not.toHaveAttribute("open", "");
+  await menu.click();
+  await expect(menuDetails).toHaveAttribute("open", "");
 
   const callsToAction = page.locator(".about-nav a, .about-nav button, .about-enter");
-  expect(await callsToAction.count()).toBeGreaterThanOrEqual(7);
+  expect(await callsToAction.count()).toBeGreaterThanOrEqual(5);
 
   for (const link of await callsToAction.all()) {
     const box = await link.boundingBox();

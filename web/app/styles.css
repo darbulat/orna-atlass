@@ -21,14 +21,17 @@ button:hover { background: rgba(155, 216, 189, 0.22); }
 .site-nav {
   align-items: center;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 16px;
   justify-content: space-between;
+  position: relative;
 }
-.site-nav > div {
+.site-menu { margin: 0; }
+.site-menu > summary { display: none; }
+.site-menu-links {
   align-items: center;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: clamp(12px, 2.5vw, 28px);
   justify-content: flex-end;
   min-width: 0;
@@ -68,12 +71,12 @@ button:hover { background: rgba(155, 216, 189, 0.22); }
   top: 64px;
   z-index: 10;
 }
-.home-nav div { display: flex; flex-wrap: wrap; gap: 28px; justify-content: flex-end; }
-.home-nav div a { justify-content: center; min-width: 44px; }
+.home-nav .site-menu-links { gap: 28px; }
+.home-nav .site-menu-links a { justify-content: center; min-width: 44px; }
 .home-atlas-entry .atlas-live-left { top: 104px; }
 .home-atlas-entry .atlas-side-panel { position: relative; z-index: 11; }
-.home-nav a, .home-nav button { pointer-events: auto; }
-.home-nav div a { color: #c8d8d1; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
+.home-nav a, .home-nav summary { pointer-events: auto; }
+.home-nav .site-menu-links a { color: #c8d8d1; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
 .hero { max-width: 780px; }
 .eyebrow { color: #9bd8bd; letter-spacing: 0.2em; text-transform: uppercase; }
 h1 { font-size: clamp(3rem, 7vw, 6rem); line-height: 0.95; margin: 0 0 24px; }
@@ -104,7 +107,37 @@ p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
   letter-spacing: -.035em;
 }
 .home-shell h1 { font-size: clamp(3.2rem, 7.4vw, 6.4rem); }
-.home-atlas-entry { margin-bottom: clamp(100px, 12vw, 180px); }
+.home-atlas-entry { margin-bottom: clamp(100px, 12vw, 180px); position: relative; }
+.atlas-page-intro {
+  max-width: 430px;
+  pointer-events: none;
+  position: absolute;
+  text-shadow: 0 2px 24px rgba(0,0,0,.9);
+  z-index: 8;
+}
+.atlas-page-intro .eyebrow { font-size: .68rem; margin: 0 0 12px; }
+.atlas-page-intro h1 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 3.4vw, 3.6rem);
+  font-weight: 400;
+  letter-spacing: -.035em;
+  line-height: .98;
+  margin: 0 0 14px;
+}
+.atlas-page-intro > p:last-child { font-size: .96rem; line-height: 1.5; margin: 0; max-width: 390px; }
+.home-atlas-intro { left: 0; top: 132px; }
+.atlas-route-intro { left: 34px; top: 122px; }
+.atlas-shell > .site-nav {
+  border-bottom: 1px solid rgba(237,247,242,.18);
+  left: 34px;
+  pointer-events: none;
+  position: absolute;
+  right: 34px;
+  top: 28px;
+  z-index: 20;
+}
+.atlas-shell > .site-nav a,
+.atlas-shell > .site-nav summary { pointer-events: auto; }
 .conversion-section, .editorial-section { margin-top: clamp(100px, 12vw, 180px); }
 .conversion-heading { max-width: 760px; }
 .conversion-heading > p:last-child { max-width: 680px; }
@@ -157,8 +190,49 @@ p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
   .shell { padding: 36px 22px; }
   .home-shell { padding: 36px 22px; }
   .home-nav { left: 22px; right: 22px; top: 36px; }
-  .home-nav div { gap: 8px 16px; }
-  .home-atlas-entry .atlas-live-left { top: 180px; }
+  .site-menu { position: relative; }
+  .site-menu > summary {
+    align-items: center;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: .76rem;
+    justify-content: center;
+    letter-spacing: .12em;
+    list-style: none;
+    min-height: 44px;
+    min-width: 56px;
+    text-transform: uppercase;
+  }
+  .site-menu > summary::-webkit-details-marker { display: none; }
+  .site-menu:not([open]) > .site-menu-links { display: none; }
+  .site-menu-links {
+    align-items: stretch;
+    background: rgba(7,17,15,.97);
+    border: 1px solid rgba(237,247,242,.18);
+    border-radius: 14px;
+    box-shadow: 0 18px 44px rgba(0,0,0,.42);
+    flex-direction: column;
+    gap: 0;
+    min-width: 180px;
+    padding: 8px;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+  }
+  .site-menu-links a,
+  .home-nav .site-menu-links a {
+    box-sizing: border-box;
+    justify-content: flex-start;
+    min-height: 44px;
+    min-width: 100%;
+    padding: 0 14px;
+  }
+  .home-atlas-intro { left: 0; right: 0; top: 112px; }
+  .atlas-page-intro h1 { font-size: clamp(1.75rem, 9vw, 2.35rem); }
+  .atlas-page-intro > p:last-child { font-size: .84rem; line-height: 1.4; max-width: 300px; }
+  .atlas-shell > .site-nav { left: 18px; right: 18px; top: 18px; }
+  .atlas-route-intro { left: 18px; right: 18px; top: 94px; }
+  .home-atlas-entry .atlas-live-left { top: 258px; }
   .story-grid, .proof-grid { grid-template-columns: 1fr; }
   .proof-grid div, .proof-grid div:first-child { border-left: 0; border-top: 1px solid rgba(255,255,255,.16); padding: 22px 0; }
   .pricing-section { border-radius: 22px; padding: 28px 20px; }
@@ -2888,7 +2962,6 @@ a:focus-visible {
   .legal-company-details > div { grid-template-columns: 1fr; }
 }
 
-.header-search-button,
 .popular-location-open {
   appearance: none;
   border: 0;
@@ -2898,43 +2971,6 @@ a:focus-visible {
   font: inherit;
   cursor: pointer;
 }
-.header-search-button { min-height: 44px; }
-.header-dialog-backdrop {
-  align-items: flex-start;
-  background: rgba(3, 8, 8, 0.76);
-  display: flex;
-  inset: 0;
-  justify-content: center;
-  padding: max(72px, 10vh) 20px 20px;
-  position: fixed;
-  z-index: 120;
-}
-.header-dialog {
-  background: #101716;
-  border: 1px solid rgba(205, 236, 220, 0.25);
-  border-radius: 18px;
-  box-shadow: 0 24px 80px rgba(0,0,0,.55);
-  max-width: 560px;
-  padding: 28px;
-  position: relative;
-  width: 100%;
-}
-.header-dialog-close {
-  align-items: center;
-  background: transparent;
-  border: 1px solid rgba(255,255,255,.2);
-  border-radius: 999px;
-  color: inherit;
-  display: inline-flex;
-  height: 44px;
-  justify-content: center;
-  position: absolute;
-  right: 14px;
-  top: 14px;
-  width: 44px;
-}
-.header-dialog-form { display: grid; gap: 12px; margin: 24px 0 16px; }
-.header-dialog-form input { min-height: 48px; }
 .site-nav a.active { font-weight: 750; text-decoration: underline; text-underline-offset: .3em; }
 .popular-location-open { text-align: left; text-decoration: underline; text-underline-offset: .18em; }
 .dawn-coordinates { font-variant-numeric: tabular-nums; }

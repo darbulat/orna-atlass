@@ -883,20 +883,6 @@ export function AtlasExplorer({
     }));
   }, []);
 
-  useEffect(() => {
-    const openSearch = (event: Event) => {
-      const detail = (event as CustomEvent<{ query?: string }>).detail;
-      const nextQuery = detail?.query?.trim() ?? "";
-      setQuery(nextQuery);
-      window.setTimeout(() => {
-        const input = document.querySelector<HTMLInputElement>("#atlas-search");
-        input?.scrollIntoView({ behavior: "smooth", block: "center" });
-        input?.focus();
-      }, 0);
-    };
-    window.addEventListener("orna:open-search", openSearch);
-    return () => window.removeEventListener("orna:open-search", openSearch);
-  }, []);
 
   function dismissSoftPaywall() {
     window.dispatchEvent(new CustomEvent("orna:analytics", {
