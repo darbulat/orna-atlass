@@ -52,14 +52,14 @@ type CesiumGlobeProps = {
   onSelectPoint: (point: AtlasPoint) => void;
 };
 
-const streetImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer";
+const worldImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
 const desktopLocationCardCount = 5;
 const mobileLocationCardCount = 2;
 const focusedLocationHeight = 750000;
-const minimumGlobeZoomDistance = 50000;
+const minimumGlobeZoomDistance = 10000;
 const maximumGlobeZoomDistance = 52000000;
-const markerHeight = 20000;
-const selectedMarkerHeight = 30000;
+const markerHeight = 4000;
+const selectedMarkerHeight = 6000;
 const markerDragThresholdPixels = 8;
 
 function useMobileViewport() {
@@ -499,14 +499,14 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
         setIsViewerReady(true);
 
         try {
-          const streetProvider = await ArcGisMapServerImageryProvider.fromUrl(streetImageryUrl, {
+          const worldImageryProvider = await ArcGisMapServerImageryProvider.fromUrl(worldImageryUrl, {
             enablePickFeatures: false,
           });
           if (!isDisposed && viewer && !viewer.isDestroyed()) {
-            viewer.imageryLayers.add(new ImageryLayer(streetProvider));
+            viewer.imageryLayers.add(new ImageryLayer(worldImageryProvider));
           }
         } catch {
-          // Keep the local NaturalEarth globe interactive when street imagery is unavailable.
+          // Keep the local NaturalEarth globe interactive when World Imagery is unavailable.
         }
       } catch {
         if (!isDisposed) {
@@ -673,7 +673,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       data-focus-height={focusedLocationHeight}
       data-inertia-spin="0.9"
       data-inertia-zoom="0.8"
-      data-imagery-layer="street"
+      data-imagery-layer="world-imagery"
       data-marker-drag-threshold={markerDragThresholdPixels}
       data-maximum-marker-height={selectedMarkerHeight}
       data-minimum-zoom-distance={minimumGlobeZoomDistance}
