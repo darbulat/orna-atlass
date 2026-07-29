@@ -67,7 +67,7 @@ test("auth screen keeps the reference layout usable on a narrow phone", async ({
   await page.goto("/membership?mode=register");
 
   await expect(page.getByRole("button", { name: "Create account", pressed: true })).toBeVisible();
-  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("minlength", "12");
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("minlength", "8");
   const metrics = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,

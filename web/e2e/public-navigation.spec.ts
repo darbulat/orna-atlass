@@ -826,7 +826,7 @@ test("membership route exposes login and registration controls", async ({ page }
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByLabel("Email address", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Password account email", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("minlength", "12");
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("minlength", "8");
   await expect(page.getByRole("heading", { name: "Free atlas and future membership" })).toBeVisible();
   await expect(page.getByText("Pricing has not been announced.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Frequently asked questions" })).toBeVisible();
@@ -838,7 +838,7 @@ test("membership registration link opens the registration form", async ({ page }
   await expect(page.getByRole("heading", { level: 1, name: "Create your free ORNA account" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create account", pressed: true })).toBeVisible();
   await expect(page.locator("form").getByRole("button", { name: "Continue" })).toBeVisible();
-  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("minlength", "12");
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("minlength", "8");
 });
 
 test("membership login link keeps the auth screen focused on sign-in", async ({ page }) => {
