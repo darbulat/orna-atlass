@@ -45,6 +45,11 @@ export default async function HomePage({
       <main id="main-content">
         {atlasResult.status === "fulfilled" ? (
           <div className="home-atlas-entry" id="atlas-entry">
+            <header className="atlas-page-intro home-atlas-intro">
+              <p className="eyebrow">Listen to the planet</p>
+              <h1>The living atlas of natural sound.</h1>
+              <p>Explore long-form field recordings from habitats around the world, mapped to place and local time.</p>
+            </header>
             <AtlasExplorer
               initialView="globe"
               points={atlasResult.value.points}
