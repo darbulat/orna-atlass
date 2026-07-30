@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import type { components } from "../lib/api/generated";
 import { fetchSessionDetail } from "../lib/api/sessions";
 import { usePlayer } from "./audio/PlayerProvider";
+import { LocationCardPhoto } from "./location-card-photo";
 
 type AtlasPoint = components["schemas"]["AtlasPoint"];
 
@@ -57,7 +58,14 @@ export function PopularLocations({ locations }: { locations: AtlasPoint[] }) {
           const isLoading = loadingSlug === session?.slug;
           return (
             <article className="popular-location-card" key={location.id}>
-              <span>{location.habitat ?? location.region ?? "Field location"}</span>
+              <LocationCardPhoto
+                name={location.name}
+                photoUrl={location.photo_url}
+                variant="popular"
+              />
+              <span className="popular-location-eyebrow">
+                {location.habitat ?? location.region ?? "Field location"}
+              </span>
               <h3>
                 <button
                   type="button"

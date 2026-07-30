@@ -28,6 +28,7 @@ class AtlasPoint(BaseModel):
     timezone: str
     coordinate_visibility: str
     sensitivity_level: str
+    photo_url: str | None = None
     session_count: int = Field(ge=0)
     latest_session: AtlasSessionSummary | None = None
 

@@ -1160,6 +1160,8 @@ export interface components {
             longitude: number;
             /** Name */
             name: string;
+            /** Photo Url */
+            photo_url?: string | null;
             /** Region */
             region?: string | null;
             /** Sensitivity Level */

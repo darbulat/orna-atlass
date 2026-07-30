@@ -137,6 +137,7 @@ function isAtlasPoint(value: unknown): value is AtlasPoint {
     && isOptionalNullableString(value.country_code)
     && isOptionalNullableString(value.region)
     && isOptionalNullableString(value.habitat)
+    && isOptionalNullableString(value.photo_url)
     && isFiniteNumber(value.latitude)
     && value.latitude >= -90
     && value.latitude <= 90

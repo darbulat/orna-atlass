@@ -37,6 +37,7 @@ const atlasPoint = {
   timezone: location.timezone,
   coordinate_visibility: location.coordinate_visibility,
   sensitivity_level: location.sensitivity_level,
+  photo_url: "http://127.0.0.1:4010/mock-location-photo-v2.png",
   session_count: 2,
   latest_session: {
     id: secondSessionId,
@@ -202,6 +203,15 @@ const server = createServer((request, response) => {
     send(response, 200, { status: "ok" });
     return;
   }
+  if (path === "/mock-location-photo-v2.png") {
+    response.writeHead(200, {
+      "Access-Control-Allow-Origin": origin,
+      "Cache-Control": "no-store",
+      "Content-Type": "image/png",
+    });
+    response.end(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAACAAAAASCAIAAAC1qksFAAAAJElEQVR42mNMqMhioCVgYqAxGLVg1IJRC0YtGLVg1AIGBgYGABOzAWYcuWFqAAAAAElFTkSuQmCC", "base64"));
+    return;
+  }
   if (request.method === "POST" && path === "/api/v1/auth/refresh") {
     if (["expired-until-refresh", "hidden-until-refresh"].includes(sessionDetailAuthState)) {
       sessionDetailRefreshCalls += 1;
@@ -336,7 +346,7 @@ const server = createServer((request, response) => {
         bbox: null,
         zoom: 5,
         mode: "points",
-        points: [{ ...atlasPoint, country_code: null, latest_session: undefined }],
+        points: [{ ...atlasPoint, country_code: null, photo_url: null, latest_session: undefined }],
         cache_key: "e2e:valid-optional-point",
       });
       return;
