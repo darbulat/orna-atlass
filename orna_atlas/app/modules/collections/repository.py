@@ -43,6 +43,22 @@ async def list_public_collections(session: AsyncSession, *, limit: int = 50, off
     return list(result.scalars())
 
 
+async def list_collections_for_admin(
+    session: AsyncSession,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[Collection]:
+    result = await session.execute(
+        select(Collection)
+        .options(*_collection_load_options())
+        .order_by(Collection.sort_order, Collection.title, Collection.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.scalars())
+
+
 async def get_collection_by_slug(session: AsyncSession, slug: str, *, public_only: bool = True) -> Collection | None:
     query = select(Collection).options(*_collection_load_options()).where(Collection.slug == slug)
     if public_only:

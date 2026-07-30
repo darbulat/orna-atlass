@@ -9,7 +9,12 @@ from orna_atlas.app.core.domain_errors import ConflictError, NotFoundError, Vali
 from orna_atlas.app.integrations.redis import invalidate_atlas_cache
 from orna_atlas.app.modules.locations import repository
 from orna_atlas.app.modules.locations.models import Location
-from orna_atlas.app.modules.locations.schemas import LocationCreate, LocationRead, LocationUpdate
+from orna_atlas.app.modules.locations.schemas import (
+    AdminLocationRead,
+    LocationCreate,
+    LocationRead,
+    LocationUpdate,
+)
 from orna_atlas.app.modules.media import repository as media_repository
 from orna_atlas.app.modules.sessions import repository as sessions_repository
 
@@ -38,6 +43,19 @@ async def list_public_locations(
 ) -> list[LocationRead]:
     locations = await repository.list_locations(session, limit=limit, offset=offset)
     return [LocationRead.model_validate(location) for location in locations]
+
+
+async def list_locations_for_admin(
+    session: AsyncSession,
+    *,
+    include_archived: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[AdminLocationRead]:
+    locations = await repository.list_locations_for_admin(
+        session, include_archived=include_archived, limit=limit, offset=offset
+    )
+    return [AdminLocationRead.model_validate(location) for location in locations]
 
 
 async def require_location(session: AsyncSession, location_id: UUID) -> LocationRead:

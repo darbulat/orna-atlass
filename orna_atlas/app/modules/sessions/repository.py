@@ -85,6 +85,27 @@ async def list_sessions(
     return list(result.scalars())
 
 
+async def list_sessions_for_admin(
+    session: AsyncSession,
+    *,
+    include_archived: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[RecordingSession]:
+    filters = []
+    if not include_archived:
+        filters.append(RecordingSession.archived_at.is_(None))
+    result = await session.execute(
+        select(RecordingSession)
+        .options(*_session_load_options())
+        .where(*filters)
+        .order_by(RecordingSession.recorded_at.desc(), RecordingSession.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.scalars())
+
+
 async def get_session(session: AsyncSession, session_id: UUID) -> RecordingSession | None:
     return await get_visible_session(session, session_id, access_levels=("public",))
 

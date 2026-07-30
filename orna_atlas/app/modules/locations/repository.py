@@ -29,6 +29,26 @@ async def list_locations(session: AsyncSession, *, limit: int = 50, offset: int 
     return list(result.scalars())
 
 
+async def list_locations_for_admin(
+    session: AsyncSession,
+    *,
+    include_archived: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[Location]:
+    filters = []
+    if not include_archived:
+        filters.append(Location.archived_at.is_(None))
+    result = await session.execute(
+        select(Location)
+        .where(*filters)
+        .order_by(Location.name, Location.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.scalars())
+
+
 async def get_location(session: AsyncSession, location_id: UUID) -> Location | None:
     result = await session.execute(
         select(Location).where(Location.id == location_id, publicly_discoverable_clause())

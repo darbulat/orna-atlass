@@ -89,6 +89,20 @@ async def list_public_collections(session: AsyncSession, *, limit: int = 50, off
     return [summary_from_collection(item) for item in collections]
 
 
+async def list_collections_for_admin(
+    session: AsyncSession, *, limit: int = 50, offset: int = 0
+) -> list[CollectionAdminRead]:
+    collections = await repository.list_collections_for_admin(session, limit=limit, offset=offset)
+    return [admin_read_from_collection(item) for item in collections]
+
+
+async def require_collection_for_admin(session: AsyncSession, collection_id: UUID) -> CollectionAdminRead:
+    collection = await repository.get_collection(session, collection_id)
+    if collection is None:
+        raise NotFoundError("Collection not found")
+    return admin_read_from_collection(collection)
+
+
 async def require_public_collection_by_slug(session: AsyncSession, slug: str) -> CollectionDetailRead:
     collection = await repository.get_collection_by_slug(session, slug)
     if collection is None:

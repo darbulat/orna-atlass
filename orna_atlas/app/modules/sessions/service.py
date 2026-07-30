@@ -31,6 +31,7 @@ from orna_atlas.app.modules.sessions.schemas import (
     PublicBirdVocalPartRead,
     PublicSessionAnnotationRead,
     SessionCreate,
+    SessionRead,
     SessionUpdate,
     WaveformRead,
     safe_annotations_projection,
@@ -84,6 +85,19 @@ async def list_visible_sessions(
     return await repository.list_sessions(
         session, limit=limit, offset=offset, access_levels=access_levels
     )
+
+
+async def list_sessions_for_admin(
+    session: AsyncSession,
+    *,
+    include_archived: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[SessionRead]:
+    recordings = await repository.list_sessions_for_admin(
+        session, include_archived=include_archived, limit=limit, offset=offset
+    )
+    return [SessionRead.model_validate(recording) for recording in recordings]
 
 
 async def require_visible_session(

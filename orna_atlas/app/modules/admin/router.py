@@ -9,6 +9,7 @@ from orna_atlas.app.modules.admin import service as admin_service
 from orna_atlas.app.modules.admin.schemas import AuditEventRead
 from orna_atlas.app.modules.collections import service as collections_service
 from orna_atlas.app.modules.collections.schemas import CollectionAdminRead, CollectionCreate, CollectionUpdate
+from orna_atlas.app.core.pagination import PageLimit, PageOffset
 from orna_atlas.app.modules.locations import service as locations_service
 from orna_atlas.app.modules.locations.schemas import (
     AdminLocationRead,
@@ -40,6 +41,30 @@ async def read_admin(current_user: CurrentUser = admin_dependency) -> dict[str, 
     return {"id": current_user.id, "is_admin": current_user.is_admin, "mode": mode}
 
 
+@router.get("/locations", response_model=list[AdminLocationRead])
+async def list_locations(
+    *,
+    include_archived: bool = Query(default=False),
+    limit: PageLimit = 50,
+    offset: PageOffset = 0,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+) -> list[AdminLocationRead]:
+    return await locations_service.list_locations_for_admin(
+        session, include_archived=include_archived, limit=limit, offset=offset
+    )
+
+
+@router.get("/locations/{location_id}", response_model=AdminLocationRead)
+async def get_location(
+    location_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+) -> AdminLocationRead:
+    location = await locations_service.require_location_for_admin(session, location_id)
+    return AdminLocationRead.model_validate(location)
+
+
 @router.post(
     "/locations", response_model=AdminLocationRead, status_code=status.HTTP_201_CREATED
 )
@@ -69,6 +94,31 @@ async def delete_location(
 ):
     await locations_service.delete_location(session, location_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/sessions", response_model=list[SessionRead])
+async def list_sessions(
+    *,
+    include_archived: bool = Query(default=False),
+    limit: PageLimit = 50,
+    offset: PageOffset = 0,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+) -> list[SessionRead]:
+    return await sessions_service.list_sessions_for_admin(
+        session, include_archived=include_archived, limit=limit, offset=offset
+    )
+
+
+@router.get("/sessions/{session_id}", response_model=SessionRead)
+async def get_session(
+    session_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+) -> SessionRead:
+    return SessionRead.model_validate(
+        await sessions_service.require_session_for_admin(session, session_id)
+    )
 
 
 @router.post("/sessions", response_model=SessionRead, status_code=status.HTTP_201_CREATED)
@@ -175,6 +225,28 @@ async def delete_session(
 ):
     await sessions_service.delete_session(session, session_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/collections", response_model=list[CollectionAdminRead])
+async def list_collections(
+    *,
+    limit: PageLimit = 50,
+    offset: PageOffset = 0,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+) -> list[CollectionAdminRead]:
+    return await collections_service.list_collections_for_admin(
+        session, limit=limit, offset=offset
+    )
+
+
+@router.get("/collections/{collection_id}", response_model=CollectionAdminRead)
+async def get_collection(
+    collection_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+) -> CollectionAdminRead:
+    return await collections_service.require_collection_for_admin(session, collection_id)
 
 
 @router.post("/collections", response_model=CollectionAdminRead, status_code=status.HTTP_201_CREATED)
