@@ -483,6 +483,15 @@ test("public pages use a consistent ORNA Atlas home wordmark", async ({ page }) 
     .getByRole("link", { name: "ORNA Atlas", exact: true })).toHaveAttribute("href", "/");
 });
 
+test("homepage exposes the Google site verification token in document metadata", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator('head meta[name="google-site-verification"]')).toHaveAttribute(
+    "content",
+    "nzWVLj0jkhRaytFm0I87KOYq4_8JdmzuJuVcLvKtBuY",
+  );
+});
+
 test("public legal pages disclose the operator and are linked from the home page", async ({ page }) => {
   await page.goto("/");
 
