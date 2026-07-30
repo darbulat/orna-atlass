@@ -27,6 +27,7 @@ const adminLocation = {
   coordinate_visibility: "hidden_public",
   sensitivity_level: "protected",
   timezone: "UTC",
+  metadata: {},
   archived_at: null,
   created_at: now,
   updated_at: now,
