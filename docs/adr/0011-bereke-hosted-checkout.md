@@ -1,6 +1,6 @@
 # ADR-0011: Bereke hosted checkout for lifetime membership
 
-- Status: Accepted
+- Status: accepted
 - Date: 2026-07-30
 
 ## Context
