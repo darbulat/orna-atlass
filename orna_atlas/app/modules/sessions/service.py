@@ -17,6 +17,11 @@ from orna_atlas.app.core.security import CurrentUser
 from orna_atlas.app.integrations.s3 import get_object_storage_client
 from orna_atlas.app.integrations.redis import invalidate_atlas_cache
 from orna_atlas.app.modules.admin.repository import add_audit_event
+from orna_atlas.app.modules.admin.context import (
+    apply_actor_mode_metadata,
+    build_admin_etag,
+    validate_if_match_or_fail,
+)
 from orna_atlas.app.modules.locations.service import require_location_for_admin
 from orna_atlas.app.modules.locations.public import is_publicly_discoverable
 from orna_atlas.app.modules.memberships.service import has_playback_entitlement
@@ -50,6 +55,15 @@ async def require_session(session: AsyncSession, session_id: UUID) -> RecordingS
 
 async def require_session_for_admin(session: AsyncSession, session_id: UUID) -> RecordingSession:
     recording = await repository.get_session_for_admin(session, session_id)
+    if recording is None:
+        raise NotFoundError("Session not found")
+    return recording
+
+
+async def require_session_for_admin_for_update(
+    session: AsyncSession, session_id: UUID
+) -> RecordingSession:
+    recording = await repository.get_session_for_admin_for_update(session, session_id)
     if recording is None:
         raise NotFoundError("Session not found")
     return recording
@@ -91,12 +105,30 @@ async def list_sessions_for_admin(
     session: AsyncSession,
     *,
     include_archived: bool = False,
+    q: str | None = None,
+    location_id: UUID | None = None,
+    publication_status: str | None = None,
+    processing_status: str | None = None,
+    access_level: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[SessionRead]:
-    recordings = await repository.list_sessions_for_admin(
-        session, include_archived=include_archived, limit=limit, offset=offset
-    )
+    filters: dict[str, object] = {
+        "include_archived": include_archived,
+        "limit": limit,
+        "offset": offset,
+    }
+    if q is not None:
+        filters["q"] = q
+    if location_id is not None:
+        filters["location_id"] = location_id
+    if publication_status is not None:
+        filters["publication_status"] = publication_status
+    if processing_status is not None:
+        filters["processing_status"] = processing_status
+    if access_level is not None:
+        filters["access_level"] = access_level
+    recordings = await repository.list_sessions_for_admin(session, **filters)
     return [SessionRead.model_validate(recording) for recording in recordings]
 
 
@@ -247,19 +279,57 @@ def _ready_streaming_rendition(recording: RecordingSession):
     return None
 
 
-async def create_session(session: AsyncSession, data: SessionCreate) -> RecordingSession:
+async def create_session(
+    session: AsyncSession,
+    data: SessionCreate,
+    *,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> RecordingSession:
     await require_location_for_admin(session, data.location_id)
     if await repository.get_session_by_slug_for_admin(session, data.slug):
         raise ConflictError("Session slug exists")
     recording = await repository.create_session(session, data)
+    await add_audit_event(
+        session,
+        event_type="session.created",
+        subject_type="recording_session",
+        subject_id=str(recording.id),
+        actor_user_id=actor_user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata=apply_actor_mode_metadata(
+            {
+                "changed_fields": list(data.model_dump(exclude_unset=True, exclude_none=True).keys())
+            },
+            actor_mode,
+        ),
+    )
     await session.commit()
     await session.refresh(recording, attribute_names=["media_assets"])
     await invalidate_atlas_cache()
     return recording
 
 
-async def update_session(session: AsyncSession, session_id: UUID, data: SessionUpdate) -> RecordingSession:
-    recording = await require_session_for_admin(session, session_id)
+async def update_session(
+    session: AsyncSession,
+    session_id: UUID,
+    data: SessionUpdate,
+    *,
+    if_match: str | None = None,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> RecordingSession:
+    recording = await require_session_for_admin_for_update(session, session_id)
+    if if_match is not None:
+        expected_etag = build_admin_etag(
+            resource_id=recording.id, updated_at=recording.updated_at
+        )
+        validate_if_match_or_fail(if_match=if_match, expected=expected_etag)
     if data.location_id is not None:
         await require_location_for_admin(session, data.location_id)
     if (
@@ -269,14 +339,41 @@ async def update_session(session: AsyncSession, session_id: UUID, data: SessionU
     ):
         raise ConflictError("Session slug exists")
     recording = await repository.update_session(session, recording, data)
+    await add_audit_event(
+        session,
+        event_type="session.updated",
+        subject_type="recording_session",
+        subject_id=str(recording.id),
+        actor_user_id=actor_user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata=apply_actor_mode_metadata(
+            {"changed_fields": sorted(data.model_fields_set)},
+            actor_mode,
+        ),
+    )
     await session.commit()
     await session.refresh(recording, attribute_names=["media_assets"])
     await invalidate_atlas_cache()
     return recording
 
 
-async def delete_session(session: AsyncSession, session_id: UUID) -> None:
-    recording = await require_session_for_admin(session, session_id)
+async def delete_session(
+    session: AsyncSession,
+    session_id: UUID,
+    *,
+    if_match: str | None = None,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    recording = await require_session_for_admin_for_update(session, session_id)
+    if if_match is not None:
+        expected_etag = build_admin_etag(
+            resource_id=recording.id, updated_at=recording.updated_at
+        )
+        validate_if_match_or_fail(if_match=if_match, expected=expected_etag)
     assets = list(recording.media_assets)
     await repository.archive_session(session, recording)
     await media_repository.archive_assets(session, assets)
@@ -285,6 +382,19 @@ async def delete_session(session: AsyncSession, session_id: UUID) -> None:
         session,
         assets,
         retain_until=retain_until,
+    )
+    await add_audit_event(
+        session,
+        event_type="session.archived",
+        subject_type="recording_session",
+        subject_id=str(recording.id),
+        actor_user_id=actor_user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata=apply_actor_mode_metadata(
+            {"changed_fields": ["archived"], "status": "archived"},
+            actor_mode,
+        ),
     )
     await session.commit()
     await invalidate_atlas_cache()

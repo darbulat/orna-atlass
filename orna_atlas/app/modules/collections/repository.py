@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -46,12 +47,25 @@ async def list_public_collections(session: AsyncSession, *, limit: int = 50, off
 async def list_collections_for_admin(
     session: AsyncSession,
     *,
+    q: str | None = None,
+    is_public: bool | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Collection]:
+    filters = []
+    if q:
+        like_value = f"%{q}%"
+        filters.append(
+            (Collection.slug.ilike(like_value) | Collection.title.ilike(like_value) | Collection.description.ilike(like_value))
+        )
+
+    if is_public is not None:
+        filters.append(Collection.is_public.is_(is_public))
+
     result = await session.execute(
         select(Collection)
         .options(*_collection_load_options())
+        .where(*filters)
         .order_by(Collection.sort_order, Collection.title, Collection.id)
         .limit(limit)
         .offset(offset)
@@ -70,6 +84,19 @@ async def get_collection_by_slug(session: AsyncSession, slug: str, *, public_onl
 async def get_collection(session: AsyncSession, collection_id: UUID) -> Collection | None:
     result = await session.execute(
         select(Collection).options(*_collection_load_options()).where(Collection.id == collection_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_collection_for_update(
+    session: AsyncSession, collection_id: UUID
+) -> Collection | None:
+    result = await session.execute(
+        select(Collection)
+        .options(*_collection_load_options())
+        .where(Collection.id == collection_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 
@@ -125,6 +152,10 @@ async def update_collection(session: AsyncSession, collection: Collection, data:
         location_ids=data.location_ids,
         session_ids=data.session_ids,
     )
+    if data.location_ids is not None or data.session_ids is not None:
+        # Link rows are part of the admin aggregate. Touch the locked root row so
+        # a link-only update invalidates every previously issued If-Match token.
+        collection.updated_at = datetime.now(UTC)
     await session.flush()
     return await get_collection(session, collection.id) or collection
 

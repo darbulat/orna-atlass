@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 import base64
 import binascii
@@ -31,6 +31,7 @@ class CurrentUser:
     id: str
     role: Role = "member"
     email: str | None = None
+    auth_mode: Literal["bearer", "cookie", "local"] | None = None
 
     @property
     def is_admin(self) -> bool:
@@ -269,7 +270,10 @@ async def get_optional_user(
     access_cookie: str | None = Depends(_access_cookie_auth),
 ) -> CurrentUser | None:
     token = bearer.credentials if bearer is not None else access_cookie
-    return decode_access_token(token) if token else None
+    if not token:
+        return None
+    claims = decode_access_token(token)
+    return replace(claims, auth_mode="bearer" if bearer is not None else "cookie")
 
 
 async def _resolve_active_user(session: AsyncSession, claims: CurrentUser) -> CurrentUser:
@@ -278,7 +282,12 @@ async def _resolve_active_user(session: AsyncSession, claims: CurrentUser) -> Cu
     user = await repository.get_by_id(session, UUID(claims.id))
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is unavailable")
-    return CurrentUser(id=str(user.id), role=user.role, email=user.email)
+    return CurrentUser(
+        id=str(user.id),
+        role=user.role,
+        email=user.email,
+        auth_mode=claims.auth_mode,
+    )
 
 
 async def get_optional_active_user(
@@ -307,7 +316,12 @@ async def get_current_admin(
 ) -> CurrentUser:
     settings = get_settings()
     if claims is None and settings.local_admin_enabled and x_orna_admin == "local":
-        return CurrentUser(id="local-admin", role="admin", email="local@orna.invalid")
+        return CurrentUser(
+            id="local-admin",
+            role="admin",
+            email="local@orna.invalid",
+            auth_mode="local",
+        )
     if claims is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     current_user = await _resolve_active_user(session, claims)

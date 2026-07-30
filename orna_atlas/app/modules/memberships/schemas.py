@@ -13,7 +13,6 @@ class MembershipRead(BaseModel):
     starts_at: datetime | None = None
     expires_at: datetime | None = None
     is_entitled: bool
-
     model_config = ConfigDict(from_attributes=True)
 
 

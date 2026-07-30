@@ -6,6 +6,96 @@ const locationId = "10000000-0000-4000-8000-000000000001";
 const firstSessionId = "20000000-0000-4000-8000-000000000001";
 const secondSessionId = "20000000-0000-4000-8000-000000000002";
 const now = "2026-07-14T23:00:00Z";
+const adminLocationId = "11000000-0000-4000-8000-000000000001";
+const adminSessionId = "21000000-0000-4000-8000-000000000001";
+const adminCollectionId = "41000000-0000-4000-8000-000000000001";
+const adminUserId = "51000000-0000-4000-8000-000000000001";
+let nextAdminMutation = "ok";
+
+const adminLocation = {
+  id: adminLocationId,
+  slug: "hidden-nesting-site",
+  name: "Hidden Nesting Site",
+  description: "Admin-only location fixture.",
+  country_code: "EE",
+  region: "Harju",
+  habitat: "Wetland",
+  exact_latitude: 59.555555,
+  exact_longitude: 24.555555,
+  public_latitude: 11.111111,
+  public_longitude: 22.222222,
+  coordinate_visibility: "hidden_public",
+  sensitivity_level: "protected",
+  timezone: "UTC",
+  archived_at: null,
+  created_at: now,
+  updated_at: now,
+  revision: 'W/"location-r1"',
+};
+
+const adminSession = {
+  id: adminSessionId,
+  location_id: adminLocationId,
+  slug: "draft-admin-session",
+  title: "Draft Admin Session",
+  recorded_at: now,
+  access_level: "private",
+  publication_status: "draft",
+  processing_status: "pending",
+  is_featured: false,
+  metadata: {},
+  created_at: now,
+  updated_at: now,
+  revision: 'W/"session-r1"',
+};
+
+const adminCollection = {
+  id: adminCollectionId,
+  slug: "admin-collection",
+  title: "Admin Collection",
+  description: null,
+  is_public: false,
+  sort_order: 0,
+  metadata: {},
+  location_ids: [adminLocationId],
+  session_ids: [adminSessionId],
+  created_at: now,
+  updated_at: now,
+  revision: 'W/"collection-r1"',
+};
+
+const adminUser = {
+  user: {
+    id: adminUserId,
+    email: "target-admin@example.test",
+    email_verified: true,
+    role: "admin",
+    is_active: true,
+    created_at: now,
+  },
+  revision: 'W/"user-r1"',
+  membership: {
+    id: "61000000-0000-4000-8000-000000000001",
+    user_id: adminUserId,
+    plan: "member",
+    status: "active",
+    is_entitled: true,
+    starts_at: now,
+    expires_at: null,
+  },
+};
+
+const adminAudit = {
+  id: "71000000-0000-4000-8000-000000000001",
+  actor_user_id: adminUserId,
+  event_type: "location.updated",
+  subject_type: "location",
+  subject_id: adminLocationId,
+  ip_address: "192.0.2.10",
+  user_agent: "ORNA e2e browser",
+  metadata: { changed_fields: ["name"] },
+  created_at: now,
+};
 
 const location = {
   id: locationId,
@@ -201,6 +291,89 @@ const server = createServer((request, response) => {
   }
   if (path === "/health") {
     send(response, 200, { status: "ok" });
+    return;
+  }
+  if (request.method === "POST" && path === "/__e2e/admin-mutation") {
+    const mode = url.searchParams.get("mode");
+    if (!["ok", "stale", "unavailable"].includes(mode)) {
+      send(response, 400, { detail: "Unsupported admin mutation mode" });
+      return;
+    }
+    nextAdminMutation = mode;
+    send(response, 204, null);
+    return;
+  }
+  const cookie = request.headers.cookie ?? "";
+  const hasAdminCookie = cookie.includes("orna_access=admin-e2e")
+    || cookie.includes("orna_access=malformed-admin-e2e")
+    || cookie.includes("orna_access=pagination-admin-e2e")
+    || cookie.includes("orna_access=stale-admin-e2e")
+    || cookie.includes("orna_access=unavailable-admin-e2e");
+  const hasMemberCookie = cookie.includes("orna_access=member-e2e");
+  if (request.method === "GET" && path === "/api/v1/admin/me") {
+    if (hasMemberCookie) {
+      send(response, 403, { detail: "Admin role required" });
+      return;
+    }
+    if (!hasAdminCookie) {
+      send(response, 401, { detail: "Authentication is required" });
+      return;
+    }
+    send(response, 200, { id: adminUserId, role: "admin", is_admin: true, mode: "token" }, { "Cache-Control": "no-store" });
+    return;
+  }
+  if (hasAdminCookie && request.method === "GET" && path === "/api/v1/admin/locations") {
+    const payload = cookie.includes("malformed-admin-e2e")
+      ? [{ ...adminLocation, coordinate_visibility: "unknown_privileged_state" }]
+      : cookie.includes("pagination-admin-e2e")
+        ? Array.from({ length: 50 }, (_, index) => ({
+            ...adminLocation,
+            id: `11000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+          }))
+        : [adminLocation];
+    send(response, 200, payload, { "Cache-Control": "no-store" });
+    return;
+  }
+  if (hasAdminCookie && request.method === "GET" && path === "/api/v1/admin/sessions") {
+    send(response, 200, [adminSession], { "Cache-Control": "no-store" });
+    return;
+  }
+  if (hasAdminCookie && request.method === "GET" && path === "/api/v1/admin/collections") {
+    send(response, 200, [adminCollection], { "Cache-Control": "no-store" });
+    return;
+  }
+  if (hasAdminCookie && request.method === "GET" && path === "/api/v1/admin/users") {
+    send(response, 200, [adminUser], { "Cache-Control": "no-store" });
+    return;
+  }
+  if (hasAdminCookie && request.method === "GET" && path === "/api/v1/admin/audit-events") {
+    send(response, 200, [adminAudit], { "Cache-Control": "no-store" });
+    return;
+  }
+  const isAdminMutation = hasAdminCookie
+    && request.method !== "GET"
+    && path.startsWith("/api/v1/admin/");
+  if (isAdminMutation) {
+    if (cookie.includes("orna_access=stale-admin-e2e") || nextAdminMutation === "stale") {
+      nextAdminMutation = "ok";
+      send(response, 412, { detail: "Resource changed" });
+      return;
+    }
+    if (cookie.includes("orna_access=unavailable-admin-e2e") || nextAdminMutation === "unavailable") {
+      nextAdminMutation = "ok";
+      send(response, 503, { detail: "Dependency unavailable" });
+      return;
+    }
+    send(response, request.method === "POST" ? 201 : 200, { status: "queued" }, { "Cache-Control": "no-store" });
+    return;
+  }
+  if (hasAdminCookie && request.method === "PATCH" && path === `/api/v1/admin/locations/${adminLocationId}`) {
+    if (nextAdminMutation === "stale") {
+      nextAdminMutation = "ok";
+      send(response, 412, { detail: "Resource changed" });
+      return;
+    }
+    send(response, 200, adminLocation, { ETag: adminLocation.revision, "Cache-Control": "no-store" });
     return;
   }
   if (path === "/mock-location-photo-v2.png") {

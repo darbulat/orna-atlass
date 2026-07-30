@@ -33,6 +33,8 @@ from orna_atlas.app.integrations.bird_analysis import (
 from orna_atlas.app.integrations.redis import invalidate_atlas_cache
 from orna_atlas.app.integrations.s3 import get_object_storage_client
 from orna_atlas.app.modules.media import repository
+from orna_atlas.app.modules.admin.context import apply_actor_mode_metadata
+from orna_atlas.app.modules.admin.repository import add_audit_event
 from orna_atlas.app.modules.media.audio import (
     extract_audio_metadata,
     generate_waveform,
@@ -134,6 +136,11 @@ async def register_recording_segments(
     session: AsyncSession,
     session_id: UUID,
     data: RecordingSegmentBatchCreate,
+    *,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> tuple[list[RecordingSegment], HlsProcessingJob]:
     """Atomically register existing private S3 WAV objects as one logical recording."""
     recording = await sessions_service.require_session_for_admin(session, session_id)
@@ -188,6 +195,22 @@ async def register_recording_segments(
         source_fingerprint=fingerprint.hexdigest(),
     )
     recording.processing_status = "queued"
+    await add_audit_event(
+        session,
+        event_type="media.segments_registered",
+        subject_type="recording_session",
+        subject_id=str(recording.id),
+        actor_user_id=actor_user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata=apply_actor_mode_metadata(
+            {
+                "changed_fields": ["segments"],
+                "segment_count": len(data.segments),
+            },
+            actor_mode,
+        ),
+    )
     await session.commit()
     try:
         from orna_atlas.app.workers.audio_pipeline import enqueue_hls_processing
@@ -207,7 +230,15 @@ async def register_recording_segments(
     return segments, job
 
 
-async def retry_hls_processing(session: AsyncSession, session_id: UUID) -> HlsProcessingJob:
+async def retry_hls_processing(
+    session: AsyncSession,
+    session_id: UUID,
+    *,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> HlsProcessingJob:
     recording = await sessions_service.require_session_for_admin(session, session_id)
     job = await repository.latest_hls_processing_job(session, session_id, for_update=True)
     if job is None:
@@ -221,6 +252,19 @@ async def retry_hls_processing(session: AsyncSession, session_id: UUID) -> HlsPr
     job.error_message = None
     job.finished_at = None
     recording.processing_status = "queued"
+    await add_audit_event(
+        session,
+        event_type="media.processing_retried",
+        subject_type="recording_session",
+        subject_id=str(recording.id),
+        actor_user_id=actor_user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata=apply_actor_mode_metadata(
+            {"changed_fields": ["processing_status"], "pipeline": "hls"},
+            actor_mode,
+        ),
+    )
     await session.commit()
     try:
         job.queue_job_id = await asyncio.to_thread(
@@ -400,7 +444,14 @@ async def _analyze_hls_segments(
 
 
 async def create_asset_for_session(
-    session: AsyncSession, session_id: UUID, data: MediaAssetCreate
+    session: AsyncSession,
+    session_id: UUID,
+    data: MediaAssetCreate,
+    *,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> MediaAsset:
     recording = await sessions_service.require_session_for_admin(session, session_id)
     validate_managed_storage_key(data.storage_key)
@@ -435,6 +486,19 @@ async def create_asset_for_session(
         )
     else:
         recording.processing_status = _recording_processing_status(recording)
+    await add_audit_event(
+        session,
+        event_type="media.asset_registered",
+        subject_type="media_asset",
+        subject_id=str(asset.id),
+        actor_user_id=actor_user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata=apply_actor_mode_metadata(
+            {"changed_fields": sorted(data.model_dump(exclude_unset=True, exclude_none=True).keys())},
+            actor_mode,
+        ),
+    )
     await session.commit()
 
     if job is not None:
@@ -481,7 +545,15 @@ async def enqueue_asset_processing(
     )
 
 
-async def retry_asset_processing(session: AsyncSession, asset_id: UUID) -> ProcessingStatusRead:
+async def retry_asset_processing(
+    session: AsyncSession,
+    asset_id: UUID,
+    *,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> ProcessingStatusRead:
     asset = await repository.get_asset_for_processing(session, asset_id)
     if asset is None:
         raise NotFoundError("Media asset not found")
@@ -503,6 +575,19 @@ async def retry_asset_processing(session: AsyncSession, asset_id: UUID) -> Proce
         asset,
         job_type=PIPELINE_JOB_TYPE,
         request_id=current_request_id(),
+    )
+    await add_audit_event(
+        session,
+        event_type="media.processing_retried",
+        subject_type="media_asset",
+        subject_id=str(asset.id),
+        actor_user_id=actor_user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata=apply_actor_mode_metadata(
+            {"changed_fields": ["processing_status"]},
+            actor_mode,
+        ),
     )
     await session.commit()
     await _enqueue_or_mark_failed(session, asset, job)
@@ -560,7 +645,15 @@ async def recover_stale_asset_processing(session: AsyncSession, asset_id: UUID) 
     return True
 
 
-async def archive_asset(session: AsyncSession, asset_id: UUID) -> None:
+async def archive_asset(
+    session: AsyncSession,
+    asset_id: UUID,
+    *,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
     asset = await require_asset(session, asset_id)
     if asset.archived_at is None:
         await repository.archive_assets(session, [asset])
@@ -573,11 +666,32 @@ async def archive_asset(session: AsyncSession, asset_id: UUID) -> None:
             retain_until=retain_until,
         )
         asset.session.processing_status = _recording_processing_status(asset.session)
+        await add_audit_event(
+            session,
+            event_type="media.asset_archived",
+            subject_type="media_asset",
+            subject_id=str(asset.id),
+            actor_user_id=actor_user_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            metadata=apply_actor_mode_metadata(
+                {"changed_fields": ["archived_at"]},
+                actor_mode,
+            ),
+        )
         await session.commit()
         await _clear_processing_caches(asset.session)
 
 
-async def purge_archived_asset(session: AsyncSession, asset_id: UUID) -> None:
+async def purge_archived_asset(
+    session: AsyncSession,
+    asset_id: UUID,
+    *,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
     asset = await require_asset(session, asset_id)
     if asset.archived_at is None or asset.is_active:
         raise ConflictError("Only archived media revisions can be purged")
@@ -592,6 +706,19 @@ async def purge_archived_asset(session: AsyncSession, asset_id: UUID) -> None:
         session,
         [asset],
         retain_until=datetime.now(UTC),
+    )
+    await add_audit_event(
+        session,
+        event_type="media.asset_purge_requested",
+        subject_type="media_asset",
+        subject_id=str(asset.id),
+        actor_user_id=actor_user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata=apply_actor_mode_metadata(
+            {"changed_fields": ["storage_cleanup"]},
+            actor_mode,
+        ),
     )
     await session.commit()
     if jobs:

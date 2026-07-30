@@ -33,12 +33,34 @@ async def list_locations_for_admin(
     session: AsyncSession,
     *,
     include_archived: bool = False,
+    q: str | None = None,
+    coordinate_visibility: str | None = None,
+    sensitivity_level: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Location]:
     filters = []
     if not include_archived:
         filters.append(Location.archived_at.is_(None))
+
+    if q:
+        like_value = f"%{q}%"
+        filters.append(
+            (
+                Location.name.ilike(like_value)
+                | Location.slug.ilike(like_value)
+                | Location.region.ilike(like_value)
+                | Location.country_code.ilike(like_value)
+                | Location.habitat.ilike(like_value)
+            )
+        )
+
+    if coordinate_visibility:
+        filters.append(Location.coordinate_visibility == coordinate_visibility)
+
+    if sensitivity_level:
+        filters.append(Location.sensitivity_level == sensitivity_level)
+
     result = await session.execute(
         select(Location)
         .where(*filters)
@@ -70,6 +92,21 @@ async def get_location_for_admin(session: AsyncSession, location_id: UUID) -> Lo
             selectinload(Location.sessions).selectinload(RecordingSession.media_assets)
         )
         .where(Location.id == location_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_location_for_admin_for_update(
+    session: AsyncSession, location_id: UUID
+) -> Location | None:
+    result = await session.execute(
+        select(Location)
+        .options(
+            selectinload(Location.sessions).selectinload(RecordingSession.media_assets)
+        )
+        .where(Location.id == location_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 
