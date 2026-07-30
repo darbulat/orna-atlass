@@ -4,9 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.core.domain_errors import AuthenticationError
 from orna_atlas.app.modules.admin.repository import add_audit_event
+from orna_atlas.app.modules.memberships.schemas import MembershipAbsentRead, MembershipRead
 from orna_atlas.app.modules.users import repository
 from orna_atlas.app.modules.users.models import User
-from orna_atlas.app.modules.users.schemas import UserRoleUpdate
+from orna_atlas.app.modules.users.schemas import AdminUserRead, UserRoleUpdate
 
 
 async def require_user(session: AsyncSession, user_id: UUID) -> User:
@@ -34,6 +35,50 @@ async def update_role(
     await session.commit()
     await session.refresh(user)
     return user
+
+
+def _project_admin_user(user: User) -> AdminUserRead:
+    if user.membership is None:
+        membership = MembershipAbsentRead(user_id=user.id)
+    else:
+        membership = MembershipRead.model_validate(user.membership)
+    return AdminUserRead(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        created_at=user.created_at,
+        membership=membership,
+    )
+
+
+async def list_admin(
+    session: AsyncSession,
+    *,
+    email: str | None,
+    role: str | None,
+    is_active: bool | None,
+    membership_status: str | None,
+    limit: int,
+    offset: int,
+) -> list[AdminUserRead]:
+    users = await repository.list_for_admin(
+        session,
+        email=email,
+        role=role,
+        is_active=is_active,
+        membership_status=membership_status,
+        limit=limit,
+        offset=offset,
+    )
+    return [_project_admin_user(user) for user in users]
+
+
+async def require_admin_user(session: AsyncSession, user_id: UUID) -> AdminUserRead:
+    user = await repository.get_for_admin(session, user_id)
+    if user is None:
+        raise AuthenticationError("User is unavailable")
+    return _project_admin_user(user)
 
 
 async def bootstrap_first_admin(session: AsyncSession, email: str) -> User:

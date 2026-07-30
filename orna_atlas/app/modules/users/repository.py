@@ -3,8 +3,10 @@ from uuid import UUID
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from orna_atlas.app.modules.users.models import User
+from orna_atlas.app.modules.memberships.models import Membership
 
 
 async def get_by_id(session: AsyncSession, user_id: UUID) -> User | None:
@@ -64,6 +66,55 @@ async def create(
     session.add(user)
     await session.flush()
     return user
+
+
+async def list_for_admin(
+    session: AsyncSession,
+    *,
+    email: str | None = None,
+    role: str | None = None,
+    is_active: bool | None = None,
+    membership_status: str | None = None,
+    limit: int,
+    offset: int,
+) -> list[User]:
+    stmt = (
+        select(User)
+        .options(selectinload(User.membership))
+        .outerjoin(Membership)
+        .order_by(User.created_at.desc(), User.id)
+        .limit(limit)
+        .offset(offset)
+    )
+
+    if email:
+        lowered = email.strip().lower()
+        stmt = stmt.where(User.email.ilike(f"%{lowered}%"))
+
+    if role:
+        stmt = stmt.where(User.role == role)
+
+    if is_active is not None:
+        stmt = stmt.where(User.is_active == is_active)
+
+    if membership_status:
+        normalized = membership_status.lower()
+        if normalized == "inactive":
+            stmt = stmt.where((Membership.status == "inactive") | (Membership.id.is_(None)))
+        else:
+            stmt = stmt.where(Membership.status == normalized)
+
+    result = await session.execute(stmt)
+    return list(result.scalars().unique().all())
+
+
+async def get_for_admin(session: AsyncSession, user_id: UUID) -> User | None:
+    result = await session.execute(
+        select(User)
+        .options(selectinload(User.membership))
+        .where(User.id == user_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def save(session: AsyncSession) -> None:

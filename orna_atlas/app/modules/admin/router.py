@@ -30,7 +30,7 @@ from orna_atlas.app.modules.media.schemas import (
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionRead, SessionUpdate
 from orna_atlas.app.modules.users import service as users_service
-from orna_atlas.app.modules.users.schemas import UserRead, UserRoleUpdate
+from orna_atlas.app.modules.users.schemas import AdminUserRead, UserRead, UserRoleUpdate
 
 
 def _set_admin_no_cache(response: Response) -> None:
@@ -321,6 +321,37 @@ async def get_collection(
     _: CurrentUser = admin_dependency,
 ) -> CollectionAdminRead:
     return await collections_service.require_collection_for_admin(session, collection_id)
+
+
+@router.get("/users", response_model=list[AdminUserRead])
+async def list_users(
+    email: str | None = None,
+    role: str | None = None,
+    is_active: bool | None = None,
+    membership_status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+) -> list[AdminUserRead]:
+    return await users_service.list_admin(
+        session,
+        email=email,
+        role=role,
+        is_active=is_active,
+        membership_status=membership_status,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/users/{user_id}", response_model=AdminUserRead)
+async def get_user(
+    user_id: UUID,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+) -> AdminUserRead:
+    return await users_service.require_admin_user(session, user_id)
 
 
 @router.post(

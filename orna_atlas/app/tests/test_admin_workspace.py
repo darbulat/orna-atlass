@@ -14,6 +14,7 @@ from orna_atlas.app.main import app
 from orna_atlas.app.modules.collections import service as collections_service
 from orna_atlas.app.modules.locations import service as locations_service
 from orna_atlas.app.modules.sessions import service as sessions_service
+from orna_atlas.app.modules.users import service as users_service
 
 
 def _admin_location(*, archived: bool = False) -> SimpleNamespace:
@@ -76,6 +77,28 @@ def _admin_collection(*, is_public: bool = True) -> SimpleNamespace:
         session_links=[],
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
+    )
+
+
+def _admin_user(*, has_membership: bool = True, active: bool = True) -> SimpleNamespace:
+    membership = None
+    if has_membership:
+        membership = SimpleNamespace(
+            id=uuid4(),
+            user_id=uuid4(),
+            status="active",
+            plan="member",
+            starts_at=None,
+            expires_at=None,
+            is_entitled=True,
+        )
+    return SimpleNamespace(
+        id=uuid4(),
+        email="member@example.com",
+        role="member",
+        is_active=active,
+        created_at=datetime.now(UTC),
+        membership=membership,
     )
 
 
@@ -348,6 +371,94 @@ def test_admin_collection_detail_route_returns_collection_payload(monkeypatch) -
     assert payload["id"] == str(row.id)
     assert payload["slug"] == row.slug
     assert payload["is_public"] == row.is_public
+
+
+@pytest.mark.asyncio
+async def test_admin_users_list_forwards_filters(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    user = _admin_user()
+
+    async def fake_list_for_admin(
+        _session,
+        *,
+        email: str | None,
+        role: str | None,
+        is_active: bool | None,
+        membership_status: str | None,
+        limit: int,
+        offset: int,
+    ):
+        captured["email"] = email
+        captured["role"] = role
+        captured["is_active"] = is_active
+        captured["membership_status"] = membership_status
+        captured["limit"] = limit
+        captured["offset"] = offset
+        return [user]
+
+    monkeypatch.setattr(users_service.repository, "list_for_admin", fake_list_for_admin)
+
+    rows = await users_service.list_admin(
+        AsyncMock(),
+        email="member",
+        role="member",
+        is_active=True,
+        membership_status="active",
+        limit=11,
+        offset=3,
+    )
+
+    assert captured == {
+        "email": "member",
+        "role": "member",
+        "is_active": True,
+        "membership_status": "active",
+        "limit": 11,
+        "offset": 3,
+    }
+    assert rows[0].membership.status == "active"
+
+
+def test_admin_users_routes_project_membership_or_absent(monkeypatch) -> None:
+    row_with_membership = _admin_user(has_membership=True)
+    row_without_membership = _admin_user(has_membership=False)
+
+    async def fake_list_for_admin(
+        _session,
+        *,
+        email: str | None,
+        role: str | None,
+        is_active: bool | None,
+        membership_status: str | None,
+        limit: int,
+        offset: int,
+    ):
+        return [row_with_membership, row_without_membership]
+
+    async def fake_get_for_admin(_session, _user_id):
+        return row_with_membership
+
+    monkeypatch.setattr(users_service.repository, "list_for_admin", fake_list_for_admin)
+    monkeypatch.setattr(users_service.repository, "get_for_admin", fake_get_for_admin)
+    _set_admin_overrides()
+
+    client = TestClient(app)
+    try:
+        list_response = client.get("/api/v1/admin/users?limit=50&offset=0")
+        detail_response = client.get(f"/api/v1/admin/users/{row_with_membership.id}")
+    finally:
+        _clear_admin_overrides()
+
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert payload[0]["membership"]["status"] == "active"
+    assert payload[1]["membership"]["status"] == "inactive"
+    assert payload[1]["membership"]["plan"] == "none"
+
+    assert detail_response.status_code == 200
+    detail_payload = detail_response.json()
+    assert detail_payload["id"] == str(row_with_membership.id)
+    assert detail_payload["membership"]["status"] == "active"
 
 
 def test_admin_me_route_returns_typed_identity(monkeypatch) -> None:
