@@ -2137,6 +2137,61 @@ a:focus-visible {
   max-width: 760px;
 }
 
+.lifetime-offer {
+  align-items: start;
+  background: #dce9df;
+  border-radius: 32px;
+  color: #102019;
+  display: grid;
+  gap: clamp(36px, 8vw, 110px);
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr);
+  margin: clamp(48px, 8vw, 100px) 0;
+  padding: clamp(32px, 6vw, 72px);
+}
+.lifetime-offer h2 { font-size: clamp(2.2rem, 5vw, 4.5rem); margin: 12px 0 24px; }
+.lifetime-offer p { color: #405049; line-height: 1.65; }
+.lifetime-price-card {
+  background: #07110f;
+  border-radius: 24px;
+  color: #edf7f2;
+  display: grid;
+  gap: 18px;
+  padding: 30px;
+}
+.lifetime-price-card > span { color: #9bd8bd; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; }
+.lifetime-price-card strong { font-family: Georgia, "Times New Roman", serif; font-size: 2.6rem; font-weight: 400; }
+.lifetime-price-card strong small { font-family: inherit; font-size: .8rem; letter-spacing: .12em; }
+.lifetime-price-card p { color: #c8d8d1; margin: 0; }
+.lifetime-price-card a { background: #9bd8bd; border-radius: 999px; color: #07110f; padding: 14px 20px; text-align: center; text-decoration: none; }
+
+.billing-panel {
+  background: rgba(234, 241, 235, .96);
+  border-radius: 28px;
+  color: #13231c;
+  display: grid;
+  gap: clamp(28px, 6vw, 80px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, .8fr);
+  margin: 18px auto 0;
+  max-width: 1180px;
+  padding: clamp(26px, 4vw, 46px);
+  position: relative;
+  width: 100%;
+  z-index: 1;
+}
+.billing-panel h2 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(2rem, 4vw, 3.8rem); font-weight: 400; margin: 12px 0; }
+.billing-panel > div > p { color: #557067; line-height: 1.6; }
+.billing-purchase-card { border: 1px solid rgba(19,35,28,.18); border-radius: 20px; display: grid; gap: 12px; padding: 24px; }
+.billing-purchase-card > strong { font-family: Georgia, "Times New Roman", serif; font-size: 2.2rem; font-weight: 400; }
+.billing-purchase-card > span { color: #557067; font-size: .85rem; }
+.billing-purchase-card button { background: #153e31; border: 0; border-radius: 999px; color: #f3f7f4; cursor: pointer; min-height: 48px; padding: 12px 18px; }
+.billing-purchase-card button:disabled { cursor: not-allowed; opacity: .55; }
+.billing-disclosure { font-size: .78rem; }
+.billing-disclosure a { align-items: center; display: inline-flex; min-height: 44px; }
+@media (max-width: 760px) {
+  .lifetime-offer, .billing-panel { grid-template-columns: 1fr; }
+  .lifetime-offer { border-radius: 22px; padding: 28px 20px; }
+}
+
 .account-page,
 .account-page * { box-sizing: border-box; }
 .account-page {

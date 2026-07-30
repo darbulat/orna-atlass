@@ -6,6 +6,7 @@ relying on incidental router imports leaves parts of the mapper registry empty.
 
 from orna_atlas.app.modules.admin.models import AuditEvent
 from orna_atlas.app.modules.auth.models import RefreshToken
+from orna_atlas.app.modules.billing.models import BillingProviderEvent, BillingPurchase, BillingRefundRequest
 from orna_atlas.app.modules.collections.models import Collection, CollectionLocation, CollectionSession
 from orna_atlas.app.modules.locations.models import Location
 from orna_atlas.app.modules.library.models import ListeningHistory, UserFavorite
@@ -22,6 +23,9 @@ from orna_atlas.app.modules.users.models import User
 __all__ = [
     "AuditEvent",
     "BirdVocalPart",
+    "BillingProviderEvent",
+    "BillingPurchase",
+    "BillingRefundRequest",
     "Collection",
     "CollectionLocation",
     "CollectionSession",

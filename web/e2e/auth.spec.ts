@@ -109,8 +109,10 @@ test("signed-in account is a responsive dashboard with clear access and next act
   await expect(overview.getByText("Public previews only")).toBeVisible();
   await expect(page.getByRole("link", { name: "Explore the atlas" })).toHaveAttribute("href", "/#atlas-entry");
   await expect(page.getByRole("link", { name: "Open your library" })).toHaveAttribute("href", "/library");
-  await expect(page.getByText("Membership enrollment is not open yet.")).toBeVisible();
-  await expect(page.getByText("No payment is taken.")).toBeVisible();
+  await expect(page.getByText("Lifetime access costs USD $10.00 once.")).toBeVisible();
+  await expect(page.getByText("No automatic renewal.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "One payment. No renewal." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Checkout unavailable" })).toBeDisabled();
 
   await page.setViewportSize({ width: 320, height: 700 });
   const geometry = await page.evaluate(() => {
@@ -132,6 +134,125 @@ test("signed-in account is a responsive dashboard with clear access and next act
   expect(geometry.dashboardRight).toBeLessThanOrEqual(320);
   expect(geometry.controlsFit).toBe(true);
   expect(geometry.controlsTallEnough).toBe(true);
+});
+
+
+test("an existing entitlement hides the checkout action without a billing purchase", async ({ page }) => {
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "lifetime_member", status: "active", is_entitled: true }),
+    });
+  });
+  await page.route("**/api/v1/billing/offer", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        product_code: "lifetime_member",
+        name: "Lifetime Member Access",
+        description: "Permanent access to available members-only field recordings.",
+        amount_minor: 1000,
+        currency: "USD",
+        is_recurring: false,
+        checkout_available: true,
+        refund_summary: "Full refund requests are accepted within 14 calendar days.",
+      }),
+    });
+  });
+
+  await page.goto("/membership");
+
+  await expect(page.getByText("Lifetime access is already active on this account.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue to secure payment" })).toHaveCount(0);
+});
+
+
+test("hosted checkout return polls purchases and refreshes membership", async ({ page }) => {
+  let purchaseReads = 0;
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    const entitled = purchaseReads >= 2;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        plan: entitled ? "lifetime_member" : "none",
+        status: entitled ? "active" : "inactive",
+        is_entitled: entitled,
+      }),
+    });
+  });
+  await page.route("**/api/v1/billing/offer", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        product_code: "lifetime_member",
+        name: "Lifetime Member Access",
+        description: "Permanent access to available members-only field recordings.",
+        amount_minor: 1000,
+        currency: "USD",
+        is_recurring: false,
+        checkout_available: true,
+        refund_summary: "Full refund requests are accepted within 14 calendar days.",
+      }),
+    });
+  });
+  await page.route("**/api/v1/billing/purchases/me", async (route) => {
+    purchaseReads += 1;
+    const paid = purchaseReads >= 2;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: "60000000-0000-4000-8000-000000000001",
+        merchant_reference: "orna-return",
+        product_code: "lifetime_member",
+        amount_minor: 1000,
+        currency: "USD",
+        status: paid ? "paid" : "pending",
+        paid_at: paid ? "2026-07-30T09:00:00Z" : null,
+        refunded_at: null,
+        created_at: "2026-07-30T08:59:00Z",
+      }]),
+    });
+  });
+
+  await page.goto("/membership?payment_return=orna-return");
+
+  await expect(page.getByText("Payment confirmed. Lifetime access is active.")).toBeVisible();
+  await expect(page.getByText("Member sessions unlocked")).toBeVisible();
+  await expect(page).toHaveURL(/\/membership$/);
+  expect(purchaseReads).toBeGreaterThanOrEqual(2);
 });
 
 

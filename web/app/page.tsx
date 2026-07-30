@@ -4,6 +4,7 @@ import { AnalyticsLink } from "../components/analytics-link";
 import { AtlasExplorer } from "../components/atlas/AtlasExplorer";
 import { FeaturedSessions } from "../components/featured-sessions";
 import { PopularLocations } from "../components/popular-locations";
+import { LifetimeMembershipOffer } from "../components/lifetime-membership-offer";
 import { SiteHeader } from "../components/site-header";
 import { fetchCollections, type CollectionSummary } from "../lib/api/collections";
 import { fetchAtlasPoints, fetchCurrentDawn, fetchFeaturedSessions, includeDawnLocations } from "../lib/api/sessions";
@@ -108,6 +109,7 @@ export default async function HomePage({
             </div>
           ) : <p className="empty-state">Collections are being curated for the public atlas.</p>}
         </section>
+        <LifetimeMembershipOffer />
       </main>
     </div>
   );

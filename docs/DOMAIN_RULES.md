@@ -29,6 +29,13 @@ Mock silence is development fixture behavior, not a successful production fallba
 
 Membership entitlement is active only when `status=active` and `expires_at` is absent or in the future. Public sessions may issue anonymous grants; `members_only` sessions require an active entitlement. Editor and admin roles may inspect protected playback for editorial operations. Every successful grant creates an audit event; denied requests never create a success event.
 
+Lifetime Member Access is a digital entitlement sold for one non-recurring USD 10.00 payment. The
+server owns the product, amount and currency. A browser return, client assertion or unverified provider
+message never grants access: only an idempotently processed Bereke confirmation whose merchant
+reference, provider order, amount and currency match the recorded purchase may activate lifetime
+membership with no expiry. A provider-confirmed refund revokes payment-backed access unless another
+valid entitlement remains.
+
 Entitled members can discover and render `members_only` session list/detail records through the
 authenticated session endpoints. Anonymous and non-entitled callers receive the public projection
 only; protected records are reported as not found.

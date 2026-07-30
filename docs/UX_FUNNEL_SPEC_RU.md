@@ -185,10 +185,13 @@ Referece-примеры ("Earthsound", "Birdsong Earth") показывают п
 
 | **Элемент** | **Действие** | **Состояния** | **Аналитика** |
 | --- | --- | --- | --- |
-| "Reserve early access" / "Join early access" | Ведёт в форму регистрации (F), не в чекаут — оплата пока не подключена | default / hover | membership_reserve_click → subscription_intent |
+| "Continue to secure payment" | Для авторизованного пользователя с подтверждённым email создаёт разовый checkout USD 10.00 и переводит на защищённую форму Bereke Bank | default / loading / unavailable | membership_reserve_click → subscription_intent |
 | Строки сравнения Free/Member таблицы | Не кликабельны, чисто информационные | — | — |
 
-Разработчику важно: во всех местах, где сейчас нет реальной оплаты ("Pricing is announced before payment"), кнопка обязана вести в регистрацию/waitlist, а не имитировать чекаут — это уже заявлено в текущем копирайте сайта ("does not currently initiate checkout") и должно остаться так до отдельного релиза биллинга.
+Lifetime Member Access — цифровой продукт за один платёж USD 10.00 без автопродления и срока
+окончания. Клиентская страница возврата из банка не активирует доступ: membership выдаётся только
+после проверенного серверного callback Bereke с совпавшими заказом, суммой и валютой. Пока
+`BILLING_ENABLED=false`, интерфейс правдиво показывает недоступность checkout.
 
 ## 11. Открытые вопросы
 

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { FormEvent, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import { SiteHeader } from "../../components/site-header";
+import { MembershipBillingPanel } from "../../components/membership-billing-panel";
 import { ApiError, apiErrorMessage } from "../../lib/api/client";
 import {
   cancelOAuthLink,
@@ -100,7 +101,7 @@ function MembershipInformation({ onCreateAccount }: { onCreateAccount?: () => vo
   return (
     <section className="membership-information" aria-labelledby="membership-options-heading">
       <p className="eyebrow">Listening options</p>
-      <h2 id="membership-options-heading">Free atlas and future membership</h2>
+      <h2 id="membership-options-heading">Free atlas and lifetime membership</h2>
       <div className="membership-comparison">
         <article className="panel">
           <h3>Free account</h3>
@@ -112,12 +113,12 @@ function MembershipInformation({ onCreateAccount }: { onCreateAccount?: () => vo
           </ul>
         </article>
         <article className="panel">
-          <h3>Member access</h3>
-          <p><strong>Pricing has not been announced.</strong> Checkout is not available.</p>
+          <h3>Lifetime Member Access</h3>
+          <p><strong>USD $10.00 once.</strong> No recurring charge or automatic renewal.</p>
           <ul>
-            <li>Intended for members-only long-form recordings</li>
-            <li>Enrollment will be offered only after pricing is shown</li>
-            <li>A free account does not unlock member recordings</li>
+            <li>Permanent access to available members-only recordings</li>
+            <li>Secure hosted checkout through Bereke Bank</li>
+            <li>Digital access with no physical delivery</li>
           </ul>
         </article>
       </div>
@@ -134,10 +135,10 @@ function MembershipInformation({ onCreateAccount }: { onCreateAccount?: () => vo
             onCreateAccount();
           }}
         >
-          Create an account for future membership updates
+          Create an account to purchase lifetime access
         </button>
       ) : (
-        <p role="status">Membership enrollment is not open yet. No interest reservation has been recorded.</p>
+        <p role="status">Sign in with a verified account to open secure checkout.</p>
       )}
       <div className="membership-faq">
         <h2>Frequently asked questions</h2>
@@ -158,8 +159,8 @@ function MembershipInformation({ onCreateAccount }: { onCreateAccount?: () => vo
           <p>No. Sessions preserve the continuity and pace of field recordings instead of assembling short ambient loops.</p>
         </details>
         <details>
-          <summary>Can I buy a membership here today?</summary>
-          <p>Account and entitlement support is live. Checkout and public subscription pricing are not offered here, so ORNA does not present a fictional price or payment flow.</p>
+          <summary>Is this a subscription?</summary>
+          <p>No. Lifetime Member Access costs USD $10.00 once. There is no recurring charge, renewal, or cancellation requirement.</p>
         </details>
       </div>
     </section>
@@ -212,6 +213,24 @@ function MembershipPageContent() {
     : requestedRecoveryMode === "forgot"
       ? "forgot"
       : null;
+
+  const refreshMembershipAfterPayment = useCallback(async (): Promise<boolean | null> => {
+    const generation = authGeneration.current;
+    try {
+      const currentMembership = await fetchMembership();
+      if (generation !== authGeneration.current) return null;
+      setMembership(currentMembership);
+      setAccountLoadError(null);
+      setIsLoadingMembership(false);
+      return currentMembership.is_entitled;
+    } catch (error) {
+      if (generation !== authGeneration.current) return null;
+      setMembership(null);
+      setIsLoadingMembership(false);
+      setAccountLoadError(apiErrorMessage(error, "Unable to refresh membership status."));
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     if (previousRecoveryMode.current === "forgot" && recoveryMode !== "forgot") {
@@ -1030,14 +1049,20 @@ function MembershipPageContent() {
                 </strong>
                 {membershipView === "free" || membershipView === "unavailable" ? (
                   <p>
-                    <span>Membership enrollment is not open yet.</span>
-                    {membershipView === "free" ? <><span aria-hidden="true"> </span><span>No payment is taken.</span></> : null}
+                    <span>Lifetime access costs USD $10.00 once.</span>
+                    {membershipView === "free" ? <><span aria-hidden="true"> </span><span>No automatic renewal.</span></> : null}
                   </p>
                 ) : null}
               </div>
             </div>
           </aside>
         </div>
+
+        <MembershipBillingPanel
+          emailVerified={user.email_verified}
+          isEntitled={membership?.is_entitled ?? null}
+          onMembershipRefresh={refreshMembershipAfterPayment}
+        />
 
         {oauthMessage ? <AuthNotice error={oauthMessage.error}>{oauthMessage.text}</AuthNotice> : null}
         {accountLoadError ? <AuthNotice error>{accountLoadError}</AuthNotice> : null}
@@ -1178,7 +1203,7 @@ function MembershipPageContent() {
       </section>
       {isFocusedLogin ? (
         <p className="auth-membership-link">
-          New to ORNA? <Link href="/membership?mode=register">Create a free account</Link> or <Link href="/membership">learn about future membership</Link>.
+          New to ORNA? <Link href="/membership?mode=register">Create a free account</Link> or <Link href="/membership">learn about lifetime membership</Link>.
         </p>
       ) : (
         <MembershipInformation

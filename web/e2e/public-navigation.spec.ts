@@ -893,8 +893,8 @@ test("membership route exposes login and registration controls", async ({ page }
   await expect(page.getByLabel("Email address", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Password account email", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("minlength", "8");
-  await expect(page.getByRole("heading", { name: "Free atlas and future membership" })).toBeVisible();
-  await expect(page.getByText("Pricing has not been announced.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Free atlas and lifetime membership" })).toBeVisible();
+  await expect(page.getByText("USD $10.00 once.", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Frequently asked questions" })).toBeVisible();
 });
 
@@ -913,12 +913,12 @@ test("membership login link keeps the auth screen focused on sign-in", async ({ 
   await expect(page.getByRole("heading", { level: 1, name: "Sign in to ORNA Atlas" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in", pressed: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create account", pressed: false })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Free atlas and future membership" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Free atlas and lifetime membership" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Frequently asked questions" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "learn about future membership" })).toHaveAttribute("href", "/membership");
+  await expect(page.getByRole("link", { name: "learn about lifetime membership" })).toHaveAttribute("href", "/membership");
 });
 
-test("early membership intent leads to registration without claiming a reservation", async ({ page }) => {
+test("lifetime membership intent leads to registration without claiming a payment", async ({ page }) => {
   await page.addInitScript(() => {
     (window as typeof window & { __analytics?: unknown[] }).__analytics = [];
     window.addEventListener("orna:analytics", (event) => {
@@ -926,7 +926,7 @@ test("early membership intent leads to registration without claiming a reservati
     });
   });
   await page.goto("/membership");
-  await page.getByRole("button", { name: "Create an account for future membership updates" }).click();
+  await page.getByRole("button", { name: "Create an account to purchase lifetime access" }).click();
   await expect(page.getByLabel("Password account email", { exact: true })).toBeFocused();
   await expect(page.getByText(/Interest recorded/)).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (
@@ -970,7 +970,7 @@ test("membership registration emits a completion event without personal data", a
       placement: "membership_form",
     },
   ]);
-  await expect(page.getByText("Membership enrollment is not open yet.")).toBeVisible();
+  await expect(page.getByText("Lifetime access costs USD $10.00 once.")).toBeVisible();
   await expect(page.getByText(/Interest recorded/)).toHaveCount(0);
 });
 
@@ -1069,7 +1069,7 @@ test("free signup from a locked recording stays on the membership explanation", 
   await page.locator("form").getByRole("button", { name: "Continue" }).click();
 
   await expect(page).toHaveURL(/\/membership\?mode=register$/);
-  await expect(page.getByText("Membership enrollment is not open yet.")).toBeVisible();
+  await expect(page.getByText("Lifetime access costs USD $10.00 once.")).toBeVisible();
 });
 
 test("entitled atlas listener can open a members-only session", async ({ page, request }) => {
@@ -2618,6 +2618,8 @@ test("account library discards old-account successes and reloads after an authen
 test("homepage discovery links reach collections and the subscription entry point", async ({ page }) => {
   await page.goto("/");
   await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("heading", { name: "Hear the complete archive for one clear price." })).toBeVisible();
+  await expect(page.getByText("USD $10.00")).toBeVisible();
   const collectionsLink = page.getByRole("link", { name: "See all collections" });
   await expect(collectionsLink).toHaveAttribute("href", "/collections");
   await page.goto("/collections");
@@ -2628,6 +2630,7 @@ test("homepage discovery links reach collections and the subscription entry poin
   await expect(page.getByRole("link", { name: "Subscribe" })).toHaveAttribute("href", "/membership?mode=register");
   await page.goto("/membership?mode=register");
   await expect(page).toHaveURL(/\/membership\?mode=register/);
+  await expect(page.getByRole("link", { name: "Refund Policy" })).toHaveAttribute("href", "/refunds");
 });
 
 test("browser funnel analytics remains bounded across globe, preview, collections, and signup", async ({ page }) => {
