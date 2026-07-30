@@ -179,6 +179,7 @@ class Settings(BaseSettings):
         default=None, validation_alias="FACEBOOK_CLIENT_SECRET"
     )
     billing_enabled: bool = Field(default=False, validation_alias="BILLING_ENABLED")
+    billing_test_mode: bool = Field(default=False, validation_alias="BILLING_TEST_MODE")
     billing_frontend_url: str = Field(
         default="http://localhost:3000/membership", validation_alias="BILLING_FRONTEND_URL"
     )
@@ -187,6 +188,7 @@ class Settings(BaseSettings):
     )
     bereke_merchant_id: str | None = Field(default=None, validation_alias="BEREKE_MERCHANT_ID")
     bereke_api_key: str | None = Field(default=None, validation_alias="BEREKE_API_KEY")
+    bereke_template_id: str | None = Field(default=None, validation_alias="BEREKE_TEMPLATE_ID")
     bereke_callback_secret: str | None = Field(
         default=None, validation_alias="BEREKE_CALLBACK_SECRET"
     )
@@ -241,11 +243,14 @@ class Settings(BaseSettings):
         oauth_enabled = any(all(values) for values in provider_fields.values())
         billing_fields = {
             "BEREKE_CHECKOUT_CREATE_URL": self.bereke_checkout_create_url,
-            "BEREKE_MERCHANT_ID": self.bereke_merchant_id,
-            "BEREKE_API_KEY": self.bereke_api_key,
             "BEREKE_CALLBACK_SECRET": self.bereke_callback_secret,
             "BEREKE_CALLBACK_URL": self.bereke_callback_url,
         }
+        if self.billing_test_mode:
+            billing_fields["BEREKE_TEMPLATE_ID"] = self.bereke_template_id
+        else:
+            billing_fields["BEREKE_MERCHANT_ID"] = self.bereke_merchant_id
+            billing_fields["BEREKE_API_KEY"] = self.bereke_api_key
         if self.bereke_callback_secret and len(self.bereke_callback_secret) < 32:
             raise ValueError("BEREKE_CALLBACK_SECRET must contain at least 32 characters")
         if self.billing_enabled:

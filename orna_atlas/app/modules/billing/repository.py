@@ -17,14 +17,16 @@ async def create_purchase(
     user_id: UUID,
     merchant_reference: str,
     idempotency_key: str,
+    amount_minor: int,
+    currency: str,
 ) -> BillingPurchase:
     purchase = BillingPurchase(
         user_id=user_id,
         merchant_reference=merchant_reference,
         idempotency_key=idempotency_key,
         product_code="lifetime_member",
-        amount_minor=1000,
-        currency="USD",
+        amount_minor=amount_minor,
+        currency=currency,
         status="creating",
     )
     db.add(purchase)
@@ -96,6 +98,17 @@ async def get_by_merchant_reference_for_update(
     result = await db.execute(
         select(BillingPurchase)
         .where(BillingPurchase.merchant_reference == merchant_reference)
+        .with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_by_provider_order_id_for_update(
+    db: AsyncSession, provider_order_id: str
+) -> BillingPurchase | None:
+    result = await db.execute(
+        select(BillingPurchase)
+        .where(BillingPurchase.provider_order_id == provider_order_id)
         .with_for_update()
     )
     return result.scalar_one_or_none()

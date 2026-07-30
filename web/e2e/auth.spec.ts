@@ -109,7 +109,7 @@ test("signed-in account is a responsive dashboard with clear access and next act
   await expect(overview.getByText("Public previews only")).toBeVisible();
   await expect(page.getByRole("link", { name: "Explore the atlas" })).toHaveAttribute("href", "/#atlas-entry");
   await expect(page.getByRole("link", { name: "Open your library" })).toHaveAttribute("href", "/library");
-  await expect(page.getByText("Lifetime access costs USD $10.00 once.")).toBeVisible();
+  await expect(page.getByText("Lifetime access uses one payment at the displayed checkout price.")).toBeVisible();
   await expect(page.getByText("No automatic renewal.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "One payment. No renewal." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Checkout unavailable" })).toBeDisabled();
@@ -167,8 +167,8 @@ test("an existing entitlement hides the checkout action without a billing purcha
         product_code: "lifetime_member",
         name: "Lifetime Member Access",
         description: "Permanent access to available members-only field recordings.",
-        amount_minor: 1000,
-        currency: "USD",
+        amount_minor: 200,
+        currency: "KZT",
         is_recurring: false,
         checkout_available: true,
         refund_summary: "Full refund requests are accepted within 14 calendar days.",
@@ -219,8 +219,8 @@ test("hosted checkout return polls purchases and refreshes membership", async ({
         product_code: "lifetime_member",
         name: "Lifetime Member Access",
         description: "Permanent access to available members-only field recordings.",
-        amount_minor: 1000,
-        currency: "USD",
+        amount_minor: 200,
+        currency: "KZT",
         is_recurring: false,
         checkout_available: true,
         refund_summary: "Full refund requests are accepted within 14 calendar days.",
@@ -237,8 +237,8 @@ test("hosted checkout return polls purchases and refreshes membership", async ({
         id: "60000000-0000-4000-8000-000000000001",
         merchant_reference: "orna-return",
         product_code: "lifetime_member",
-        amount_minor: 1000,
-        currency: "USD",
+        amount_minor: 200,
+        currency: "KZT",
         status: paid ? "paid" : "pending",
         paid_at: paid ? "2026-07-30T09:00:00Z" : null,
         refunded_at: null,

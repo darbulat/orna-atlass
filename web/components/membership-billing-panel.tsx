@@ -8,6 +8,7 @@ import {
   createBillingCheckout,
   fetchBillingOffer,
   fetchPurchases,
+  formatBillingAmount,
   requestPurchaseRefund,
   type BillingOffer,
   type BillingPurchase,
@@ -146,10 +147,18 @@ export function MembershipBillingPanel({
       <div>
         <p className="eyebrow">Lifetime Member Access</p>
         <h2 id="billing-heading">One payment. No renewal.</h2>
-        <p>Permanent access to available members-only recordings for exactly USD $10.00.</p>
+        <p>
+          Permanent access to available members-only recordings for the exact one-time price shown
+          at checkout.
+        </p>
       </div>
       <div className="billing-purchase-card">
-        <strong>USD $10.00</strong>
+        <strong>
+          {offer ? formatBillingAmount(offer.amount_minor, offer.currency) : "Price unavailable"}
+        </strong>
+        {offer?.currency === "KZT" && offer.amount_minor === 200 ? (
+          <span>Test checkout price</span>
+        ) : null}
         <span>One-time digital purchase · no physical delivery</span>
         {!emailVerified ? <p>Verify your email before opening secure checkout.</p> : null}
         {paid ? (

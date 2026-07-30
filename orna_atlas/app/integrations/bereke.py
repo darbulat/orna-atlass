@@ -18,7 +18,7 @@ from orna_atlas.app.core.domain_errors import (
 
 
 CallbackStatus = Literal["paid", "failed", "refunded"]
-_CURRENCY_TO_NUMERIC = {"USD": "840"}
+_CURRENCY_TO_NUMERIC = {"USD": "840", "KZT": "398"}
 _NUMERIC_TO_CURRENCY = {value: key for key, value in _CURRENCY_TO_NUMERIC.items()}
 _IGNORED_OPERATIONS = {"approved", "bindingcreated", "bindingdisabled"}
 _FAILED_OPERATIONS = {"reversed", "declinedbytimeout", "cardpresentdeclined"}
@@ -40,6 +40,7 @@ class BerekeCallback:
     amount_minor: int
     currency: str
     occurred_at: datetime
+    match_by_provider_order: bool = False
 
 
 def _callback_message(parameters: Mapping[str, str]) -> bytes:
@@ -82,7 +83,7 @@ def _callback_kind(parameters: Mapping[str, str]) -> CallbackStatus | None:
 def _provider_currency(value: object) -> str:
     normalized = str(value).upper()
     currency = _NUMERIC_TO_CURRENCY.get(normalized, normalized)
-    if currency != "USD":
+    if currency not in {"USD", "KZT"}:
         raise ValidationError("Invalid Bereke order currency")
     return currency
 
@@ -106,6 +107,9 @@ def parse_callback(
     parameters: Mapping[str, str],
     secret: str | None,
     provider_order: Mapping[str, Any] | None,
+    *,
+    require_deposited_status: bool = True,
+    match_by_provider_order: bool = False,
 ) -> BerekeCallback | None:
     _verify_callback_signature(parameters, secret)
     provider_order_id = parameters.get("mdOrder", "").strip()
@@ -121,7 +125,11 @@ def parse_callback(
         raise ValidationError("Invalid Bereke order status response")
     if str(provider_order.get("orderNumber", "")).strip() != merchant_reference:
         raise ValidationError("Bereke callback order does not match")
-    if callback_status == "paid" and int(provider_order.get("orderStatus", -1)) != 2:
+    if (
+        callback_status == "paid"
+        and require_deposited_status
+        and int(provider_order.get("orderStatus", -1)) != 2
+    ):
         raise ValidationError("Bereke payment is not deposited")
     try:
         amount_minor = int(provider_order["amount"])
@@ -140,6 +148,7 @@ def parse_callback(
         amount_minor=amount_minor,
         currency=currency,
         occurred_at=_occurred_at(provider_order, callback_status),
+        match_by_provider_order=match_by_provider_order,
     )
 
 
@@ -151,15 +160,21 @@ class BerekeHostedCheckoutClient:
 
     def _require_settings(self, *, checkout_enabled: bool) -> Settings:
         settings = self.settings
-        if (checkout_enabled and not settings.billing_enabled) or not all(
-            (
-                settings.bereke_checkout_create_url,
-                settings.bereke_merchant_id,
-                settings.bereke_api_key,
-                settings.bereke_callback_url,
-                settings.bereke_callback_secret,
-                settings.billing_frontend_url,
-            )
+        common = (
+            settings.bereke_checkout_create_url,
+            settings.bereke_callback_url,
+            settings.bereke_callback_secret,
+            settings.billing_frontend_url,
+        )
+        credentials = (
+            (settings.bereke_template_id,)
+            if settings.billing_test_mode
+            else (settings.bereke_merchant_id, settings.bereke_api_key)
+        )
+        if (
+            (checkout_enabled and not settings.billing_enabled)
+            or not all(common)
+            or not all(credentials)
         ):
             raise ServiceUnavailableError("Secure checkout is temporarily unavailable")
         return settings
@@ -171,27 +186,44 @@ class BerekeHostedCheckoutClient:
         amount_minor: int,
         currency: str,
         description: str,
+        customer_email: str | None = None,
     ) -> HostedCheckout:
         settings = self._require_settings(checkout_enabled=True)
         try:
-            numeric_currency = _CURRENCY_TO_NUMERIC[currency]
-            return_url = f"{settings.billing_frontend_url}?payment_return={merchant_reference}"
             async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
-                response = await client.post(
-                    settings.bereke_checkout_create_url,
-                    data={
-                        "token": settings.bereke_api_key,
-                        "orderNumber": merchant_reference,
-                        "amount": str(amount_minor),
-                        "currency": numeric_currency,
-                        "description": description,
-                        "returnUrl": return_url,
-                        "failUrl": return_url,
-                    },
-                )
+                if settings.billing_test_mode:
+                    if amount_minor != 200 or currency != "KZT" or not customer_email:
+                        raise ValueError("invalid test template checkout")
+                    response = await client.post(
+                        settings.bereke_checkout_create_url,
+                        json={
+                            "templateId": settings.bereke_template_id,
+                            "language": "en",
+                            "amount": amount_minor,
+                            "currency": currency,
+                            "addParams": {"email": customer_email},
+                        },
+                    )
+                else:
+                    numeric_currency = _CURRENCY_TO_NUMERIC[currency]
+                    return_url = (
+                        f"{settings.billing_frontend_url}?payment_return={merchant_reference}"
+                    )
+                    response = await client.post(
+                        settings.bereke_checkout_create_url,
+                        data={
+                            "token": settings.bereke_api_key,
+                            "orderNumber": merchant_reference,
+                            "amount": str(amount_minor),
+                            "currency": numeric_currency,
+                            "description": description,
+                            "returnUrl": return_url,
+                            "failUrl": return_url,
+                        },
+                    )
             response.raise_for_status()
             result = response.json()
-            if str(result.get("errorCode", "0")) != "0":
+            if result.get("errorCode") not in (None, 0, "0"):
                 raise ValueError("provider rejected checkout")
             checkout_url = str(result["formUrl"])
             provider_order_id = str(result["orderId"])
@@ -211,6 +243,18 @@ class BerekeHostedCheckoutClient:
         _verify_callback_signature(parameters, settings.bereke_callback_secret)
         if _callback_kind(parameters) is None:
             return None
+        if settings.billing_test_mode:
+            return parse_callback(
+                parameters,
+                settings.bereke_callback_secret,
+                {
+                    "orderNumber": parameters.get("orderNumber"),
+                    "amount": 200,
+                    "currency": "KZT",
+                },
+                require_deposited_status=False,
+                match_by_provider_order=True,
+            )
         provider_order_id = parameters.get("mdOrder", "").strip()
         if not provider_order_id:
             raise ValidationError("Invalid Bereke callback identifiers")

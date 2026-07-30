@@ -12,7 +12,7 @@ class BillingPurchase(Base):
     __tablename__ = "billing_purchases"
     __table_args__ = (
         CheckConstraint("amount_minor > 0", name="ck_billing_purchases_positive_amount"),
-        CheckConstraint("currency = 'USD'", name="ck_billing_purchases_currency"),
+        CheckConstraint("currency IN ('USD', 'KZT')", name="ck_billing_purchases_currency"),
         CheckConstraint(
             "status IN ('creating', 'pending', 'paid', 'failed', 'expired', 'refund_requested', 'refunded')",
             name="ck_billing_purchases_status",

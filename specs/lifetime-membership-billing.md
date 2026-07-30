@@ -25,6 +25,7 @@ renewal or expiry, through Bereke Bank's hosted checkout.
 - Public offer and legal/support disclosures.
 - Authenticated checkout creation, purchase status/history, refund request, and verified callback.
 - Lifetime membership activation after confirmed payment.
+- An explicit KZT 2.00 hosted-template test mode while authenticated merchant API access is pending.
 
 ### Non-goals
 
@@ -56,6 +57,8 @@ outage never grants access.
 3. A verified paid callback activates lifetime membership exactly once.
 4. A confirmed full refund revokes payment-backed access unless another valid entitlement exists.
 5. Public pages show product, operator, support, refund and no-renewal information in English.
+6. Test mode truthfully displays KZT 2.00, creates one provider order per purchase, and never presents
+   itself as production USD checkout.
 
 ## Verification plan
 

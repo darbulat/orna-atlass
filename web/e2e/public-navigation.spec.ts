@@ -903,7 +903,7 @@ test("membership route exposes login and registration controls", async ({ page }
   await expect(page.getByLabel("Password account email", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("minlength", "8");
   await expect(page.getByRole("heading", { name: "Free atlas and lifetime membership" })).toBeVisible();
-  await expect(page.getByText("USD $10.00 once.", { exact: true })).toBeVisible();
+  await expect(page.getByText("One payment.", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Frequently asked questions" })).toBeVisible();
 });
 
@@ -979,7 +979,7 @@ test("membership registration emits a completion event without personal data", a
       placement: "membership_form",
     },
   ]);
-  await expect(page.getByText("Lifetime access costs USD $10.00 once.")).toBeVisible();
+  await expect(page.getByText("Lifetime access uses one payment at the displayed checkout price.")).toBeVisible();
   await expect(page.getByText(/Interest recorded/)).toHaveCount(0);
 });
 
@@ -1078,7 +1078,7 @@ test("free signup from a locked recording stays on the membership explanation", 
   await page.locator("form").getByRole("button", { name: "Continue" }).click();
 
   await expect(page).toHaveURL(/\/membership\?mode=register$/);
-  await expect(page.getByText("Lifetime access costs USD $10.00 once.")).toBeVisible();
+  await expect(page.getByText("Lifetime access uses one payment at the displayed checkout price.")).toBeVisible();
 });
 
 test("entitled atlas listener can open a members-only session", async ({ page, request }) => {
@@ -2628,7 +2628,7 @@ test("homepage discovery links reach collections and the subscription entry poin
   await page.goto("/");
   await page.waitForLoadState("networkidle");
   await expect(page.getByRole("heading", { name: "Hear the complete archive for one clear price." })).toBeVisible();
-  await expect(page.getByText("USD $10.00")).toBeVisible();
+  await expect(page.getByText("KZT 2.00")).toBeVisible();
   const collectionsLink = page.getByRole("link", { name: "See all collections" });
   await expect(collectionsLink).toHaveAttribute("href", "/collections");
   await page.goto("/collections");

@@ -45,6 +45,14 @@ def test_offer_is_fixed_one_time_usd_price() -> None:
     assert offer.is_recurring is False
 
 
+def test_offer_uses_explicit_two_tenge_template_price_in_test_mode() -> None:
+    offer = service.public_offer(Settings(_env_file=None, BILLING_TEST_MODE=True))
+
+    assert offer.amount_minor == 200
+    assert offer.currency == "KZT"
+    assert offer.is_recurring is False
+
+
 def test_bereke_callback_signature_uses_sorted_gateway_fields() -> None:
     parameters = {
         "status": "1",
@@ -231,6 +239,93 @@ async def test_bereke_checkout_uses_form_contract_and_maps_hosted_url(monkeypatc
         "returnUrl": "https://orna.land/membership?payment_return=orna-1",
         "failUrl": "https://orna.land/membership?payment_return=orna-1",
     }
+
+
+@pytest.mark.asyncio
+async def test_bereke_test_checkout_registers_unique_order_from_template(monkeypatch) -> None:
+    response = SimpleNamespace(
+        raise_for_status=lambda: None,
+        json=lambda: {
+            "orderId": "template-order-1",
+            "formUrl": (
+                "https://securepayments.berekebank.kz/payment/merchants/livecom/payment_en.html"
+                "?mdOrder=template-order-1"
+            ),
+        },
+    )
+    post = AsyncMock(return_value=response)
+    client_context = AsyncMock()
+    client_context.__aenter__.return_value = SimpleNamespace(post=post)
+    monkeypatch.setattr(
+        "orna_atlas.app.integrations.bereke.httpx.AsyncClient",
+        lambda **_kwargs: client_context,
+    )
+    settings = Settings(
+        _env_file=None,
+        BILLING_ENABLED=True,
+        BILLING_TEST_MODE=True,
+        BILLING_FRONTEND_URL="https://orna.land/membership",
+        BEREKE_CHECKOUT_CREATE_URL=(
+            "https://securepayments.berekebank.kz/payment/rest/registerByTemplate.do"
+        ),
+        BEREKE_TEMPLATE_ID="xcyUoLEOVERqvOjP",
+        BEREKE_CALLBACK_SECRET="a" * 32,
+        BEREKE_CALLBACK_URL="https://orna.land/api/v1/billing/callbacks/bereke",
+        BEREKE_CHECKOUT_HOSTS=["securepayments.berekebank.kz"],
+    )
+
+    result = await BerekeHostedCheckoutClient(settings).create_checkout(
+        merchant_reference="orna-1",
+        amount_minor=200,
+        currency="KZT",
+        description="ORNA Atlas test checkout",
+        customer_email="member@example.com",
+    )
+
+    assert result.provider_order_id == "template-order-1"
+    assert post.await_args.kwargs["json"] == {
+        "templateId": "xcyUoLEOVERqvOjP",
+        "language": "en",
+        "amount": 200,
+        "currency": "KZT",
+        "addParams": {"email": "member@example.com"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_bereke_template_callback_uses_signed_operation_without_api_status(monkeypatch) -> None:
+    secret = "callback-secret-value-that-is-long"
+    parameters = {
+        "mdOrder": "template-order-1",
+        "orderNumber": "generated-provider-number",
+        "operation": "deposited",
+        "status": "1",
+    }
+    parameters["checksum"] = sign_callback(parameters, secret)
+    settings = Settings(
+        _env_file=None,
+        BILLING_ENABLED=True,
+        BILLING_TEST_MODE=True,
+        BEREKE_CHECKOUT_CREATE_URL=(
+            "https://securepayments.berekebank.kz/payment/rest/registerByTemplate.do"
+        ),
+        BEREKE_TEMPLATE_ID="xcyUoLEOVERqvOjP",
+        BEREKE_CALLBACK_SECRET=secret,
+        BEREKE_CALLBACK_URL="https://orna.land/api/v1/billing/callbacks/bereke",
+        BEREKE_CHECKOUT_HOSTS=["securepayments.berekebank.kz"],
+    )
+    monkeypatch.setattr(
+        "orna_atlas.app.integrations.bereke.httpx.AsyncClient",
+        lambda **_kwargs: pytest.fail("template callback must not call authenticated status API"),
+    )
+
+    callback = await BerekeHostedCheckoutClient(settings).resolve_callback(parameters)
+
+    assert callback is not None
+    assert callback.match_by_provider_order is True
+    assert callback.provider_order_id == "template-order-1"
+    assert callback.amount_minor == 200
+    assert callback.currency == "KZT"
 
 
 @pytest.mark.asyncio
@@ -598,6 +693,54 @@ async def test_paid_callback_activates_lifetime_membership_once(monkeypatch) -> 
     membership_update = service.memberships_repository.upsert.await_args.args[2]
     assert membership_update.status == "active"
     assert membership_update.expires_at is None
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_template_callback_matches_purchase_by_signed_provider_order(monkeypatch) -> None:
+    purchase = SimpleNamespace(
+        id=uuid4(),
+        user_id=uuid4(),
+        status="pending",
+        provider_order_id="template-order-1",
+        amount_minor=200,
+        currency="KZT",
+        paid_at=None,
+        refunded_at=None,
+    )
+    db = AsyncMock()
+    monkeypatch.setattr(
+        service.repository,
+        "get_by_provider_order_id_for_update",
+        AsyncMock(return_value=purchase),
+        raising=False,
+    )
+    monkeypatch.setattr(service.repository, "event_exists", AsyncMock(return_value=False))
+    monkeypatch.setattr(service.repository, "add_event", AsyncMock())
+    monkeypatch.setattr(service.memberships_repository, "get_for_user", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        service.memberships_repository,
+        "upsert",
+        AsyncMock(return_value=SimpleNamespace(id=uuid4())),
+    )
+    monkeypatch.setattr(service, "add_audit_event", AsyncMock())
+    callback = BerekeCallback(
+        event_id="evt-template-1",
+        merchant_reference="provider-generated-reference",
+        provider_order_id="template-order-1",
+        status="paid",
+        amount_minor=200,
+        currency="KZT",
+        occurred_at=datetime.now(UTC),
+        match_by_provider_order=True,
+    )
+
+    await service.apply_callback(db, callback)
+
+    service.repository.get_by_provider_order_id_for_update.assert_awaited_once_with(
+        db, "template-order-1"
+    )
+    assert purchase.status == "paid"
     db.commit.assert_awaited_once()
 
 
