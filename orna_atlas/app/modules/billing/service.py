@@ -88,7 +88,8 @@ async def create_checkout(
         open_purchase = await repository.get_open_for_user(db, user_id)
         if open_purchase is not None and not _expire_stale_checkout(open_purchase):
             return _checkout_read(open_purchase)
-        merchant_reference = f"orna-{uuid4().hex}"
+        # Bereke's hosted gateway limits orderNumber to 36 characters.
+        merchant_reference = f"orna-{uuid4().hex[:31]}"
         purchase = await repository.create_purchase(
             db,
             user_id=user_id,
