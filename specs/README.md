@@ -34,6 +34,8 @@ decision.
 
 ## Index
 
+- [`admin-workspace-v1.md`](admin-workspace-v1.md) — draft admin-only workspace for editorial
+  browsing/mutations, processing operations, audit review and separately gated account management.
 - [`oauth-account-linking.md`](oauth-account-linking.md) — accepted explicit linking flow after a
   verified OAuth email conflicts with an existing account.
 
