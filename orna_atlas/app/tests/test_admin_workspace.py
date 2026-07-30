@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from orna_atlas.app.core.domain_errors import NotFoundError
+from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.core.security import CurrentUser, get_current_admin
 from orna_atlas.app.db.session import get_db_session
 from orna_atlas.app.main import app
@@ -347,3 +348,81 @@ def test_admin_collection_detail_route_returns_collection_payload(monkeypatch) -
     assert payload["id"] == str(row.id)
     assert payload["slug"] == row.slug
     assert payload["is_public"] == row.is_public
+
+
+def test_admin_me_route_returns_typed_identity(monkeypatch) -> None:
+    _set_admin_overrides()
+    client = TestClient(app)
+
+    try:
+        response = client.get("/api/v1/admin/me")
+    finally:
+        _clear_admin_overrides()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload["id"], str)
+    assert payload["is_admin"] is True
+    assert payload["role"] == "admin"
+
+
+def test_admin_read_routes_set_no_store_headers(monkeypatch) -> None:
+    row = _admin_location()
+    _set_admin_overrides()
+    monkeypatch.setattr(
+        locations_service.repository,
+        "list_locations_for_admin",
+        AsyncMock(return_value=[row]),
+    )
+
+    client = TestClient(app)
+    try:
+        response = client.get("/api/v1/admin/locations")
+    finally:
+        _clear_admin_overrides()
+
+    assert response.status_code == 200
+    assert response.headers.get("cache-control") == "no-store"
+
+
+def test_admin_cookie_based_mutation_rejects_missing_or_untrusted_origin(monkeypatch) -> None:
+    row = _admin_location()
+    _set_admin_overrides()
+
+    async def fake_create_location(*_args, **kwargs):
+        return row
+
+    monkeypatch.setattr(locations_service, "create_location", fake_create_location)
+
+    client = TestClient(app)
+    payload = {
+        "slug": "location-cookie",
+        "name": "Cookie Location",
+        "description": None,
+        "exact_latitude": 1.23,
+        "exact_longitude": 4.56,
+    }
+    trusted_origin = get_settings().cors_origins[0]
+
+    try:
+        response_no_origin = client.post(
+            "/api/v1/admin/locations",
+            json=payload,
+            headers={"Cookie": "orna_access=token"},
+        )
+        response_bad_origin = client.post(
+            "/api/v1/admin/locations",
+            json=payload,
+            headers={"Cookie": "orna_access=token", "Origin": "https://evil.example.com"},
+        )
+        response_ok = client.post(
+            "/api/v1/admin/locations",
+            json=payload,
+            headers={"Cookie": "orna_access=token", "Origin": trusted_origin},
+        )
+    finally:
+        _clear_admin_overrides()
+
+    assert response_no_origin.status_code == 403
+    assert response_bad_origin.status_code == 403
+    assert response_ok.status_code == 201

@@ -1,12 +1,13 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.core.security import CurrentUser, get_current_admin
 from orna_atlas.app.db.session import get_db_session
 from orna_atlas.app.modules.admin import service as admin_service
-from orna_atlas.app.modules.admin.schemas import AuditEventRead
+from orna_atlas.app.modules.admin.schemas import AdminIdentityRead, AuditEventRead
 from orna_atlas.app.modules.collections import service as collections_service
 from orna_atlas.app.modules.collections.schemas import CollectionAdminRead, CollectionCreate, CollectionUpdate
 from orna_atlas.app.core.pagination import PageLimit, PageOffset
@@ -31,14 +32,45 @@ from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionRead, 
 from orna_atlas.app.modules.users import service as users_service
 from orna_atlas.app.modules.users.schemas import UserRead, UserRoleUpdate
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+
+def _set_admin_no_cache(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store"
+
+
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(_set_admin_no_cache)],
+)
 admin_dependency = Depends(get_current_admin)
 
 
-@router.get("/me")
-async def read_admin(current_user: CurrentUser = admin_dependency) -> dict[str, object]:
+async def _require_admin_cookie_origin(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    _: CurrentUser = admin_dependency,
+    access_cookie: str | None = Cookie(default=None, alias="orna_access"),
+    x_orna_admin: str | None = Header(default=None),
+) -> None:
+    if x_orna_admin == "local" or (authorization or "").lower().startswith("bearer "):
+        return
+    if access_cookie is None:
+        return
+    if request.headers.get("origin") is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid request origin")
+    if request.headers["origin"] not in get_settings().cors_origins:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid request origin")
+
+
+@router.get("/me", response_model=AdminIdentityRead)
+async def read_admin(current_user: CurrentUser = admin_dependency) -> AdminIdentityRead:
     mode = "local" if current_user.id == "local-admin" else "token"
-    return {"id": current_user.id, "is_admin": current_user.is_admin, "mode": mode}
+    return AdminIdentityRead(
+        id=current_user.id,
+        is_admin=current_user.is_admin,
+        role="admin",
+        mode=mode,
+    )
 
 
 @router.get("/locations", response_model=list[AdminLocationRead])
@@ -66,7 +98,10 @@ async def get_location(
 
 
 @router.post(
-    "/locations", response_model=AdminLocationRead, status_code=status.HTTP_201_CREATED
+    "/locations",
+    response_model=AdminLocationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_admin_cookie_origin)],
 )
 async def create_location(
     data: LocationCreate,
@@ -76,7 +111,11 @@ async def create_location(
     return await locations_service.create_location(session, data)
 
 
-@router.patch("/locations/{location_id}", response_model=AdminLocationRead)
+@router.patch(
+    "/locations/{location_id}",
+    response_model=AdminLocationRead,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def update_location(
     location_id: UUID,
     data: LocationUpdate,
@@ -86,7 +125,11 @@ async def update_location(
     return await locations_service.update_location(session, location_id, data)
 
 
-@router.delete("/locations/{location_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/locations/{location_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def delete_location(
     location_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -121,7 +164,12 @@ async def get_session(
     )
 
 
-@router.post("/sessions", response_model=SessionRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sessions",
+    response_model=SessionRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def create_session(
     data: SessionCreate,
     session: AsyncSession = Depends(get_db_session),
@@ -130,7 +178,11 @@ async def create_session(
     return await sessions_service.create_session(session, data)
 
 
-@router.patch("/sessions/{session_id}", response_model=SessionRead)
+@router.patch(
+    "/sessions/{session_id}",
+    response_model=SessionRead,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def update_session(
     session_id: UUID,
     data: SessionUpdate,
@@ -144,6 +196,7 @@ async def update_session(
     "/sessions/{session_id}/assets",
     response_model=AdminMediaAssetRead,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_admin_cookie_origin)],
 )
 async def create_session_asset(
     session_id: UUID,
@@ -158,6 +211,7 @@ async def create_session_asset(
     "/sessions/{session_id}/segments",
     response_model=list[RecordingSegmentRead],
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_admin_cookie_origin)],
 )
 async def register_session_segments(
     session_id: UUID,
@@ -169,7 +223,11 @@ async def register_session_segments(
     return segments
 
 
-@router.post("/sessions/{session_id}/segments/process", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/sessions/{session_id}/segments/process",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def retry_session_segments(
     session_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -188,7 +246,11 @@ async def read_session_processing(
     return await media_service.processing_status_for_session(session, session_id)
 
 
-@router.post("/media-assets/{asset_id}/process", response_model=ProcessingStatusRead)
+@router.post(
+    "/media-assets/{asset_id}/process",
+    response_model=ProcessingStatusRead,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def retry_asset_processing(
     asset_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -197,7 +259,11 @@ async def retry_asset_processing(
     return await media_service.retry_asset_processing(session, asset_id)
 
 
-@router.delete("/media-assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/media-assets/{asset_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def archive_media_asset(
     asset_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -207,7 +273,11 @@ async def archive_media_asset(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/media-assets/{asset_id}/object", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/media-assets/{asset_id}/object",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def purge_archived_media_asset(
     asset_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -217,7 +287,11 @@ async def purge_archived_media_asset(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def delete_session(
     session_id: UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -249,7 +323,12 @@ async def get_collection(
     return await collections_service.require_collection_for_admin(session, collection_id)
 
 
-@router.post("/collections", response_model=CollectionAdminRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/collections",
+    response_model=CollectionAdminRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def create_collection(
     data: CollectionCreate,
     session: AsyncSession = Depends(get_db_session),
@@ -258,7 +337,11 @@ async def create_collection(
     return await collections_service.create_collection(session, data)
 
 
-@router.patch("/collections/{collection_id}", response_model=CollectionAdminRead)
+@router.patch(
+    "/collections/{collection_id}",
+    response_model=CollectionAdminRead,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def update_collection(
     collection_id: UUID,
     data: CollectionUpdate,
@@ -268,7 +351,11 @@ async def update_collection(
     return await collections_service.update_collection(session, collection_id, data)
 
 
-@router.patch("/users/{user_id}/role", response_model=UserRead)
+@router.patch(
+    "/users/{user_id}/role",
+    response_model=UserRead,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def update_user_role(
     user_id: UUID,
     data: UserRoleUpdate,
@@ -281,7 +368,11 @@ async def update_user_role(
     )
 
 
-@router.put("/memberships/{user_id}", response_model=MembershipRead)
+@router.put(
+    "/memberships/{user_id}",
+    response_model=MembershipRead,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
 async def update_membership(
     user_id: UUID,
     data: MembershipUpdate,

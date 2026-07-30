@@ -1,7 +1,16 @@
 from datetime import datetime
 from uuid import UUID
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class AdminIdentityRead(BaseModel):
+    id: str
+    is_admin: bool
+    role: Literal["admin"]
+    mode: str
 
 
 class AuditEventRead(BaseModel):

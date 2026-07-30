@@ -45,7 +45,12 @@ def test_admin_local_mode_stub(monkeypatch) -> None:
 
     assert unauthorized.status_code == 401
     assert authorized.status_code == 200
-    assert authorized.json() == {"id": "local-admin", "is_admin": True, "mode": "local"}
+    assert authorized.json() == {
+        "id": "local-admin",
+        "is_admin": True,
+        "role": "admin",
+        "mode": "local",
+    }
 
 
 def test_public_schemas_do_not_expose_exact_coordinates_or_storage_keys() -> None:
