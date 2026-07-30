@@ -25,8 +25,11 @@ export async function fetchBillingOffer(init: RequestInit = {}): Promise<Billing
   return offer;
 }
 
-export function fetchPurchases(): Promise<BillingPurchase[]> {
-  return billingRequest<BillingPurchase[]>("/api/v1/billing/purchases/me", { cache: "no-store" });
+export function fetchPurchases(init: RequestInit = {}): Promise<BillingPurchase[]> {
+  return billingRequest<BillingPurchase[]>("/api/v1/billing/purchases/me", {
+    ...init,
+    cache: "no-store",
+  });
 }
 
 export function createBillingCheckout(idempotencyKey: string): Promise<BillingCheckout> {

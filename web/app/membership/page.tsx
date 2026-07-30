@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { FormEvent, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import { SiteHeader } from "../../components/site-header";
 import { MembershipBillingPanel } from "../../components/membership-billing-panel";
@@ -213,6 +213,24 @@ function MembershipPageContent() {
     : requestedRecoveryMode === "forgot"
       ? "forgot"
       : null;
+
+  const refreshMembershipAfterPayment = useCallback(async (): Promise<boolean | null> => {
+    const generation = authGeneration.current;
+    try {
+      const currentMembership = await fetchMembership();
+      if (generation !== authGeneration.current) return null;
+      setMembership(currentMembership);
+      setAccountLoadError(null);
+      setIsLoadingMembership(false);
+      return currentMembership.is_entitled;
+    } catch (error) {
+      if (generation !== authGeneration.current) return null;
+      setMembership(null);
+      setIsLoadingMembership(false);
+      setAccountLoadError(apiErrorMessage(error, "Unable to refresh membership status."));
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     if (previousRecoveryMode.current === "forgot" && recoveryMode !== "forgot") {
@@ -1040,7 +1058,11 @@ function MembershipPageContent() {
           </aside>
         </div>
 
-        <MembershipBillingPanel emailVerified={user.email_verified} />
+        <MembershipBillingPanel
+          emailVerified={user.email_verified}
+          isEntitled={membership?.is_entitled ?? null}
+          onMembershipRefresh={refreshMembershipAfterPayment}
+        />
 
         {oauthMessage ? <AuthNotice error={oauthMessage.error}>{oauthMessage.text}</AuthNotice> : null}
         {accountLoadError ? <AuthNotice error>{accountLoadError}</AuthNotice> : null}

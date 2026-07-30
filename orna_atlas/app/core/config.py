@@ -246,6 +246,8 @@ class Settings(BaseSettings):
             "BEREKE_CALLBACK_SECRET": self.bereke_callback_secret,
             "BEREKE_CALLBACK_URL": self.bereke_callback_url,
         }
+        if self.bereke_callback_secret and len(self.bereke_callback_secret) < 32:
+            raise ValueError("BEREKE_CALLBACK_SECRET must contain at least 32 characters")
         if self.billing_enabled:
             missing_billing = [name for name, value in billing_fields.items() if not value]
             if not self.bereke_checkout_hosts:
@@ -270,8 +272,6 @@ class Settings(BaseSettings):
                     )
             if any(not _is_valid_hostname(host) for host in self.bereke_checkout_hosts):
                 raise ValueError("BEREKE_CHECKOUT_HOSTS must contain valid hostnames")
-            if len(self.bereke_callback_secret or "") < 32:
-                raise ValueError("BEREKE_CALLBACK_SECRET must contain at least 32 characters")
         if all(provider_fields["apple"]) and not _is_p256_private_key(
             self.apple_private_key or ""
         ):

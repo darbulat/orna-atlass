@@ -45,24 +45,31 @@ def parse_callback(body: bytes, signature: str | None, secret: str | None) -> Be
         raise AuthenticationError("Invalid Bereke callback signature")
     try:
         payload = json.loads(body)
+        identifiers = (
+            payload["event_id"],
+            payload["merchant_reference"],
+            payload["provider_order_id"],
+        )
+        if any(not isinstance(value, str) or not value.strip() for value in identifiers):
+            raise ValidationError("Invalid Bereke callback identifiers")
         occurred_at = datetime.fromisoformat(str(payload["occurred_at"]).replace("Z", "+00:00"))
         if occurred_at.tzinfo is None:
             raise ValueError("timezone required")
         callback = BerekeCallback(
-            event_id=str(payload["event_id"]),
-            merchant_reference=str(payload["merchant_reference"]),
-            provider_order_id=str(payload["provider_order_id"]),
+            event_id=identifiers[0],
+            merchant_reference=identifiers[1],
+            provider_order_id=identifiers[2],
             status=payload["status"],
             amount_minor=int(payload["amount_minor"]),
             currency=str(payload["currency"]).upper(),
             occurred_at=occurred_at.astimezone(UTC),
         )
+    except ValidationError:
+        raise
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise ValidationError("Invalid Bereke callback") from exc
     if callback.status not in {"paid", "failed", "refunded"}:
         raise ValidationError("Invalid Bereke callback status")
-    if not all((callback.event_id, callback.merchant_reference, callback.provider_order_id)):
-        raise ValidationError("Invalid Bereke callback identifiers")
     return callback
 
 

@@ -55,6 +55,32 @@ async def get_for_user(
     return result.scalar_one_or_none()
 
 
+async def get_for_user_for_update(
+    db: AsyncSession, purchase_id: UUID, user_id: UUID
+) -> BillingPurchase | None:
+    result = await db.execute(
+        select(BillingPurchase)
+        .where(BillingPurchase.id == purchase_id, BillingPurchase.user_id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_open_for_user(db: AsyncSession, user_id: UUID) -> BillingPurchase | None:
+    result = await db.execute(
+        select(BillingPurchase)
+        .where(
+            BillingPurchase.user_id == user_id,
+            BillingPurchase.status.in_(("creating", "pending")),
+        )
+        .order_by(BillingPurchase.created_at.desc(), BillingPurchase.id)
+        .limit(1)
+        .with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
 async def list_for_user(db: AsyncSession, user_id: UUID) -> list[BillingPurchase]:
     result = await db.execute(
         select(BillingPurchase)
@@ -103,7 +129,7 @@ async def add_event(
     return event
 
 
-async def has_other_paid_purchase(
+async def has_other_payment_backed_purchase(
     db: AsyncSession, user_id: UUID, excluding_purchase_id: UUID
 ) -> bool:
     result = await db.execute(
@@ -112,7 +138,7 @@ async def has_other_paid_purchase(
         .where(
             BillingPurchase.user_id == user_id,
             BillingPurchase.id != excluding_purchase_id,
-            BillingPurchase.status == "paid",
+            BillingPurchase.status.in_(("paid", "refund_requested")),
         )
     )
     return bool(result.scalar_one())
