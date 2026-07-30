@@ -29,6 +29,7 @@ class BlockingCheckoutProvider:
         self.started = asyncio.Event()
         self.release = asyncio.Event()
         self.calls = 0
+        self.customer_emails: list[str | None] = []
 
     async def create_checkout(
         self,
@@ -37,8 +38,10 @@ class BlockingCheckoutProvider:
         amount_minor: int,
         currency: str,
         description: str,
+        customer_email: str | None = None,
     ) -> HostedCheckout:
         self.calls += 1
+        self.customer_emails.append(customer_email)
         self.started.set()
         await self.release.wait()
         return HostedCheckout(
@@ -85,6 +88,7 @@ async def test_different_idempotency_keys_share_one_in_flight_checkout() -> None
         assert second.status == "creating"
         assert second.checkout_url is None
         assert provider.calls == 1
+        assert provider.customer_emails == [f"billing-{user_id}@example.test"]
 
         provider.release.set()
         first = await asyncio.wait_for(first_task, timeout=2)
