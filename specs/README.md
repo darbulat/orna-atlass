@@ -38,5 +38,7 @@ decision.
   browsing/mutations, processing operations, audit review and separately gated account management.
 - [`oauth-account-linking.md`](oauth-account-linking.md) — accepted explicit linking flow after a
   verified OAuth email conflicts with an existing account.
+- [`lifetime-membership-billing.md`](lifetime-membership-billing.md) — implemented one-time USD
+  10.00 lifetime membership through Bereke hosted checkout.
 
 `TEMPLATE.md` is scaffolding and does not describe an implemented or accepted feature.

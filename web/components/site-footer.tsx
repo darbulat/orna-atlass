@@ -8,6 +8,8 @@ export function SiteFooter() {
         <p>Operated by Kale Ltd. · BIN 221040900084</p>
       </div>
       <nav aria-label="Legal">
+        <Link href="/support">Support</Link>
+        <Link href="/refunds">Refund Policy</Link>
         <Link href="/privacy">Privacy Policy</Link>
         <Link href="/terms">Terms</Link>
       </nav>

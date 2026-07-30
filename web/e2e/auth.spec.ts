@@ -109,8 +109,10 @@ test("signed-in account is a responsive dashboard with clear access and next act
   await expect(overview.getByText("Public previews only")).toBeVisible();
   await expect(page.getByRole("link", { name: "Explore the atlas" })).toHaveAttribute("href", "/#atlas-entry");
   await expect(page.getByRole("link", { name: "Open your library" })).toHaveAttribute("href", "/library");
-  await expect(page.getByText("Membership enrollment is not open yet.")).toBeVisible();
-  await expect(page.getByText("No payment is taken.")).toBeVisible();
+  await expect(page.getByText("Lifetime access costs USD $10.00 once.")).toBeVisible();
+  await expect(page.getByText("No automatic renewal.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "One payment. No renewal." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Checkout unavailable" })).toBeDisabled();
 
   await page.setViewportSize({ width: 320, height: 700 });
   const geometry = await page.evaluate(() => {

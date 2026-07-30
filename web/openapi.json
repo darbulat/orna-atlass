@@ -41,6 +41,35 @@
         "title": "AccountTokenRequest",
         "type": "object"
       },
+      "AdminIdentityRead": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_admin": {
+            "title": "Is Admin",
+            "type": "boolean"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "role": {
+            "const": "admin",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "is_admin",
+          "role",
+          "mode"
+        ],
+        "title": "AdminIdentityRead",
+        "type": "object"
+      },
       "AdminLocationRead": {
         "description": "Authorized editorial projection containing exact and operational fields.",
         "properties": {
@@ -323,6 +352,59 @@
           "storage_key"
         ],
         "title": "AdminMediaAssetRead",
+        "type": "object"
+      },
+      "AdminUserRead": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "membership": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MembershipAbsentRead"
+              },
+              {
+                "$ref": "#/components/schemas/MembershipRead"
+              }
+            ],
+            "title": "Membership"
+          },
+          "role": {
+            "enum": [
+              "member",
+              "editor",
+              "admin"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "is_active",
+          "created_at",
+          "membership"
+        ],
+        "title": "AdminUserRead",
         "type": "object"
       },
       "AtlasCluster": {
@@ -708,6 +790,58 @@
         "title": "AuditEventRead",
         "type": "object"
       },
+      "BillingOfferRead": {
+        "properties": {
+          "amount_minor": {
+            "const": 1000,
+            "default": 1000,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "checkout_available": {
+            "title": "Checkout Available",
+            "type": "boolean"
+          },
+          "currency": {
+            "const": "USD",
+            "default": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "description": {
+            "default": "Permanent access to available members-only field recordings.",
+            "title": "Description",
+            "type": "string"
+          },
+          "is_recurring": {
+            "const": false,
+            "default": false,
+            "title": "Is Recurring",
+            "type": "boolean"
+          },
+          "name": {
+            "default": "Lifetime Member Access",
+            "title": "Name",
+            "type": "string"
+          },
+          "product_code": {
+            "const": "lifetime_member",
+            "default": "lifetime_member",
+            "title": "Product Code",
+            "type": "string"
+          },
+          "refund_summary": {
+            "default": "Full refund requests are accepted within 14 calendar days.",
+            "title": "Refund Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkout_available"
+        ],
+        "title": "BillingOfferRead",
+        "type": "object"
+      },
       "BirdPartsResponse": {
         "properties": {
           "analysis_model_version": {
@@ -749,6 +883,74 @@
           "session_id"
         ],
         "title": "BirdPartsResponse",
+        "type": "object"
+      },
+      "CheckoutCreate": {
+        "properties": {
+          "product_code": {
+            "const": "lifetime_member",
+            "default": "lifetime_member",
+            "title": "Product Code",
+            "type": "string"
+          }
+        },
+        "title": "CheckoutCreate",
+        "type": "object"
+      },
+      "CheckoutRead": {
+        "properties": {
+          "checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Url"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "merchant_reference": {
+            "title": "Merchant Reference",
+            "type": "string"
+          },
+          "purchase_id": {
+            "format": "uuid",
+            "title": "Purchase Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "creating",
+              "pending",
+              "paid",
+              "failed",
+              "expired",
+              "refund_requested",
+              "refunded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purchase_id",
+          "merchant_reference",
+          "status"
+        ],
+        "title": "CheckoutRead",
         "type": "object"
       },
       "CollectionAdminRead": {
@@ -2503,6 +2705,72 @@
         "title": "MediaKind",
         "type": "string"
       },
+      "MembershipAbsentRead": {
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "is_entitled": {
+            "default": false,
+            "title": "Is Entitled",
+            "type": "boolean"
+          },
+          "plan": {
+            "default": "none",
+            "title": "Plan",
+            "type": "string"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "status": {
+            "const": "inactive",
+            "default": "inactive",
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "MembershipAbsentRead",
+        "type": "object"
+      },
       "MembershipRead": {
         "properties": {
           "expires_at": {
@@ -3307,6 +3575,87 @@
         "title": "PublicationStatus",
         "type": "string"
       },
+      "PurchaseRead": {
+        "properties": {
+          "amount_minor": {
+            "const": 1000,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "merchant_reference": {
+            "title": "Merchant Reference",
+            "type": "string"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "product_code": {
+            "const": "lifetime_member",
+            "title": "Product Code",
+            "type": "string"
+          },
+          "refunded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refunded At"
+          },
+          "status": {
+            "enum": [
+              "creating",
+              "pending",
+              "paid",
+              "failed",
+              "expired",
+              "refund_requested",
+              "refunded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "merchant_reference",
+          "product_code",
+          "amount_minor",
+          "currency",
+          "status",
+          "created_at"
+        ],
+        "title": "PurchaseRead",
+        "type": "object"
+      },
       "RecordingIntegrityRead": {
         "properties": {
           "human_noise_level": {
@@ -3442,6 +3791,58 @@
           "source_asset_id"
         ],
         "title": "RecordingSegmentRead",
+        "type": "object"
+      },
+      "RefundRequestCreate": {
+        "properties": {
+          "acknowledge_full_refund": {
+            "const": true,
+            "description": "Confirms that the request is for a full refund and ends paid access when completed.",
+            "title": "Acknowledge Full Refund",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "acknowledge_full_refund"
+        ],
+        "title": "RefundRequestCreate",
+        "type": "object"
+      },
+      "RefundRequestRead": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "purchase_id": {
+            "format": "uuid",
+            "title": "Purchase Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "processing",
+              "completed",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "purchase_id",
+          "status",
+          "created_at"
+        ],
+        "title": "RefundRequestRead",
         "type": "object"
       },
       "RegisterRequest": {
@@ -4526,9 +4927,32 @@
       }
     },
     "/api/v1/admin/collections": {
-      "post": {
-        "operationId": "create_collection_api_v1_admin_collections_post",
+      "get": {
+        "operationId": "list_collections_api_v1_admin_collections_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
           {
             "in": "header",
             "name": "x-orna-admin",
@@ -4543,6 +4967,97 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CollectionAdminRead"
+                  },
+                  "title": "Response List Collections Api V1 Admin Collections Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Collections",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_collection_api_v1_admin_collections_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -4593,8 +5108,8 @@
       }
     },
     "/api/v1/admin/collections/{collection_id}": {
-      "patch": {
-        "operationId": "update_collection_api_v1_admin_collections__collection_id__patch",
+      "get": {
+        "operationId": "get_collection_api_v1_admin_collections__collection_id__get",
         "parameters": [
           {
             "in": "path",
@@ -4620,6 +5135,103 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionAdminRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Collection",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "update_collection_api_v1_admin_collections__collection_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -4670,9 +5282,42 @@
       }
     },
     "/api/v1/admin/locations": {
-      "post": {
-        "operationId": "create_location_api_v1_admin_locations_post",
+      "get": {
+        "operationId": "list_locations_api_v1_admin_locations_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
           {
             "in": "header",
             "name": "x-orna-admin",
@@ -4687,6 +5332,97 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminLocationRead"
+                  },
+                  "title": "Response List Locations Api V1 Admin Locations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Locations",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_location_api_v1_admin_locations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -4752,6 +5488,22 @@
           },
           {
             "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
             "name": "x-orna-admin",
             "required": false,
             "schema": {
@@ -4764,6 +5516,22 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -4795,8 +5563,8 @@
           "admin"
         ]
       },
-      "patch": {
-        "operationId": "update_location_api_v1_admin_locations__location_id__patch",
+      "get": {
+        "operationId": "get_location_api_v1_admin_locations__location_id__get",
         "parameters": [
           {
             "in": "path",
@@ -4822,6 +5590,103 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLocationRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Location",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "update_location_api_v1_admin_locations__location_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "location_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Location Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -4897,9 +5762,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Read Admin Api V1 Admin Me Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/AdminIdentityRead"
                 }
               }
             },
@@ -4946,6 +5809,22 @@
           },
           {
             "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
             "name": "x-orna-admin",
             "required": false,
             "schema": {
@@ -4958,6 +5837,22 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -5006,6 +5901,22 @@
           },
           {
             "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
             "name": "x-orna-admin",
             "required": false,
             "schema": {
@@ -5018,6 +5929,22 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -5066,6 +5993,22 @@
           },
           {
             "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
             "name": "x-orna-admin",
             "required": false,
             "schema": {
@@ -5078,6 +6021,22 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -5133,6 +6092,22 @@
           },
           {
             "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
             "name": "x-orna-admin",
             "required": false,
             "schema": {
@@ -5145,6 +6120,22 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -5195,9 +6186,42 @@
       }
     },
     "/api/v1/admin/sessions": {
-      "post": {
-        "operationId": "create_session_api_v1_admin_sessions_post",
+      "get": {
+        "operationId": "list_sessions_api_v1_admin_sessions_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
           {
             "in": "header",
             "name": "x-orna-admin",
@@ -5212,6 +6236,97 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SessionRead"
+                  },
+                  "title": "Response List Sessions Api V1 Admin Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Sessions",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_session_api_v1_admin_sessions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -5277,6 +6392,22 @@
           },
           {
             "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
             "name": "x-orna-admin",
             "required": false,
             "schema": {
@@ -5289,6 +6420,22 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -5320,8 +6467,8 @@
           "admin"
         ]
       },
-      "patch": {
-        "operationId": "update_session_api_v1_admin_sessions__session_id__patch",
+      "get": {
+        "operationId": "get_session_api_v1_admin_sessions__session_id__get",
         "parameters": [
           {
             "in": "path",
@@ -5347,6 +6494,103 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Session",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "update_session_api_v1_admin_sessions__session_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -5412,6 +6656,22 @@
           },
           {
             "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
             "name": "x-orna-admin",
             "required": false,
             "schema": {
@@ -5424,6 +6684,22 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -5556,6 +6832,22 @@
           },
           {
             "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
             "name": "x-orna-admin",
             "required": false,
             "schema": {
@@ -5568,6 +6860,22 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -5637,6 +6945,22 @@
           },
           {
             "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
             "name": "x-orna-admin",
             "required": false,
             "schema": {
@@ -5649,6 +6973,22 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -5686,9 +7026,157 @@
         ]
       }
     },
-    "/api/v1/admin/users/{user_id}/role": {
-      "patch": {
-        "operationId": "update_user_role_api_v1_admin_users__user_id__role_patch",
+    "/api/v1/admin/users": {
+      "get": {
+        "operationId": "list_users_api_v1_admin_users_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "email",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            }
+          },
+          {
+            "in": "query",
+            "name": "membership_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Membership Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUserRead"
+                  },
+                  "title": "Response List Users Api V1 Admin Users Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Users",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}": {
+      "get": {
+        "operationId": "get_user_api_v1_admin_users__user_id__get",
         "parameters": [
           {
             "in": "path",
@@ -5714,6 +7202,105 @@
                 }
               ],
               "title": "X-Orna-Admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get User",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/role": {
+      "patch": {
+        "operationId": "update_user_role_api_v1_admin_users__user_id__role_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
             }
           }
         ],
@@ -6781,6 +8368,235 @@
         "summary": "Register",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/billing/checkouts": {
+      "post": {
+        "operationId": "create_checkout_api_v1_billing_checkouts_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Checkout",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/v1/billing/offer": {
+      "get": {
+        "operationId": "read_offer_api_v1_billing_offer_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingOfferRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Offer",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/v1/billing/purchases/me": {
+      "get": {
+        "operationId": "read_my_purchases_api_v1_billing_purchases_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PurchaseRead"
+                  },
+                  "title": "Response Read My Purchases Api V1 Billing Purchases Me Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read My Purchases",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/v1/billing/purchases/{purchase_id}": {
+      "get": {
+        "operationId": "read_purchase_api_v1_billing_purchases__purchase_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "purchase_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Purchase Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Purchase",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/api/v1/billing/purchases/{purchase_id}/refund-requests": {
+      "post": {
+        "operationId": "create_refund_request_api_v1_billing_purchases__purchase_id__refund_requests_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "purchase_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Purchase Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundRequestRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Refund Request",
+        "tags": [
+          "billing"
         ]
       }
     },

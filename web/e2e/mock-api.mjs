@@ -625,6 +625,23 @@ const server = createServer((request, response) => {
     send(response, 401, { detail: "Not authenticated" });
     return;
   }
+  if (request.method === "GET" && path === "/api/v1/billing/offer") {
+    send(response, 200, {
+      product_code: "lifetime_member",
+      name: "Lifetime Member Access",
+      description: "Permanent access to available members-only field recordings.",
+      amount_minor: 1000,
+      currency: "USD",
+      is_recurring: false,
+      checkout_available: false,
+      refund_summary: "Full refund requests are accepted within 14 calendar days.",
+    });
+    return;
+  }
+  if (request.method === "GET" && path === "/api/v1/billing/purchases/me") {
+    send(response, 200, []);
+    return;
+  }
   if (request.method === "GET" && path === "/api/v1/memberships/me") {
     send(response, 401, { detail: "Not authenticated" });
     return;

@@ -28,7 +28,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Collections */
+        get: operations["list_collections_api_v1_admin_collections_get"];
         put?: never;
         /** Create Collection */
         post: operations["create_collection_api_v1_admin_collections_post"];
@@ -45,7 +46,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Collection */
+        get: operations["get_collection_api_v1_admin_collections__collection_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -62,7 +64,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Locations */
+        get: operations["list_locations_api_v1_admin_locations_get"];
         put?: never;
         /** Create Location */
         post: operations["create_location_api_v1_admin_locations_post"];
@@ -79,7 +82,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Location */
+        get: operations["get_location_api_v1_admin_locations__location_id__get"];
         put?: never;
         post?: never;
         /** Delete Location */
@@ -182,7 +186,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Sessions */
+        get: operations["list_sessions_api_v1_admin_sessions_get"];
         put?: never;
         /** Create Session */
         post: operations["create_session_api_v1_admin_sessions_post"];
@@ -199,7 +204,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Session */
+        get: operations["get_session_api_v1_admin_sessions__session_id__get"];
         put?: never;
         post?: never;
         /** Delete Session */
@@ -272,6 +278,40 @@ export interface paths {
         put?: never;
         /** Retry Session Segments */
         post: operations["retry_session_segments_api_v1_admin_sessions__session_id__segments_process_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Users */
+        get: operations["list_users_api_v1_admin_users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get User */
+        get: operations["get_user_api_v1_admin_users__user_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -652,6 +692,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/checkouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Checkout */
+        post: operations["create_checkout_api_v1_billing_checkouts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Offer */
+        get: operations["read_offer_api_v1_billing_offer_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/purchases/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read My Purchases */
+        get: operations["read_my_purchases_api_v1_billing_purchases_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/purchases/{purchase_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Purchase */
+        get: operations["read_purchase_api_v1_billing_purchases__purchase_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/purchases/{purchase_id}/refund-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Refund Request */
+        post: operations["create_refund_request_api_v1_billing_purchases__purchase_id__refund_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections": {
         parameters: {
             query?: never;
@@ -1017,6 +1142,20 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** AdminIdentityRead */
+        AdminIdentityRead: {
+            /** Id */
+            id: string;
+            /** Is Admin */
+            is_admin: boolean;
+            /** Mode */
+            mode: string;
+            /**
+             * Role
+             * @constant
+             */
+            role: "admin";
+        };
         /**
          * AdminLocationRead
          * @description Authorized editorial projection containing exact and operational fields.
@@ -1118,6 +1257,33 @@ export interface components {
             source_asset_id?: string | null;
             /** Storage Key */
             storage_key: string;
+        };
+        /** AdminUserRead */
+        AdminUserRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Membership */
+            membership: components["schemas"]["MembershipAbsentRead"] | components["schemas"]["MembershipRead"];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "member" | "editor" | "admin";
         };
         /** AtlasCluster */
         AtlasCluster: {
@@ -1253,6 +1419,50 @@ export interface components {
             /** User Agent */
             user_agent: string | null;
         };
+        /** BillingOfferRead */
+        BillingOfferRead: {
+            /**
+             * Amount Minor
+             * @default 1000
+             * @constant
+             */
+            amount_minor: 1000;
+            /** Checkout Available */
+            checkout_available: boolean;
+            /**
+             * Currency
+             * @default USD
+             * @constant
+             */
+            currency: "USD";
+            /**
+             * Description
+             * @default Permanent access to available members-only field recordings.
+             */
+            description: string;
+            /**
+             * Is Recurring
+             * @default false
+             * @constant
+             */
+            is_recurring: false;
+            /**
+             * Name
+             * @default Lifetime Member Access
+             */
+            name: string;
+            /**
+             * Product Code
+             * @default lifetime_member
+             * @constant
+             */
+            product_code: "lifetime_member";
+            /**
+             * Refund Summary
+             * @default Full refund requests are accepted within 14 calendar days.
+             */
+            refund_summary: string;
+        };
         /** BirdPartsResponse */
         BirdPartsResponse: {
             /** Analysis Model Version */
@@ -1266,6 +1476,34 @@ export interface components {
              * Format: uuid
              */
             session_id: string;
+        };
+        /** CheckoutCreate */
+        CheckoutCreate: {
+            /**
+             * Product Code
+             * @default lifetime_member
+             * @constant
+             */
+            product_code: "lifetime_member";
+        };
+        /** CheckoutRead */
+        CheckoutRead: {
+            /** Checkout Url */
+            checkout_url?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Merchant Reference */
+            merchant_reference: string;
+            /**
+             * Purchase Id
+             * Format: uuid
+             */
+            purchase_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "creating" | "pending" | "paid" | "failed" | "expired" | "refund_requested" | "refunded";
         };
         /** CollectionAdminRead */
         CollectionAdminRead: {
@@ -1859,6 +2097,36 @@ export interface components {
          * @enum {string}
          */
         MediaKind: "audio" | "source_audio" | "master_audio" | "streaming_rendition" | "audio_stream";
+        /** MembershipAbsentRead */
+        MembershipAbsentRead: {
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id?: string | null;
+            /**
+             * Is Entitled
+             * @default false
+             */
+            is_entitled: boolean;
+            /**
+             * Plan
+             * @default none
+             */
+            plan: string;
+            /** Starts At */
+            starts_at?: string | null;
+            /**
+             * Status
+             * @default inactive
+             * @constant
+             */
+            status: "inactive";
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** MembershipRead */
         MembershipRead: {
             /** Expires At */
@@ -2189,6 +2457,45 @@ export interface components {
          * @enum {string}
          */
         PublicationStatus: "draft" | "published" | "archived";
+        /** PurchaseRead */
+        PurchaseRead: {
+            /**
+             * Amount Minor
+             * @constant
+             */
+            amount_minor: 1000;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "USD";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Merchant Reference */
+            merchant_reference: string;
+            /** Paid At */
+            paid_at?: string | null;
+            /**
+             * Product Code
+             * @constant
+             */
+            product_code: "lifetime_member";
+            /** Refunded At */
+            refunded_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "creating" | "pending" | "paid" | "failed" | "expired" | "refund_requested" | "refunded";
+        };
         /** RecordingIntegrityRead */
         RecordingIntegrityRead: {
             /**
@@ -2238,6 +2545,38 @@ export interface components {
             source_asset_id: string;
             /** Start Offset Ms */
             start_offset_ms: number | null;
+        };
+        /** RefundRequestCreate */
+        RefundRequestCreate: {
+            /**
+             * Acknowledge Full Refund
+             * @description Confirms that the request is for a full refund and ends paid access when completed.
+             * @constant
+             */
+            acknowledge_full_refund: true;
+        };
+        /** RefundRequestRead */
+        RefundRequestRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Purchase Id
+             * Format: uuid
+             */
+            purchase_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "requested" | "processing" | "completed" | "rejected";
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -2607,14 +2946,51 @@ export interface operations {
             };
         };
     };
-    create_collection_api_v1_admin_collections_post: {
+    list_collections_api_v1_admin_collections_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 "x-orna-admin"?: string | null;
             };
             path?: never;
             cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionAdminRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_collection_api_v1_admin_collections_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-orna-admin"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2642,7 +3018,7 @@ export interface operations {
             };
         };
     };
-    update_collection_api_v1_admin_collections__collection_id__patch: {
+    get_collection_api_v1_admin_collections__collection_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -2652,6 +3028,42 @@ export interface operations {
                 collection_id: string;
             };
             cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionAdminRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_collection_api_v1_admin_collections__collection_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-orna-admin"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2679,14 +3091,52 @@ export interface operations {
             };
         };
     };
-    create_location_api_v1_admin_locations_post: {
+    list_locations_api_v1_admin_locations_get: {
         parameters: {
-            query?: never;
+            query?: {
+                include_archived?: boolean;
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 "x-orna-admin"?: string | null;
             };
             path?: never;
             cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLocationRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_location_api_v1_admin_locations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-orna-admin"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2714,7 +3164,7 @@ export interface operations {
             };
         };
     };
-    delete_location_api_v1_admin_locations__location_id__delete: {
+    get_location_api_v1_admin_locations__location_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -2724,6 +3174,42 @@ export interface operations {
                 location_id: string;
             };
             cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLocationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_location_api_v1_admin_locations__location_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-orna-admin"?: string | null;
+            };
+            path: {
+                location_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2749,12 +3235,15 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
                 location_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2799,9 +3288,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AdminIdentityRead"];
                 };
             };
             /** @description Validation Error */
@@ -2819,12 +3306,15 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
                 asset_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2850,12 +3340,15 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
                 asset_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2881,12 +3374,15 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
                 asset_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2914,12 +3410,15 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
                 user_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2947,14 +3446,52 @@ export interface operations {
             };
         };
     };
-    create_session_api_v1_admin_sessions_post: {
+    list_sessions_api_v1_admin_sessions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                include_archived?: boolean;
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 "x-orna-admin"?: string | null;
             };
             path?: never;
             cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_session_api_v1_admin_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-orna-admin"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2982,7 +3519,7 @@ export interface operations {
             };
         };
     };
-    delete_session_api_v1_admin_sessions__session_id__delete: {
+    get_session_api_v1_admin_sessions__session_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -2992,6 +3529,42 @@ export interface operations {
                 session_id: string;
             };
             cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_session_api_v1_admin_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-orna-admin"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3017,12 +3590,15 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
                 session_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3054,12 +3630,15 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
                 session_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3124,12 +3703,15 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
                 session_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3161,12 +3743,15 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
                 session_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3190,7 +3775,45 @@ export interface operations {
             };
         };
     };
-    update_user_role_api_v1_admin_users__user_id__role_patch: {
+    list_users_api_v1_admin_users_get: {
+        parameters: {
+            query?: {
+                email?: string | null;
+                role?: string | null;
+                is_active?: boolean | null;
+                membership_status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "x-orna-admin"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_api_v1_admin_users__user_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -3200,6 +3823,42 @@ export interface operations {
                 user_id: string;
             };
             cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_user_role_api_v1_admin_users__user_id__role_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-orna-admin"?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                orna_access?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3860,6 +4519,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_checkout_api_v1_billing_checkouts_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_offer_api_v1_billing_offer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingOfferRead"];
+                };
+            };
+        };
+    };
+    read_my_purchases_api_v1_billing_purchases_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseRead"][];
+                };
+            };
+        };
+    };
+    read_purchase_api_v1_billing_purchases__purchase_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_refund_request_api_v1_billing_purchases__purchase_id__refund_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefundRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefundRequestRead"];
                 };
             };
             /** @description Validation Error */

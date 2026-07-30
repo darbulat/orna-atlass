@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <LegalPageLayout eyebrow="Rules for using the atlas" title="Terms of Use" updated="July 21, 2026">
+    <LegalPageLayout eyebrow="Rules for using the atlas" title="Terms of Use" updated="July 30, 2026">
       <section aria-labelledby="terms-operator">
         <h2 id="terms-operator">1. Operator and agreement</h2>
         <p>
@@ -49,10 +49,16 @@ export default function TermsPage() {
       <section aria-labelledby="terms-membership">
         <h2 id="terms-membership">4. Membership and payment</h2>
         <p>
-          ORNA Atlas currently offers early account access and does not initiate public paid
-          checkout on the website. If paid plans are introduced, the price, billing period,
-          renewal, cancellation, and refund terms will be shown before you purchase. No payment
-          obligation arises merely from creating an early-access account.
+          ORNA Atlas offers Lifetime Member Access as a digital service for one payment of USD
+          $10.00. It does not renew, create a subscription, or require cancellation. Payment is
+          processed on Bereke Bank&apos;s hosted checkout. Access begins only after ORNA receives
+          verified payment confirmation. Creating a free account does not create a payment
+          obligation or unlock members-only recordings.
+        </p>
+        <p>
+          The purchase provides permanent access to members-only recordings that ORNA makes
+          available, subject to these Terms. Refund requests are governed by our
+          {" "}<Link href="/refunds">Refund Policy</Link>.
         </p>
       </section>
 

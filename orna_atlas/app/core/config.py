@@ -178,6 +178,24 @@ class Settings(BaseSettings):
     facebook_client_secret: str | None = Field(
         default=None, validation_alias="FACEBOOK_CLIENT_SECRET"
     )
+    billing_enabled: bool = Field(default=False, validation_alias="BILLING_ENABLED")
+    billing_frontend_url: str = Field(
+        default="http://localhost:3000/membership", validation_alias="BILLING_FRONTEND_URL"
+    )
+    bereke_checkout_create_url: str | None = Field(
+        default=None, validation_alias="BEREKE_CHECKOUT_CREATE_URL"
+    )
+    bereke_merchant_id: str | None = Field(default=None, validation_alias="BEREKE_MERCHANT_ID")
+    bereke_api_key: str | None = Field(default=None, validation_alias="BEREKE_API_KEY")
+    bereke_callback_secret: str | None = Field(
+        default=None, validation_alias="BEREKE_CALLBACK_SECRET"
+    )
+    bereke_callback_url: str | None = Field(
+        default=None, validation_alias="BEREKE_CALLBACK_URL"
+    )
+    bereke_checkout_hosts: list[str] = Field(
+        default_factory=list, validation_alias="BEREKE_CHECKOUT_HOSTS"
+    )
     local_admin_enabled: bool = Field(default=False, validation_alias="LOCAL_ADMIN_ENABLED")
     auth_rate_limit: int = Field(default=10, ge=1, validation_alias="AUTH_RATE_LIMIT")
     search_rate_limit: int = Field(default=60, ge=1, validation_alias="SEARCH_RATE_LIMIT")
@@ -221,6 +239,39 @@ class Settings(BaseSettings):
                 ]
                 raise ValueError(f"{', '.join(missing)} required when {provider} OAuth is configured")
         oauth_enabled = any(all(values) for values in provider_fields.values())
+        billing_fields = {
+            "BEREKE_CHECKOUT_CREATE_URL": self.bereke_checkout_create_url,
+            "BEREKE_MERCHANT_ID": self.bereke_merchant_id,
+            "BEREKE_API_KEY": self.bereke_api_key,
+            "BEREKE_CALLBACK_SECRET": self.bereke_callback_secret,
+            "BEREKE_CALLBACK_URL": self.bereke_callback_url,
+        }
+        if self.billing_enabled:
+            missing_billing = [name for name, value in billing_fields.items() if not value]
+            if not self.bereke_checkout_hosts:
+                missing_billing.append("BEREKE_CHECKOUT_HOSTS")
+            if missing_billing:
+                raise ValueError(
+                    f"{', '.join(missing_billing)} required when BILLING_ENABLED is true"
+                )
+            billing_urls = {
+                "BILLING_FRONTEND_URL": self.billing_frontend_url,
+                "BEREKE_CHECKOUT_CREATE_URL": self.bereke_checkout_create_url or "",
+                "BEREKE_CALLBACK_URL": self.bereke_callback_url or "",
+            }
+            if normalized_environment == "production":
+                invalid_urls = [
+                    name for name, value in billing_urls.items()
+                    if not _is_valid_production_oauth_url(value)
+                ]
+                if invalid_urls:
+                    raise ValueError(
+                        f"{', '.join(invalid_urls)} must be absolute HTTPS URLs in production"
+                    )
+            if any(not _is_valid_hostname(host) for host in self.bereke_checkout_hosts):
+                raise ValueError("BEREKE_CHECKOUT_HOSTS must contain valid hostnames")
+            if len(self.bereke_callback_secret or "") < 32:
+                raise ValueError("BEREKE_CALLBACK_SECRET must contain at least 32 characters")
         if all(provider_fields["apple"]) and not _is_p256_private_key(
             self.apple_private_key or ""
         ):

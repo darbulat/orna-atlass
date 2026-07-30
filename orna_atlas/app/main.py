@@ -19,6 +19,7 @@ from orna_atlas.app.integrations.redis import get_redis_client
 from orna_atlas.app.modules.admin.router import router as admin_router
 from orna_atlas.app.modules.analytics.router import router as analytics_router
 from orna_atlas.app.modules.auth.router import router as auth_router
+from orna_atlas.app.modules.billing.router import router as billing_router
 from orna_atlas.app.modules.atlas.router import router as atlas_router
 from orna_atlas.app.modules.collections.router import router as collections_router
 from orna_atlas.app.modules.locations.router import router as locations_router
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
 
     app.include_router(analytics_router, prefix=settings.api_prefix)
     app.include_router(auth_router, prefix=settings.api_prefix)
+    app.include_router(billing_router, prefix=settings.api_prefix)
     app.include_router(memberships_router, prefix=settings.api_prefix)
     app.include_router(users_router, prefix=settings.api_prefix)
     app.include_router(admin_router, prefix=settings.api_prefix)

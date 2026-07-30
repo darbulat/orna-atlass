@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <LegalPageLayout eyebrow="Your data and choices" title="Privacy Policy" updated="July 21, 2026">
+    <LegalPageLayout eyebrow="Your data and choices" title="Privacy Policy" updated="July 30, 2026">
       <section aria-labelledby="privacy-controller">
         <h2 id="privacy-controller">1. Who controls your data</h2>
         <p>
@@ -39,6 +39,7 @@ export default function PrivacyPage() {
         <h3>Account and service data</h3>
         <ul>
           <li>Account identifiers, roles, membership entitlements, sign-in and refresh-session records.</li>
+          <li>Purchase reference, product, amount, currency, payment status, and refund-request status. ORNA does not receive or store your card or Google Pay credentials.</li>
           <li>If you choose social sign-in, the provider, provider account identifier, verified e-mail address, and authentication results needed to sign you in.</li>
           <li>Playback grants and security/audit events needed to protect restricted recordings and accounts.</li>
         </ul>
@@ -61,6 +62,7 @@ export default function PrivacyPage() {
         <h2 id="privacy-uses">4. How and why we use data</h2>
         <ul>
           <li>To provide accounts, authentication, atlas discovery, membership access, and protected playback.</li>
+          <li>To create Bereke Bank hosted checkout sessions, confirm payments, show purchase records, prevent duplicate processing, and handle refund requests.</li>
           <li>To secure the service, prevent abuse, investigate incidents, and keep necessary audit records.</li>
           <li>To understand whether core listening and registration journeys work and to improve ORNA Atlas.</li>
           <li>To respond to requests and comply with applicable legal obligations.</li>
@@ -79,6 +81,7 @@ export default function PrivacyPage() {
         <ul>
           <li>infrastructure, hosting, storage, monitoring, and other processors that operate the service for us;</li>
           <li>Google, Apple, or Facebook when you choose that provider for sign-in;</li>
+          <li>Bereke Bank and its payment-system participants when you open checkout, make a payment, or request a refund;</li>
           <li>professional advisers, authorities, or other parties when required by law or needed to establish, exercise, or defend legal claims; or</li>
           <li>a successor in a merger, reorganization, or transfer, subject to appropriate safeguards.</li>
         </ul>
