@@ -28,7 +28,16 @@ from orna_atlas.app.modules.users.service import require_user
 
 
 def public_offer(settings: Settings) -> BillingOfferRead:
-    return BillingOfferRead(checkout_available=settings.billing_enabled)
+    amount_minor, currency = _offer_price(settings)
+    return BillingOfferRead(
+        amount_minor=amount_minor,
+        currency=currency,
+        checkout_available=settings.billing_enabled,
+    )
+
+
+def _offer_price(settings: Settings) -> tuple[int, str]:
+    return (200, "KZT") if getattr(settings, "billing_test_mode", False) else (1000, "USD")
 
 
 def _purchase_read(purchase: BillingPurchase) -> PurchaseRead:
@@ -75,6 +84,7 @@ async def create_checkout(
     membership = await memberships_repository.get_for_user(db, user_id)
     if membership is not None and membership.is_entitled:
         raise ConflictError("Lifetime Member Access is already active")
+    amount_minor, currency = _offer_price(settings)
     existing = await repository.get_by_idempotency(db, user_id, idempotency_key)
     if existing is not None:
         if _expire_stale_checkout(existing):
@@ -88,19 +98,23 @@ async def create_checkout(
         open_purchase = await repository.get_open_for_user(db, user_id)
         if open_purchase is not None and not _expire_stale_checkout(open_purchase):
             return _checkout_read(open_purchase)
-        merchant_reference = f"orna-{uuid4().hex}"
+        # Bereke's hosted gateway limits orderNumber to 36 characters.
+        merchant_reference = f"orna-{uuid4().hex[:31]}"
         purchase = await repository.create_purchase(
             db,
             user_id=user_id,
             merchant_reference=merchant_reference,
             idempotency_key=idempotency_key,
+            amount_minor=amount_minor,
+            currency=currency,
         )
         await db.commit()
     hosted = await provider.create_checkout(
         merchant_reference=merchant_reference,
-        amount_minor=1000,
-        currency="USD",
+        amount_minor=amount_minor,
+        currency=currency,
         description="ORNA Atlas Lifetime Member Access",
+        customer_email=getattr(user, "email", None),
     )
     purchase.provider_order_id = hosted.provider_order_id
     purchase.checkout_url = hosted.checkout_url
@@ -164,9 +178,14 @@ async def request_refund(
 
 
 async def apply_callback(db: AsyncSession, callback: BerekeCallback) -> BillingPurchase:
-    purchase = await repository.get_by_merchant_reference_for_update(
-        db, callback.merchant_reference
-    )
+    if callback.match_by_provider_order:
+        purchase = await repository.get_by_provider_order_id_for_update(
+            db, callback.provider_order_id
+        )
+    else:
+        purchase = await repository.get_by_merchant_reference_for_update(
+            db, callback.merchant_reference
+        )
     if purchase is None:
         raise NotFoundError("Purchase not found")
     # The purchase lock serializes callbacks for one order. Rechecking event identity only after

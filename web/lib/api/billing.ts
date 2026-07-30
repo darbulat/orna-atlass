@@ -7,6 +7,15 @@ export type BillingCheckout = components["schemas"]["CheckoutRead"];
 export type BillingPurchase = components["schemas"]["PurchaseRead"];
 export type RefundRequest = components["schemas"]["RefundRequestRead"];
 
+export function formatBillingAmount(amountMinor: number, currency: string): string {
+  return new Intl.NumberFormat("en", {
+    style: "currency",
+    currency,
+    currencyDisplay: "code",
+    minimumFractionDigits: 2,
+  }).format(amountMinor / 100).replace(/\u00a0/g, " ");
+}
+
 function billingRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
@@ -16,8 +25,10 @@ export async function fetchBillingOffer(init: RequestInit = {}): Promise<Billing
   const offer = await billingRequest<BillingOffer>("/api/v1/billing/offer", init);
   if (
     offer.product_code !== "lifetime_member"
-    || offer.amount_minor !== 1000
-    || offer.currency !== "USD"
+    || !(
+      (offer.amount_minor === 1000 && offer.currency === "USD")
+      || (offer.amount_minor === 200 && offer.currency === "KZT")
+    )
     || offer.is_recurring !== false
   ) {
     throw new ApiError("The membership offer is unavailable", { kind: "invalid_response" });

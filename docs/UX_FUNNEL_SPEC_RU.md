@@ -185,10 +185,10 @@ Referece-примеры ("Earthsound", "Birdsong Earth") показывают п
 
 | **Элемент** | **Действие** | **Состояния** | **Аналитика** |
 | --- | --- | --- | --- |
-| "Continue to secure payment" | Для авторизованного пользователя с подтверждённым email создаёт разовый checkout USD 10.00 и переводит на защищённую форму Bereke Bank | default / loading / unavailable | membership_reserve_click → subscription_intent |
+| "Continue to secure payment" | Для авторизованного пользователя с подтверждённым email создаёт разовый checkout по цене из API offer и переводит на защищённую форму Bereke Bank; явный test mode показывает KZT 2.00 | default / loading / unavailable | membership_reserve_click → subscription_intent |
 | Строки сравнения Free/Member таблицы | Не кликабельны, чисто информационные | — | — |
 
-Lifetime Member Access — цифровой продукт за один платёж USD 10.00 без автопродления и срока
+Lifetime Member Access — цифровой продукт за один платёж без автопродления и срока
 окончания. Клиентская страница возврата из банка не активирует доступ: membership выдаётся только
 после проверенного серверного callback Bereke с совпавшими заказом, суммой и валютой. Пока
 `BILLING_ENABLED=false`, интерфейс правдиво показывает недоступность checkout.

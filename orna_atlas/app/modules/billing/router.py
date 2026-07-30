@@ -1,4 +1,5 @@
 from typing import Annotated
+from urllib.parse import parse_qsl
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, Response, Security, status
@@ -8,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from orna_atlas.app.core.config import Settings, get_settings
 from orna_atlas.app.core.security import CurrentUser, get_current_user
 from orna_atlas.app.db.session import get_db_session
-from orna_atlas.app.integrations.bereke import BerekeHostedCheckoutClient, parse_callback
+from orna_atlas.app.core.domain_errors import ValidationError
+from orna_atlas.app.integrations.bereke import BerekeHostedCheckoutClient
 from orna_atlas.app.modules.billing import service
 from orna_atlas.app.modules.billing.schemas import (
     BillingOfferRead,
@@ -87,13 +89,30 @@ async def create_refund_request(
     return await service.request_refund(db, UUID(current_user.id), purchase_id)
 
 
-@router.post("/callbacks/bereke", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
+@router.api_route(
+    "/callbacks/bereke",
+    methods=["GET", "POST"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    include_in_schema=False,
+)
 async def bereke_callback(
     request: Request,
     db: Database,
     settings: AppSettings,
-    signature: Annotated[str | None, Header(alias="X-Bereke-Signature")] = None,
 ) -> Response:
-    callback = parse_callback(await request.body(), signature, settings.bereke_callback_secret)
-    await service.apply_callback(db, callback)
+    pairs = list(request.query_params.multi_items())
+    body = await request.body()
+    if body:
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
+        if content_type != "application/x-www-form-urlencoded":
+            raise ValidationError("Invalid Bereke callback content type")
+        try:
+            pairs.extend(parse_qsl(body.decode(), keep_blank_values=True, strict_parsing=True))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValidationError("Invalid Bereke callback form") from exc
+    if len({name for name, _value in pairs}) != len(pairs):
+        raise ValidationError("Duplicate Bereke callback parameters")
+    callback = await BerekeHostedCheckoutClient(settings).resolve_callback(dict(pairs))
+    if callback is not None:
+        await service.apply_callback(db, callback)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

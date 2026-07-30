@@ -14,8 +14,8 @@ class BillingOfferRead(BaseModel):
     product_code: Literal["lifetime_member"] = "lifetime_member"
     name: str = "Lifetime Member Access"
     description: str = "Permanent access to available members-only field recordings."
-    amount_minor: Literal[1000] = 1000
-    currency: Literal["USD"] = "USD"
+    amount_minor: int = Field(default=1000, gt=0)
+    currency: Literal["USD", "KZT"] = "USD"
     is_recurring: Literal[False] = False
     checkout_available: bool
     refund_summary: str = "Full refund requests are accepted within 14 calendar days."
@@ -37,8 +37,8 @@ class PurchaseRead(BaseModel):
     id: UUID
     merchant_reference: str
     product_code: Literal["lifetime_member"]
-    amount_minor: Literal[1000]
-    currency: Literal["USD"]
+    amount_minor: int = Field(gt=0)
+    currency: Literal["USD", "KZT"]
     status: PurchaseStatus
     paid_at: datetime | None = None
     refunded_at: datetime | None = None

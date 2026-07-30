@@ -1,11 +1,14 @@
 import Link from "next/link";
 
-import { fetchBillingOffer } from "../lib/api/billing";
+import { fetchBillingOffer, formatBillingAmount } from "../lib/api/billing";
 
 export async function LifetimeMembershipOffer() {
   let available = false;
+  let price = "Price unavailable";
   try {
-    available = (await fetchBillingOffer({ cache: "no-store" })).checkout_available;
+    const offer = await fetchBillingOffer({ cache: "no-store" });
+    available = offer.checkout_available;
+    price = formatBillingAmount(offer.amount_minor, offer.currency);
   } catch {
     // The public page keeps the fixed product disclosure but never invents checkout availability.
   }
@@ -22,7 +25,7 @@ export async function LifetimeMembershipOffer() {
       </div>
       <div className="lifetime-price-card">
         <span>One-time payment</span>
-        <strong><small>USD</small> $10.00</strong>
+        <strong>{price}</strong>
         <p>Processed securely by Bereke Bank. Available payment methods appear at checkout.</p>
         <Link href="/membership">{available ? "Get lifetime access" : "View membership"}</Link>
       </div>

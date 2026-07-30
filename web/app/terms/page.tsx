@@ -49,8 +49,9 @@ export default function TermsPage() {
       <section aria-labelledby="terms-membership">
         <h2 id="terms-membership">4. Membership and payment</h2>
         <p>
-          ORNA Atlas offers Lifetime Member Access as a digital service for one payment of USD
-          $10.00. It does not renew, create a subscription, or require cancellation. Payment is
+          ORNA Atlas offers Lifetime Member Access as a digital service for one payment at the
+          price displayed before checkout. During the current test rollout, that price is KZT 2.00.
+          It does not renew, create a subscription, or require cancellation. Payment is
           processed on Bereke Bank&apos;s hosted checkout. Access begins only after ORNA receives
           verified payment confirmation. Creating a free account does not create a payment
           obligation or unlock members-only recordings.

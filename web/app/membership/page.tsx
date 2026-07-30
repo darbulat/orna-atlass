@@ -114,7 +114,7 @@ function MembershipInformation({ onCreateAccount }: { onCreateAccount?: () => vo
         </article>
         <article className="panel">
           <h3>Lifetime Member Access</h3>
-          <p><strong>USD $10.00 once.</strong> No recurring charge or automatic renewal.</p>
+          <p><strong>One payment.</strong> The current test price is shown in the checkout panel below.</p>
           <ul>
             <li>Permanent access to available members-only recordings</li>
             <li>Secure hosted checkout through Bereke Bank</li>
@@ -160,7 +160,7 @@ function MembershipInformation({ onCreateAccount }: { onCreateAccount?: () => vo
         </details>
         <details>
           <summary>Is this a subscription?</summary>
-          <p>No. Lifetime Member Access costs USD $10.00 once. There is no recurring charge, renewal, or cancellation requirement.</p>
+          <p>No. Lifetime Member Access uses one payment at the price shown before checkout. There is no recurring charge, renewal, or cancellation requirement.</p>
         </details>
       </div>
     </section>
@@ -1049,7 +1049,7 @@ function MembershipPageContent() {
                 </strong>
                 {membershipView === "free" || membershipView === "unavailable" ? (
                   <p>
-                    <span>Lifetime access costs USD $10.00 once.</span>
+                    <span>Lifetime access uses one payment at the displayed checkout price.</span>
                     {membershipView === "free" ? <><span aria-hidden="true"> </span><span>No automatic renewal.</span></> : null}
                   </p>
                 ) : null}

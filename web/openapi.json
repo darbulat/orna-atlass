@@ -1021,8 +1021,8 @@
       "BillingOfferRead": {
         "properties": {
           "amount_minor": {
-            "const": 1000,
             "default": 1000,
+            "exclusiveMinimum": 0.0,
             "title": "Amount Minor",
             "type": "integer"
           },
@@ -1031,8 +1031,11 @@
             "type": "boolean"
           },
           "currency": {
-            "const": "USD",
             "default": "USD",
+            "enum": [
+              "USD",
+              "KZT"
+            ],
             "title": "Currency",
             "type": "string"
           },
@@ -3736,7 +3739,7 @@
       "PurchaseRead": {
         "properties": {
           "amount_minor": {
-            "const": 1000,
+            "exclusiveMinimum": 0.0,
             "title": "Amount Minor",
             "type": "integer"
           },
@@ -3746,7 +3749,10 @@
             "type": "string"
           },
           "currency": {
-            "const": "USD",
+            "enum": [
+              "USD",
+              "KZT"
+            ],
             "title": "Currency",
             "type": "string"
           },

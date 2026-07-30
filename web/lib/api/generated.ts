@@ -1511,17 +1511,16 @@ export interface components {
             /**
              * Amount Minor
              * @default 1000
-             * @constant
              */
-            amount_minor: 1000;
+            amount_minor: number;
             /** Checkout Available */
             checkout_available: boolean;
             /**
              * Currency
              * @default USD
-             * @constant
+             * @enum {string}
              */
-            currency: "USD";
+            currency: "USD" | "KZT";
             /**
              * Description
              * @default Permanent access to available members-only field recordings.
@@ -2515,11 +2514,8 @@ export interface components {
         PublicationStatus: "draft" | "published" | "archived";
         /** PurchaseRead */
         PurchaseRead: {
-            /**
-             * Amount Minor
-             * @constant
-             */
-            amount_minor: 1000;
+            /** Amount Minor */
+            amount_minor: number;
             /**
              * Created At
              * Format: date-time
@@ -2527,9 +2523,9 @@ export interface components {
             created_at: string;
             /**
              * Currency
-             * @constant
+             * @enum {string}
              */
-            currency: "USD";
+            currency: "USD" | "KZT";
             /**
              * Id
              * Format: uuid

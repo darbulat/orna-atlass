@@ -36,6 +36,11 @@ reference, provider order, amount and currency match the recorded purchase may a
 membership with no expiry. A provider-confirmed refund revokes payment-backed access unless another
 valid entitlement remains.
 
+An explicitly configured billing test mode may replace the production offer with the fixed Bereke
+template price of KZT 2.00. Test mode must be visible to the buyer, must create a distinct provider
+order for every local purchase, and matches callbacks by their signed provider order identifier.
+It is not evidence that the production USD offer or authenticated Bereke API is ready.
+
 Entitled members can discover and render `members_only` session list/detail records through the
 authenticated session endpoints. Anonymous and non-entitled callers receive the public projection
 only; protected records are reported as not found.

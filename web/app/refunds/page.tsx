@@ -13,7 +13,7 @@ export default function RefundPolicyPage() {
     <LegalPageLayout eyebrow="Purchase support" title="Refund Policy" updated="July 30, 2026">
       <section aria-labelledby="refund-product">
         <h2 id="refund-product">1. Product covered</h2>
-        <p>Lifetime Member Access is a digital service sold for one payment of USD $10.00. It has no recurring charge, automatic renewal, physical delivery, or partial billing period.</p>
+        <p>Lifetime Member Access is a digital service sold for the single price displayed before checkout. During the current test rollout, the Bereke checkout price is KZT 2.00. It has no recurring charge, automatic renewal, physical delivery, or partial billing period.</p>
       </section>
       <section aria-labelledby="refund-eligibility">
         <h2 id="refund-eligibility">2. When you may request a refund</h2>
