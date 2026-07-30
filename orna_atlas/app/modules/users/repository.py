@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -49,6 +49,24 @@ async def acquire_admin_bootstrap_lock(session: AsyncSession) -> None:
 async def get_admin(session: AsyncSession) -> User | None:
     result = await session.execute(select(User).where(User.role == "admin").limit(1))
     return result.scalar_one_or_none()
+
+
+async def acquire_role_change_lock(session: AsyncSession) -> None:
+    bind = session.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"),
+            {"lock_id": 5712684683120764981},
+        )
+
+
+async def count_active_admins(session: AsyncSession) -> int:
+    result = await session.execute(
+        select(func.count())
+        .select_from(User)
+        .where(User.role == "admin", User.is_active.is_(True))
+    )
+    return int(result.scalar_one())
 
 
 async def create(

@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from orna_atlas.app.core.domain_errors import NotFoundError
+from orna_atlas.app.core.domain_errors import ForbiddenError, NotFoundError
 from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.core.security import CurrentUser, get_current_admin
 from orna_atlas.app.db.session import get_db_session
@@ -15,6 +15,7 @@ from orna_atlas.app.modules.collections import service as collections_service
 from orna_atlas.app.modules.locations import service as locations_service
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.users import service as users_service
+from orna_atlas.app.modules.users.schemas import UserRoleUpdate
 
 
 def _admin_location(*, archived: bool = False) -> SimpleNamespace:
@@ -459,6 +460,89 @@ def test_admin_users_routes_project_membership_or_absent(monkeypatch) -> None:
     detail_payload = detail_response.json()
     assert detail_payload["id"] == str(row_with_membership.id)
     assert detail_payload["membership"]["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_update_role_rejects_self_role_change(monkeypatch) -> None:
+    actor_id = uuid4()
+    user = SimpleNamespace(id=actor_id, is_active=True, role="admin")
+
+    monkeypatch.setattr(users_service.repository, "get_by_id_for_update", AsyncMock(return_value=user))
+
+    with pytest.raises(ForbiddenError, match="Admins cannot modify their own role"):
+        await users_service.update_role(
+            AsyncMock(),
+            actor_id,
+            UserRoleUpdate(role="member"),
+            actor_user_id=actor_id,
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_role_rejects_last_active_admin_demotion(monkeypatch) -> None:
+    actor_id = uuid4()
+    user_id = uuid4()
+    user = SimpleNamespace(id=user_id, is_active=True, role="admin")
+
+    monkeypatch.setattr(users_service.repository, "get_by_id_for_update", AsyncMock(return_value=user))
+    monkeypatch.setattr(users_service.repository, "count_active_admins", AsyncMock(return_value=1))
+    monkeypatch.setattr(users_service.repository, "acquire_role_change_lock", AsyncMock())
+
+    with pytest.raises(ForbiddenError, match="At least one active admin must remain"):
+        await users_service.update_role(
+            AsyncMock(),
+            user_id,
+            UserRoleUpdate(role="member"),
+            actor_user_id=actor_id,
+        )
+
+    users_service.repository.acquire_role_change_lock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_role_allows_role_changes_on_safe_input(monkeypatch) -> None:
+    actor_id = uuid4()
+    user_id = uuid4()
+    user = SimpleNamespace(id=user_id, is_active=True, role="admin")
+    db = AsyncMock()
+
+    monkeypatch.setattr(users_service.repository, "get_by_id_for_update", AsyncMock(return_value=user))
+    monkeypatch.setattr(users_service.repository, "count_active_admins", AsyncMock(return_value=2))
+    monkeypatch.setattr(users_service.repository, "acquire_role_change_lock", AsyncMock())
+    monkeypatch.setattr(users_service.repository, "save", AsyncMock())
+    monkeypatch.setattr(users_service, "add_audit_event", AsyncMock())
+
+    saved = await users_service.update_role(
+        db,
+        user_id,
+        UserRoleUpdate(role="editor"),
+        actor_user_id=actor_id,
+    )
+
+    assert saved.role == "editor"
+    users_service.repository.save.assert_awaited_once_with(db)
+    users_service.add_audit_event.assert_awaited_once()
+    users_service.repository.count_active_admins.assert_awaited_once_with(db)
+    users_service.repository.acquire_role_change_lock.assert_awaited_once_with(db)
+    db.commit.assert_awaited_once()
+
+
+def test_admin_users_role_update_route_rejects_self_role_change() -> None:
+    actor_id = uuid4()
+
+    _set_admin_overrides()
+    app.dependency_overrides[get_current_admin] = lambda: CurrentUser(
+        id=str(actor_id), role="admin", email="admin@example.com"
+    )
+
+    client = TestClient(app)
+    try:
+        response = client.patch(f"/api/v1/admin/users/{actor_id}/role", json={"role": "member"})
+    finally:
+        _clear_admin_overrides()
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Admins cannot modify their own role"
 
 
 def test_admin_me_route_returns_typed_identity(monkeypatch) -> None:

@@ -2,7 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from orna_atlas.app.core.domain_errors import AuthenticationError
+from orna_atlas.app.core.domain_errors import AuthenticationError, ForbiddenError
 from orna_atlas.app.modules.admin.repository import add_audit_event
 from orna_atlas.app.modules.memberships.schemas import MembershipAbsentRead, MembershipRead
 from orna_atlas.app.modules.users import repository
@@ -20,8 +20,23 @@ async def require_user(session: AsyncSession, user_id: UUID) -> User:
 async def update_role(
     session: AsyncSession, user_id: UUID, data: UserRoleUpdate, *, actor_user_id: UUID | None
 ) -> User:
-    user = await require_user(session, user_id)
+    if actor_user_id is not None and actor_user_id == user_id:
+        raise ForbiddenError("Admins cannot modify their own role")
+
+    user = await repository.get_by_id_for_update(session, user_id)
+    if user is None or not user.is_active:
+        raise AuthenticationError("User is unavailable")
+
     previous = user.role
+    if previous == "admin" and data.role != "admin":
+        await repository.acquire_role_change_lock(session)
+        active_admin_count = await repository.count_active_admins(session)
+        if active_admin_count <= 1:
+            raise ForbiddenError("At least one active admin must remain")
+
+    if previous == data.role:
+        return user
+
     user.role = data.role
     await repository.save(session)
     await add_audit_event(
