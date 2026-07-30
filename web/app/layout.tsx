@@ -8,6 +8,9 @@ import "./styles.css";
 export const metadata: Metadata = {
   title: "ORNA Atlas",
   description: "A living sound atlas of natural places.",
+  verification: {
+    google: "nzWVLj0jkhRaytFm0I87KOYq4_8JdmzuJuVcLvKtBuY",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
