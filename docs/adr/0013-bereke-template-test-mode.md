@@ -1,4 +1,4 @@
-# ADR-0012: Isolate Bereke template checkout as an explicit test mode
+# ADR-0013: Isolate Bereke template checkout as an explicit test mode
 
 - Status: accepted
 - Date: 2026-07-30

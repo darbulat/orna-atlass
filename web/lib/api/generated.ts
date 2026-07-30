@@ -1142,24 +1142,67 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** AdminCollectionResource */
+        AdminCollectionResource: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Public */
+            is_public: boolean;
+            /** Location Ids */
+            location_ids?: string[];
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Revision */
+            readonly revision: string;
+            /** Session Ids */
+            session_ids?: string[];
+            /** Slug */
+            slug: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** AdminErrorResponse */
+        AdminErrorResponse: {
+            /** Detail */
+            detail: string;
+        };
         /** AdminIdentityRead */
         AdminIdentityRead: {
             /** Id */
             id: string;
             /** Is Admin */
             is_admin: boolean;
-            /** Mode */
-            mode: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "token" | "local";
             /**
              * Role
              * @constant
              */
             role: "admin";
         };
-        /**
-         * AdminLocationRead
-         * @description Authorized editorial projection containing exact and operational fields.
-         */
+        /** AdminLocationRead */
         AdminLocationRead: {
             /** Archived At */
             archived_at?: string | null;
@@ -1196,6 +1239,8 @@ export interface components {
             public_longitude?: number | null;
             /** Region */
             region: string | null;
+            /** Revision */
+            readonly revision: string;
             sensitivity_level: components["schemas"]["SensitivityLevel"];
             /** Slug */
             slug: string;
@@ -1258,32 +1303,74 @@ export interface components {
             /** Storage Key */
             storage_key: string;
         };
-        /** AdminUserRead */
-        AdminUserRead: {
+        /** AdminSessionResource */
+        AdminSessionResource: {
+            /** @default public */
+            access_level: components["schemas"]["SessionAccess"];
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
+            /** Description */
+            description?: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
+            /** Featured Sort Order */
+            featured_sort_order?: number | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Is Active */
-            is_active: boolean;
+            /**
+             * Is Featured
+             * @default false
+             */
+            is_featured: boolean;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Media Assets */
+            media_assets?: components["schemas"]["MediaAssetRead"][];
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** @default pending */
+            processing_status: components["schemas"]["ProcessingStatus"];
+            /** @default draft */
+            publication_status: components["schemas"]["PublicationStatus"];
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Recorder */
+            recorder?: string | null;
+            /** Revision */
+            readonly revision: string;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Weather */
+            weather?: string | null;
+        };
+        /** AdminUserResource */
+        AdminUserResource: {
             /** Membership */
             membership: components["schemas"]["MembershipAbsentRead"] | components["schemas"]["MembershipRead"];
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: "member" | "editor" | "admin";
+            /** Revision */
+            revision: string;
+            user: components["schemas"]["UserRead"];
         };
         /** AtlasCluster */
         AtlasCluster: {
@@ -1503,42 +1590,6 @@ export interface components {
              * @enum {string}
              */
             status: "creating" | "pending" | "paid" | "failed" | "expired" | "refund_requested" | "refunded";
-        };
-        /** CollectionAdminRead */
-        CollectionAdminRead: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Description */
-            description: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Is Public */
-            is_public: boolean;
-            /** Location Ids */
-            location_ids?: string[];
-            /** Metadata */
-            metadata: {
-                [key: string]: unknown;
-            };
-            /** Session Ids */
-            session_ids?: string[];
-            /** Slug */
-            slug: string;
-            /** Sort Order */
-            sort_order: number;
-            /** Title */
-            title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /** CollectionCreate */
         CollectionCreate: {
@@ -2149,6 +2200,11 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * MembershipStatus
+         * @enum {string}
+         */
+        MembershipStatus: "inactive" | "active" | "cancelled" | "expired";
         /** MembershipUpdate */
         MembershipUpdate: {
             /** Expires At */
@@ -2726,65 +2782,6 @@ export interface components {
             /** Wind Speed Kph */
             wind_speed_kph?: number | null;
         };
-        /** SessionRead */
-        SessionRead: {
-            /** @default public */
-            access_level: components["schemas"]["SessionAccess"];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Description */
-            description?: string | null;
-            /** Duration Seconds */
-            duration_seconds?: number | null;
-            /** Featured Sort Order */
-            featured_sort_order?: number | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Is Featured
-             * @default false
-             */
-            is_featured: boolean;
-            /**
-             * Location Id
-             * Format: uuid
-             */
-            location_id: string;
-            /** Media Assets */
-            media_assets?: components["schemas"]["MediaAssetRead"][];
-            /** Metadata */
-            metadata: {
-                [key: string]: unknown;
-            };
-            /** @default pending */
-            processing_status: components["schemas"]["ProcessingStatus"];
-            /** @default draft */
-            publication_status: components["schemas"]["PublicationStatus"];
-            /**
-             * Recorded At
-             * Format: date-time
-             */
-            recorded_at: string;
-            /** Recorder */
-            recorder?: string | null;
-            /** Slug */
-            slug: string;
-            /** Title */
-            title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Weather */
-            weather?: string | null;
-        };
         /** SessionUpdate */
         SessionUpdate: {
             access_level?: components["schemas"]["SessionAccess"] | null;
@@ -2858,6 +2855,11 @@ export interface components {
              */
             role: "member" | "editor" | "admin";
         };
+        /**
+         * UserRole
+         * @enum {string}
+         */
+        UserRole: "member" | "editor" | "admin";
         /** UserRoleUpdate */
         UserRoleUpdate: {
             /**
@@ -2911,6 +2913,11 @@ export interface operations {
         parameters: {
             query?: {
                 event_type?: string | null;
+                actor_user_id?: string | null;
+                subject_type?: string | null;
+                subject_id?: string | null;
+                created_from?: string | null;
+                created_to?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -2931,6 +2938,24 @@ export interface operations {
                     "application/json": components["schemas"]["AuditEventRead"][];
                 };
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -2945,6 +2970,8 @@ export interface operations {
     list_collections_api_v1_admin_collections_get: {
         parameters: {
             query?: {
+                q?: string | null;
+                is_public?: boolean | null;
                 limit?: number;
                 offset?: number;
             };
@@ -2962,7 +2989,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionAdminRead"][];
+                    "application/json": components["schemas"]["AdminCollectionResource"][];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2980,7 +3025,6 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path?: never;
@@ -3000,7 +3044,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionAdminRead"];
+                    "application/json": components["schemas"]["AdminCollectionResource"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3033,7 +3095,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionAdminRead"];
+                    "application/json": components["schemas"]["AdminCollectionResource"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3050,8 +3130,8 @@ export interface operations {
     update_collection_api_v1_admin_collections__collection_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
+            header: {
+                "If-Match": string;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3073,7 +3153,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionAdminRead"];
+                    "application/json": components["schemas"]["AdminCollectionResource"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3085,12 +3192,24 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
         };
     };
     list_locations_api_v1_admin_locations_get: {
         parameters: {
             query?: {
                 include_archived?: boolean;
+                q?: string | null;
+                coordinate_visibility?: components["schemas"]["CoordinateVisibility"] | null;
+                sensitivity_level?: components["schemas"]["SensitivityLevel"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -3111,6 +3230,24 @@ export interface operations {
                     "application/json": components["schemas"]["AdminLocationRead"][];
                 };
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3126,7 +3263,6 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path?: never;
@@ -3147,6 +3283,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminLocationRead"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3182,6 +3336,24 @@ export interface operations {
                     "application/json": components["schemas"]["AdminLocationRead"];
                 };
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3196,8 +3368,8 @@ export interface operations {
     delete_location_api_v1_admin_locations__location_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
+            header: {
+                "If-Match": string;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3216,6 +3388,33 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3225,13 +3424,22 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
         };
     };
     update_location_api_v1_admin_locations__location_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
+            header: {
+                "If-Match": string;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3256,6 +3464,33 @@ export interface operations {
                     "application/json": components["schemas"]["AdminLocationRead"];
                 };
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3263,6 +3498,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
         };
@@ -3287,6 +3531,24 @@ export interface operations {
                     "application/json": components["schemas"]["AdminIdentityRead"];
                 };
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3302,7 +3564,6 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3320,6 +3581,24 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -3336,7 +3615,6 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3355,6 +3633,24 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3370,7 +3666,6 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3391,6 +3686,24 @@ export interface operations {
                     "application/json": components["schemas"]["ProcessingStatusRead"];
                 };
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3405,8 +3718,8 @@ export interface operations {
     update_membership_api_v1_admin_memberships__user_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
+            header: {
+                "If-Match": string;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3431,6 +3744,33 @@ export interface operations {
                     "application/json": components["schemas"]["MembershipRead"];
                 };
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3440,12 +3780,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
         };
     };
     list_sessions_api_v1_admin_sessions_get: {
         parameters: {
             query?: {
                 include_archived?: boolean;
+                q?: string | null;
+                location_id?: string | null;
+                publication_status?: components["schemas"]["PublicationStatus"] | null;
+                processing_status?: components["schemas"]["ProcessingStatus"] | null;
+                access_level?: components["schemas"]["SessionAccess"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -3463,7 +3817,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionRead"][];
+                    "application/json": components["schemas"]["AdminSessionResource"][];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3481,7 +3853,6 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path?: never;
@@ -3501,7 +3872,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionRead"];
+                    "application/json": components["schemas"]["AdminSessionResource"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3534,7 +3923,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionRead"];
+                    "application/json": components["schemas"]["AdminSessionResource"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3551,8 +3958,8 @@ export interface operations {
     delete_session_api_v1_admin_sessions__session_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
+            header: {
+                "If-Match": string;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3571,6 +3978,33 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3580,13 +4014,22 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
         };
     };
     update_session_api_v1_admin_sessions__session_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
+            header: {
+                "If-Match": string;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3608,7 +4051,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionRead"];
+                    "application/json": components["schemas"]["AdminSessionResource"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3620,13 +4090,21 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
         };
     };
     create_session_asset_api_v1_admin_sessions__session_id__assets_post: {
         parameters: {
             query?: never;
             header?: {
-                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3649,6 +4127,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMediaAssetRead"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3684,6 +4180,24 @@ export interface operations {
                     "application/json": components["schemas"]["ProcessingStatusRead"];
                 };
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3699,7 +4213,6 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3724,6 +4237,24 @@ export interface operations {
                     "application/json": components["schemas"]["RecordingSegmentRead"][];
                 };
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3739,7 +4270,6 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                authorization?: string | null;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3760,6 +4290,24 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3775,9 +4323,9 @@ export interface operations {
         parameters: {
             query?: {
                 email?: string | null;
-                role?: string | null;
+                role?: components["schemas"]["UserRole"] | null;
                 is_active?: boolean | null;
-                membership_status?: string | null;
+                membership_status?: components["schemas"]["MembershipStatus"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -3795,7 +4343,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdminUserRead"][];
+                    "application/json": components["schemas"]["AdminUserResource"][];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3828,7 +4394,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdminUserRead"];
+                    "application/json": components["schemas"]["AdminUserResource"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3845,8 +4429,8 @@ export interface operations {
     update_user_role_api_v1_admin_users__user_id__role_patch: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
+            header: {
+                "If-Match": string;
                 "x-orna-admin"?: string | null;
             };
             path: {
@@ -3868,7 +4452,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserRead"];
+                    "application/json": components["schemas"]["AdminUserResource"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3878,6 +4489,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
         };
