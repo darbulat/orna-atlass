@@ -4,6 +4,12 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
 /** @type {import('next').NextConfig} */
 const baseConfig = {
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "live.staticflickr.com" },
+      { protocol: "https", hostname: "upload.wikimedia.org" },
+    ],
+  },
 };
 
 export default function nextConfig(phase) {
@@ -16,6 +22,13 @@ export default function nextConfig(phase) {
   );
   return {
     ...baseConfig,
+    images: {
+      dangerouslyAllowLocalIP: true,
+      remotePatterns: [
+        ...baseConfig.images.remotePatterns,
+        { protocol: "http", hostname: "127.0.0.1", port: "4010" },
+      ],
+    },
     webpack(config) {
       config.resolve.alias["./favoriteContinuation"] = continuationObserver;
       config.resolve.alias["../../components/audio/favoriteContinuation"] = continuationObserver;

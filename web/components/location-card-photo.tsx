@@ -1,4 +1,4 @@
-/* eslint-disable @next/next/no-img-element -- location photos are data-driven remote URLs; next/image requires a static host allowlist. */
+import Image from "next/image";
 
 type LocationCardPhotoProps = {
   name: string;
@@ -10,12 +10,11 @@ export function LocationCardPhoto({ name, photoUrl, variant }: LocationCardPhoto
   return (
     <span className={`location-card-photo location-card-photo-${variant}`}>
       {photoUrl ? (
-        <img
+        <Image
           src={photoUrl}
           alt={`Landscape at ${name}`}
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
+          fill
+          sizes={variant === "atlas" ? "(max-width: 720px) 82vw, 320px" : "(max-width: 720px) 100vw, 33vw"}
           onError={(event) => {
             event.currentTarget.hidden = true;
           }}

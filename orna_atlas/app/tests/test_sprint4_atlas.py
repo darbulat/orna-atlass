@@ -57,7 +57,7 @@ def test_atlas_point_uses_public_coordinates_and_latest_public_session() -> None
         longitude=169.1,
         timezone="Pacific/Auckland",
         sensitivity_level="high",
-        metadata_={"source_image": "https://images.example/island-wetland.jpg"},
+        metadata_={"source_image": "https://live.staticflickr.com/island-wetland.jpg"},
         sessions=[
             SimpleNamespace(
                 id=uuid4(),
@@ -85,7 +85,7 @@ def test_atlas_point_uses_public_coordinates_and_latest_public_session() -> None
     assert payload["latitude"] == -45.2
     assert payload["latest_session"]["slug"] == "dawn-public"
     assert payload["session_count"] == 1
-    assert payload["photo_url"] == "https://images.example/island-wetland.jpg"
+    assert payload["photo_url"] == "https://live.staticflickr.com/island-wetland.jpg"
     assert "exact_latitude" not in payload
 
 
@@ -98,12 +98,23 @@ def test_atlas_point_rejects_non_http_or_malformed_location_photo_urls() -> None
         "https://example.com:bad/photo.jpg",
         "https://host name.example/photo.jpg",
         "https://user:secret@example.com/photo.jpg",
+        "https://example.com/photo.jpg",
+        "http://live.staticflickr.com/photo.jpg",
+        "http://127.0.0.1/private.jpg",
+        "http://169.254.169.254/latest/meta-data/",
         " https://example.com/photo.jpg",
     ):
         location = cast(Location, SimpleNamespace(metadata_={"source_image": source_image}))
         assert service._normalize_location_photo_url(location) is None
 
     assert service._normalize_location_photo_url(cast(Location, SimpleNamespace())) is None
+
+    for source_image in (
+        "https://live.staticflickr.com/photo.jpg",
+        "https://upload.wikimedia.org/photo.jpg",
+    ):
+        location = cast(Location, SimpleNamespace(metadata_={"source_image": source_image}))
+        assert service._normalize_location_photo_url(location) == source_image
 
 
 async def test_low_zoom_atlas_applies_limit_after_clustering(monkeypatch) -> None:

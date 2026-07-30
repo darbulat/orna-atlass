@@ -37,7 +37,7 @@ const atlasPoint = {
   timezone: location.timezone,
   coordinate_visibility: location.coordinate_visibility,
   sensitivity_level: location.sensitivity_level,
-  photo_url: "http://127.0.0.1:4010/mock-location-photo.svg",
+  photo_url: "http://127.0.0.1:4010/mock-location-photo-v2.png",
   session_count: 2,
   latest_session: {
     id: secondSessionId,
@@ -203,13 +203,13 @@ const server = createServer((request, response) => {
     send(response, 200, { status: "ok" });
     return;
   }
-  if (path === "/mock-location-photo.svg") {
+  if (path === "/mock-location-photo-v2.png") {
     response.writeHead(200, {
       "Access-Control-Allow-Origin": origin,
       "Cache-Control": "no-store",
-      "Content-Type": "image/svg+xml",
+      "Content-Type": "image/png",
     });
-    response.end('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#60786a"/></svg>');
+    response.end(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAACAAAAASCAIAAAC1qksFAAAAJElEQVR42mNMqMhioCVgYqAxGLVg1IJRC0YtGLVg1AIGBgYGABOzAWYcuWFqAAAAAElFTkSuQmCC", "base64"));
     return;
   }
   if (request.method === "POST" && path === "/api/v1/auth/refresh") {

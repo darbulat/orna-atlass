@@ -25,6 +25,7 @@ from orna_atlas.app.modules.locations.models import Location
 from orna_atlas.app.modules.locations.public import normalized_visibility
 
 _PHOTO_URL_ADAPTER = TypeAdapter(HttpUrl)
+_LOCATION_PHOTO_HOSTS = frozenset({"live.staticflickr.com", "upload.wikimedia.org"})
 
 
 def _normalize_location_photo_url(location: Location) -> str | None:
@@ -36,7 +37,12 @@ def _normalize_location_photo_url(location: Location) -> str | None:
         validated_url = _PHOTO_URL_ADAPTER.validate_python(source_image)
     except PydanticValidationError:
         return None
-    if validated_url.username is not None or validated_url.password is not None:
+    if (
+        validated_url.scheme != "https"
+        or validated_url.host not in _LOCATION_PHOTO_HOSTS
+        or validated_url.username is not None
+        or validated_url.password is not None
+    ):
         return None
     return source_image
 

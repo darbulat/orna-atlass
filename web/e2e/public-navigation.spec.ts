@@ -58,7 +58,15 @@ test("atlas location cards render API photos and retain a fallback without one",
   const photographedCard = page.locator(".location-card", { hasText: "Pine Marsh" });
   const photo = photographedCard.getByRole("img", { name: "Landscape at Pine Marsh" });
   await expect(photo).toBeVisible();
-  await expect(photo).toHaveAttribute("src", "http://127.0.0.1:4010/mock-location-photo.svg");
+  const optimizedPhotoSrc = await photo.getAttribute("src");
+  expect(optimizedPhotoSrc).toContain("/_next/image?url=");
+  expect(decodeURIComponent(optimizedPhotoSrc!)).toContain(
+    "http://127.0.0.1:4010/mock-location-photo-v2.png",
+  );
+  await expect.poll(() => photo.evaluate((image) => {
+    const img = image as HTMLImageElement;
+    return img.complete && img.naturalWidth > 0;
+  })).toBe(true);
 
   expect((await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=valid-optional-point`)).ok()).toBeTruthy();
   await page.goto("/atlas?location=pine-marsh");
