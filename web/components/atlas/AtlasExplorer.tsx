@@ -14,6 +14,7 @@ import { ApiError, apiErrorMessage } from "../../lib/api/client";
 import { fetchCurrentDawn, fetchSessionDetail, includeDawnLocations, searchAtlas } from "../../lib/api/sessions";
 import { useGlobalPlayerSuppression, usePlayer } from "../audio/PlayerProvider";
 import { SessionPlayer } from "../audio/SessionPlayer";
+import { LocationCardPhoto } from "../location-card-photo";
 import {
   filterLocationsByMode,
   listeningModeForLocation,
@@ -1438,6 +1439,7 @@ export function AtlasExplorer({
                   className={[
                     "location-card",
                     `location-card-${index % 5}`,
+                    location.photo_url ? "has-photo" : "",
                     location.slug === selectedSlug ? "selected" : "",
                   ]
                     .filter(Boolean)
@@ -1447,6 +1449,11 @@ export function AtlasExplorer({
                     openLocationSession(location);
                   }}
                 >
+                  <LocationCardPhoto
+                    name={location.name}
+                    photoUrl={location.photo_url}
+                    variant="atlas"
+                  />
                   <span>{isLockedPoint(location) ? `🔒 ${location.name}` : location.name}</span>
                   <small>{location.country_code ?? location.region ?? "Atlas site"}</small>
                   <i aria-hidden="true" />

@@ -3,6 +3,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
+from pydantic import HttpUrl, TypeAdapter, ValidationError as PydanticValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.core.domain_errors import ValidationError
@@ -22,6 +23,22 @@ from orna_atlas.app.modules.atlas.schemas import (
 from orna_atlas.app.integrations.sunrise import dawn_window, get_timezone
 from orna_atlas.app.modules.locations.models import Location
 from orna_atlas.app.modules.locations.public import normalized_visibility
+
+_PHOTO_URL_ADAPTER = TypeAdapter(HttpUrl)
+
+
+def _normalize_location_photo_url(location: Location) -> str | None:
+    metadata = getattr(location, "metadata_", None)
+    source_image = metadata.get("source_image") if isinstance(metadata, dict) else None
+    if not isinstance(source_image, str) or source_image != source_image.strip():
+        return None
+    try:
+        validated_url = _PHOTO_URL_ADAPTER.validate_python(source_image)
+    except PydanticValidationError:
+        return None
+    if validated_url.username is not None or validated_url.password is not None:
+        return None
+    return source_image
 
 TimeMode = Literal["local", "utc", "dawn"]
 DawnState = Literal["active", "upcoming", "past", "polar"]
@@ -134,6 +151,7 @@ def point_from_location(location: Location, *, include_locked: bool = False) -> 
             getattr(location, "coordinate_visibility", "exact_public")
         ),
         sensitivity_level=location.sensitivity_level,
+        photo_url=_normalize_location_photo_url(location),
         session_count=len(discoverable_sessions),
         latest_session=None
         if latest is None

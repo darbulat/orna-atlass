@@ -35,7 +35,11 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "coordinate_visibility": "exact_public",
         "sensitivity_level": "none",
         "timezone": "Europe/Moscow",
-        "metadata_": {"seed": True, "field_context": "early morning forest edge"},
+        "metadata_": {
+            "seed": True,
+            "field_context": "early morning forest edge",
+            "source_image": "https://live.staticflickr.com/4092/5036127259_bb6738217c_b.jpg",
+        },
         "sessions": [
             {
                 "slug": "valdaysky-dawn-chorus",
@@ -60,7 +64,11 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "coordinate_visibility": "exact_public",
         "sensitivity_level": "none",
         "timezone": "Europe/Tallinn",
-        "metadata_": {"seed": True, "field_context": "coastal reedbed"},
+        "metadata_": {
+            "seed": True,
+            "field_context": "coastal reedbed",
+            "source_image": "https://live.staticflickr.com/8093/8350290183_4b71841997_b.jpg",
+        },
         "sessions": [
             {
                 "slug": "lahemaa-reedbed-morning",
@@ -87,7 +95,11 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "coordinate_visibility": "approximate_public",
         "sensitivity_level": "protected",
         "timezone": "Europe/Moscow",
-        "metadata_": {"seed": True, "field_context": "protected raised bog"},
+        "metadata_": {
+            "seed": True,
+            "field_context": "protected raised bog",
+            "source_image": "https://upload.wikimedia.org/wikipedia/commons/4/4b/Polistovsky_Nature_Reserve._Small_lake.jpg",
+        },
         "sessions": [
             {
                 "slug": "polistovsky-bog-before-sunrise",
@@ -112,7 +124,11 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "coordinate_visibility": "exact_public",
         "sensitivity_level": "none",
         "timezone": "Asia/Almaty",
-        "metadata_": {"seed": True, "field_context": "open steppe grassland"},
+        "metadata_": {
+            "seed": True,
+            "field_context": "open steppe grassland",
+            "source_image": "https://live.staticflickr.com/3812/9330721152_5640988c73_b.jpg",
+        },
         "sessions": [
             {
                 "slug": "kazakh-steppe-after-rain",
@@ -140,7 +156,7 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "metadata_": {
             "seed": True,
             "field_context": "high Himalayan dawn",
-            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "source_image": "https://live.staticflickr.com/8765/16644618633_4f819b8de8_b.jpg",
             "display_context": "Now at dawn",
             "elevation_meters": 2897,
         },
@@ -171,7 +187,7 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "metadata_": {
             "seed": True,
             "field_context": "Black Forest dawn chorus",
-            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "source_image": "https://live.staticflickr.com/5523/10494890294_8656f88490_b.jpg",
             "elevation_meters": 778,
             "weather": {
                 "temperature_celsius": 9,
@@ -207,7 +223,7 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "metadata_": {
             "seed": True,
             "field_context": "Patagonian lake dawn",
-            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "source_image": "https://live.staticflickr.com/3402/3415703780_6198aa8f9f_b.jpg",
             "carousel_period": "Dawn",
         },
         "sessions": [
@@ -237,7 +253,7 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "metadata_": {
             "seed": True,
             "field_context": "Bavarian forest dawn",
-            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "source_image": "https://live.staticflickr.com/3740/9142749652_50ae46e942_b.jpg",
             "carousel_period": "Dawn",
         },
         "sessions": [
@@ -267,7 +283,7 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "metadata_": {
             "seed": True,
             "field_context": "Kenyan highland dawn",
-            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "source_image": "https://live.staticflickr.com/65535/48914282723_f91af23a16_b.jpg",
             "carousel_period": "Dawn",
         },
         "sessions": [
@@ -297,7 +313,7 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "metadata_": {
             "seed": True,
             "field_context": "Hokkaido upland dawn",
-            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "source_image": "https://live.staticflickr.com/2817/10456943974_4b26c35e1c_b.jpg",
             "carousel_period": "Dawn",
         },
         "sessions": [
@@ -327,7 +343,7 @@ SEED_LOCATIONS: list[dict[str, Any]] = [
         "metadata_": {
             "seed": True,
             "field_context": "Great Bear Rainforest dawn",
-            "source_image": "photo_2026-07-02_16-37-25.jpg",
+            "source_image": "https://live.staticflickr.com/5596/15185520222_723341df43.jpg",
             "carousel_period": "Dawn",
         },
         "sessions": [

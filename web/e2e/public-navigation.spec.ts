@@ -51,6 +51,23 @@ test("selected location opens at a visibly closer globe zoom", async ({ page }) 
   )).toBeLessThanOrEqual(7500);
 });
 
+test("atlas location cards render API photos and retain a fallback without one", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  await page.goto("/atlas?location=pine-marsh");
+
+  const photographedCard = page.locator(".location-card", { hasText: "Pine Marsh" });
+  const photo = photographedCard.getByRole("img", { name: "Landscape at Pine Marsh" });
+  await expect(photo).toBeVisible();
+  await expect(photo).toHaveAttribute("src", "http://127.0.0.1:4010/mock-location-photo.svg");
+
+  expect((await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=valid-optional-point`)).ok()).toBeTruthy();
+  await page.goto("/atlas?location=pine-marsh");
+
+  const fallbackCard = page.locator(".location-card", { hasText: "Pine Marsh" });
+  await expect(fallbackCard.locator(".location-card-photo-atlas")).toBeVisible();
+  await expect(fallbackCard.getByRole("img")).toHaveCount(0);
+});
+
 test("atlas markers remain selectable at the closest globe zoom", async ({ page }) => {
   await page.goto("/atlas");
 

@@ -441,6 +441,17 @@
             "title": "Name",
             "type": "string"
           },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
           "region": {
             "anyOf": [
               {
