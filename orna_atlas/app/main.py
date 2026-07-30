@@ -17,6 +17,7 @@ from orna_atlas.app.core.security import public_jwks
 from orna_atlas.app.db.session import engine
 from orna_atlas.app.integrations.redis import get_redis_client
 from orna_atlas.app.modules.admin.router import router as admin_router
+from orna_atlas.app.modules.admin.schemas import AdminErrorResponse
 from orna_atlas.app.modules.analytics.router import router as analytics_router
 from orna_atlas.app.modules.auth.router import router as auth_router
 from orna_atlas.app.modules.billing.router import router as billing_router
@@ -91,6 +92,17 @@ def create_app() -> FastAPI:
     async def sanitize_recovery_confirmation_validation(
         request: Request, exc: RequestValidationError
     ):
+        if request.url.path.startswith(f"{settings.api_prefix}/admin/") and any(
+            error.get("type") == "missing"
+            and tuple(str(item).lower() for item in error.get("loc", ()))
+            == ("header", "if-match")
+            for error in exc.errors()
+        ):
+            return JSONResponse(
+                status_code=428,
+                content={"detail": "If-Match required for this operation"},
+                headers={"Cache-Control": "no-store"},
+            )
         detail = confirmation_errors.get(request.url.path)
         if detail is not None:
             return JSONResponse(
@@ -117,11 +129,48 @@ def create_app() -> FastAPI:
         if app.openapi_schema is not None:
             return app.openapi_schema
         schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+        schema.setdefault("components", {}).setdefault("schemas", {})[
+            "AdminErrorResponse"
+        ] = AdminErrorResponse.model_json_schema()
         for path in confirmation_errors:
             schema["paths"][path]["post"]["responses"].pop("422", None)
         optional_security = [{}, {"HTTPBearer": []}, {"APIKeyCookie": []}]
         for path, method in optional_auth_operations:
             schema["paths"][path][method]["security"] = optional_security
+        for path, path_item in schema["paths"].items():
+            if not path.startswith(f"{settings.api_prefix}/admin/"):
+                continue
+            for operation in path_item.values():
+                if not isinstance(operation, dict):
+                    continue
+                responses = operation.setdefault("responses", {})
+                error_schema = {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/AdminErrorResponse"}
+                        }
+                    }
+                }
+                responses.setdefault(
+                    "401",
+                    {"description": "Authentication required", **error_schema},
+                )
+                responses.setdefault(
+                    "403",
+                    {"description": "Administrator access required", **error_schema},
+                )
+                parameters = operation.get("parameters", [])
+                if any(
+                    parameter.get("in") == "header"
+                    and str(parameter.get("name", "")).lower() == "if-match"
+                    for parameter in parameters
+                ):
+                    responses.setdefault(
+                        "412", {"description": "Precondition Failed", **error_schema}
+                    )
+                    responses.setdefault(
+                        "428", {"description": "Precondition Required", **error_schema}
+                    )
         app.openapi_schema = schema
         return schema
 

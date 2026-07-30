@@ -89,12 +89,40 @@ async def list_sessions_for_admin(
     session: AsyncSession,
     *,
     include_archived: bool = False,
+    q: str | None = None,
+    location_id: UUID | None = None,
+    publication_status: str | None = None,
+    processing_status: str | None = None,
+    access_level: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[RecordingSession]:
     filters = []
     if not include_archived:
         filters.append(RecordingSession.archived_at.is_(None))
+
+    if location_id is not None:
+        filters.append(RecordingSession.location_id == location_id)
+
+    if q:
+        like_value = f"%{q}%"
+        filters.append(
+            (
+                RecordingSession.title.ilike(like_value)
+                | RecordingSession.slug.ilike(like_value)
+                | RecordingSession.description.ilike(like_value)
+            )
+        )
+
+    if publication_status:
+        filters.append(RecordingSession.publication_status == publication_status)
+
+    if processing_status:
+        filters.append(RecordingSession.processing_status == processing_status)
+
+    if access_level:
+        filters.append(RecordingSession.access_level == access_level)
+
     result = await session.execute(
         select(RecordingSession)
         .options(*_session_load_options())
@@ -136,6 +164,19 @@ async def get_session_for_admin(session: AsyncSession, session_id: UUID) -> Reco
         select(RecordingSession)
         .options(*_session_load_options())
         .where(RecordingSession.id == session_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_session_for_admin_for_update(
+    session: AsyncSession, session_id: UUID
+) -> RecordingSession | None:
+    result = await session.execute(
+        select(RecordingSession)
+        .options(*_session_load_options())
+        .where(RecordingSession.id == session_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 

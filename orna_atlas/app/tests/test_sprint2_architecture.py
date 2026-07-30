@@ -156,7 +156,7 @@ async def test_location_update_requires_coordinates_when_switching_to_approximat
     persist = AsyncMock()
     monkeypatch.setattr(
         locations_service,
-        "require_location_for_admin",
+        "require_location_for_admin_for_update",
         AsyncMock(return_value=location),
     )
     monkeypatch.setattr(locations_service.repository, "update_location", persist)

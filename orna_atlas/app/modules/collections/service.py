@@ -2,6 +2,12 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orna_atlas.app.modules.admin.context import (
+    apply_actor_mode_metadata,
+    build_admin_etag,
+    validate_if_match_or_fail,
+)
+from orna_atlas.app.modules.admin.repository import add_audit_event
 from orna_atlas.app.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from orna_atlas.app.modules.collections import repository
 from orna_atlas.app.modules.collections.models import Collection
@@ -90,9 +96,19 @@ async def list_public_collections(session: AsyncSession, *, limit: int = 50, off
 
 
 async def list_collections_for_admin(
-    session: AsyncSession, *, limit: int = 50, offset: int = 0
+    session: AsyncSession,
+    *,
+    q: str | None = None,
+    is_public: bool | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[CollectionAdminRead]:
-    collections = await repository.list_collections_for_admin(session, limit=limit, offset=offset)
+    filters: dict[str, object] = {"limit": limit, "offset": offset}
+    if q is not None:
+        filters["q"] = q
+    if is_public is not None:
+        filters["is_public"] = is_public
+    collections = await repository.list_collections_for_admin(session, **filters)
     return [admin_read_from_collection(item) for item in collections]
 
 
@@ -117,7 +133,24 @@ async def require_collection(session: AsyncSession, collection_id: UUID) -> Coll
     return collection
 
 
-async def create_collection(session: AsyncSession, data: CollectionCreate) -> CollectionAdminRead:
+async def require_collection_for_update(
+    session: AsyncSession, collection_id: UUID
+) -> Collection:
+    collection = await repository.get_collection_for_update(session, collection_id)
+    if collection is None:
+        raise NotFoundError("Collection not found")
+    return collection
+
+
+async def create_collection(
+    session: AsyncSession,
+    data: CollectionCreate,
+    *,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> CollectionAdminRead:
     if await repository.get_collection_by_slug_for_admin(session, data.slug):
         raise ConflictError("Collection slug exists")
     try:
@@ -126,14 +159,42 @@ async def create_collection(session: AsyncSession, data: CollectionCreate) -> Co
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
     collection = await repository.create_collection(session, data)
+    await add_audit_event(
+        session,
+        event_type="collection.created",
+        subject_type="collection",
+        subject_id=str(collection.id),
+        actor_user_id=actor_user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata=apply_actor_mode_metadata(
+            {
+                "changed_fields": list(data.model_dump(exclude_unset=True).keys())
+            },
+            actor_mode,
+        ),
+    )
     await session.commit()
     return admin_read_from_collection(collection)
 
 
 async def update_collection(
-    session: AsyncSession, collection_id: UUID, data: CollectionUpdate
+    session: AsyncSession,
+    collection_id: UUID,
+    data: CollectionUpdate,
+    *,
+    if_match: str | None = None,
+    actor_user_id: UUID | None = None,
+    actor_mode: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> CollectionAdminRead:
-    collection = await require_collection(session, collection_id)
+    collection = await require_collection_for_update(session, collection_id)
+    if if_match is not None:
+        expected_etag = build_admin_etag(
+            resource_id=collection.id, updated_at=collection.updated_at
+        )
+        validate_if_match_or_fail(if_match=if_match, expected=expected_etag)
     if (
         data.slug
         and data.slug != collection.slug
@@ -149,11 +210,29 @@ async def update_collection(
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
     collection = await repository.update_collection(session, collection, data)
+    await add_audit_event(
+        session,
+        event_type="collection.updated",
+        subject_type="collection",
+        subject_id=str(collection.id),
+        actor_user_id=actor_user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata=apply_actor_mode_metadata(
+            {"changed_fields": sorted(data.model_fields_set)},
+            actor_mode,
+        ),
+    )
     await session.commit()
     return admin_read_from_collection(collection)
 
 
-async def delete_collection(session: AsyncSession, collection_id: UUID) -> None:
-    collection = await require_collection(session, collection_id)
+async def delete_collection(session: AsyncSession, collection_id: UUID, *, if_match: str | None = None) -> None:
+    collection = await require_collection_for_update(session, collection_id)
+    if if_match is not None:
+        expected_etag = build_admin_etag(
+            resource_id=collection.id, updated_at=collection.updated_at
+        )
+        validate_if_match_or_fail(if_match=if_match, expected=expected_etag)
     await repository.delete_collection(session, collection)
     await session.commit()

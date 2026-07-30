@@ -1,21 +1,28 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from orna_atlas.app.core.domain_errors import ForbiddenError, NotFoundError
+from orna_atlas.app.core.domain_errors import ForbiddenError, NotFoundError, ValidationError
 from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.core.security import CurrentUser, get_current_admin
 from orna_atlas.app.db.session import get_db_session
 from orna_atlas.app.main import app
+from orna_atlas.app.modules.admin import service as admin_service
+from orna_atlas.app.modules.admin.context import build_admin_etag
 from orna_atlas.app.modules.collections import service as collections_service
+from orna_atlas.app.modules.collections.schemas import CollectionUpdate
 from orna_atlas.app.modules.locations import service as locations_service
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.users import service as users_service
+from orna_atlas.app.modules.media import service as media_service
 from orna_atlas.app.modules.users.schemas import UserRoleUpdate
+from orna_atlas.app.modules.media.schemas import MediaAssetCreate
+from orna_atlas.app.core.domain_types import MediaKind
 
 
 def _admin_location(*, archived: bool = False) -> SimpleNamespace:
@@ -79,6 +86,61 @@ def _admin_collection(*, is_public: bool = True) -> SimpleNamespace:
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
+
+
+@pytest.mark.asyncio
+async def test_collection_link_only_update_invalidates_previous_etag(monkeypatch) -> None:
+    collection = _admin_collection()
+    original_etag = build_admin_etag(
+        resource_id=collection.id,
+        updated_at=collection.updated_at,
+    )
+    new_location_id = uuid4()
+    update_calls = 0
+
+    async def fake_update(_session, current, _data):
+        nonlocal update_calls
+        update_calls += 1
+        current.updated_at = current.updated_at + timedelta(microseconds=1)
+        return current
+
+    monkeypatch.setattr(
+        collections_service,
+        "require_collection_for_update",
+        AsyncMock(return_value=collection),
+    )
+    monkeypatch.setattr(
+        collections_service.repository,
+        "validate_location_ids",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        collections_service.repository,
+        "update_collection",
+        fake_update,
+    )
+    audit = AsyncMock()
+    monkeypatch.setattr(collections_service, "add_audit_event", audit)
+    db = AsyncMock()
+
+    await collections_service.update_collection(
+        db,
+        collection.id,
+        CollectionUpdate(location_ids=[new_location_id]),
+        if_match=original_etag,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await collections_service.update_collection(
+            db,
+            collection.id,
+            CollectionUpdate(location_ids=[]),
+            if_match=original_etag,
+        )
+
+    assert exc_info.value.status_code == 412
+    assert update_calls == 1
+    assert audit.await_count == 1
 
 
 def _admin_user(*, has_membership: bool = True, active: bool = True) -> SimpleNamespace:
@@ -452,13 +514,14 @@ def test_admin_users_routes_project_membership_or_absent(monkeypatch) -> None:
 
     assert list_response.status_code == 200
     payload = list_response.json()
+    assert payload[0]["user"]["id"] == str(row_with_membership.id)
     assert payload[0]["membership"]["status"] == "active"
     assert payload[1]["membership"]["status"] == "inactive"
     assert payload[1]["membership"]["plan"] == "none"
 
     assert detail_response.status_code == 200
     detail_payload = detail_response.json()
-    assert detail_payload["id"] == str(row_with_membership.id)
+    assert detail_payload["user"]["id"] == str(row_with_membership.id)
     assert detail_payload["membership"]["status"] == "active"
 
 
@@ -485,6 +548,7 @@ async def test_update_role_rejects_last_active_admin_demotion(monkeypatch) -> No
     user = SimpleNamespace(id=user_id, is_active=True, role="admin")
 
     monkeypatch.setattr(users_service.repository, "get_by_id_for_update", AsyncMock(return_value=user))
+    monkeypatch.setattr(users_service.memberships_repository, "get_for_user", AsyncMock(return_value=None))
     monkeypatch.setattr(users_service.repository, "count_active_admins", AsyncMock(return_value=1))
     monkeypatch.setattr(users_service.repository, "acquire_role_change_lock", AsyncMock())
 
@@ -507,6 +571,7 @@ async def test_update_role_allows_role_changes_on_safe_input(monkeypatch) -> Non
     db = AsyncMock()
 
     monkeypatch.setattr(users_service.repository, "get_by_id_for_update", AsyncMock(return_value=user))
+    monkeypatch.setattr(users_service.memberships_repository, "get_for_user", AsyncMock(return_value=None))
     monkeypatch.setattr(users_service.repository, "count_active_admins", AsyncMock(return_value=2))
     monkeypatch.setattr(users_service.repository, "acquire_role_change_lock", AsyncMock())
     monkeypatch.setattr(users_service.repository, "save", AsyncMock())
@@ -527,6 +592,43 @@ async def test_update_role_allows_role_changes_on_safe_input(monkeypatch) -> Non
     db.commit.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_update_role_uses_aggregate_user_membership_revision(monkeypatch) -> None:
+    user_id = uuid4()
+    now = datetime.now(UTC)
+    user = SimpleNamespace(
+        id=user_id,
+        is_active=True,
+        role="member",
+        updated_at=now,
+    )
+    membership = SimpleNamespace(updated_at=now + timedelta(seconds=1))
+    save = AsyncMock()
+    monkeypatch.setattr(
+        users_service.repository,
+        "get_by_id_for_update",
+        AsyncMock(return_value=user),
+    )
+    monkeypatch.setattr(
+        users_service.memberships_repository,
+        "get_for_user",
+        AsyncMock(return_value=membership),
+    )
+    monkeypatch.setattr(users_service.repository, "save", save)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await users_service.update_role(
+            AsyncMock(),
+            user_id,
+            UserRoleUpdate(role="editor"),
+            actor_user_id=uuid4(),
+            if_match=build_admin_etag(resource_id=user_id, updated_at=now),
+        )
+
+    assert exc_info.value.status_code == 412
+    save.assert_not_awaited()
+
+
 def test_admin_users_role_update_route_rejects_self_role_change() -> None:
     actor_id = uuid4()
 
@@ -537,7 +639,11 @@ def test_admin_users_role_update_route_rejects_self_role_change() -> None:
 
     client = TestClient(app)
     try:
-        response = client.patch(f"/api/v1/admin/users/{actor_id}/role", json={"role": "member"})
+        response = client.patch(
+            f"/api/v1/admin/users/{actor_id}/role",
+            json={"role": "member"},
+            headers={"If-Match": 'W/"self"'},
+        )
     finally:
         _clear_admin_overrides()
 
@@ -610,6 +716,21 @@ def test_admin_cookie_based_mutation_rejects_missing_or_untrusted_origin(monkeyp
             json=payload,
             headers={"Cookie": "orna_access=token", "Origin": "https://evil.example.com"},
         )
+        response_spoofed_local = client.post(
+            "/api/v1/admin/locations",
+            json=payload,
+            headers={"Cookie": "orna_access=token", "X-Orna-Admin": "local"},
+        )
+        response_basic_spoof = client.post(
+            "/api/v1/admin/locations",
+            json=payload,
+            headers={"Cookie": "orna_access=token", "Authorization": "Basic spoof"},
+        )
+        response_malformed_bearer = client.post(
+            "/api/v1/admin/locations",
+            json=payload,
+            headers={"Cookie": "orna_access=token", "Authorization": "Bearer"},
+        )
         response_ok = client.post(
             "/api/v1/admin/locations",
             json=payload,
@@ -620,4 +741,599 @@ def test_admin_cookie_based_mutation_rejects_missing_or_untrusted_origin(monkeyp
 
     assert response_no_origin.status_code == 403
     assert response_bad_origin.status_code == 403
+    assert response_spoofed_local.status_code == 403
+    assert response_basic_spoof.status_code == 403
+    assert response_malformed_bearer.status_code == 403
     assert response_ok.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_audit_media_asset_registered_event_is_emitted(monkeypatch) -> None:
+    actor_id = uuid4()
+    db = AsyncMock()
+    session_id = uuid4()
+    asset_id = uuid4()
+    recording = SimpleNamespace(id=session_id, media_assets=[], processing_status="ready")
+    asset = SimpleNamespace(id=asset_id, session=recording, kind=MediaKind.SOURCE_AUDIO, processing_jobs=[])
+
+    async def assert_audit_precedes_commit(*_args, **_kwargs):
+        assert db.commit.await_count == 0
+
+    audit = AsyncMock(side_effect=assert_audit_precedes_commit)
+
+    async def fake_require_session_for_admin(_session, _session_id):
+        assert _session_id == session_id
+        return recording
+
+    monkeypatch.setattr(media_service.sessions_service, "require_session_for_admin", fake_require_session_for_admin)
+    monkeypatch.setattr(media_service.repository, "get_asset_by_storage_key", AsyncMock(return_value=None))
+    monkeypatch.setattr(media_service.repository, "active_source_assets_for_update", AsyncMock(return_value=[]))
+    monkeypatch.setattr(media_service.repository, "archive_assets", AsyncMock())
+    monkeypatch.setattr(media_service.repository, "schedule_storage_cleanup", AsyncMock())
+    monkeypatch.setattr(media_service.repository, "create_media_asset", AsyncMock(return_value=asset))
+    monkeypatch.setattr(media_service, "add_audit_event", audit)
+
+    data = MediaAssetCreate(
+        kind=MediaKind.SOURCE_AUDIO,
+        storage_key="sessions/recordings/a.wav",
+        enqueue_processing=False,
+    )
+    await media_service.create_asset_for_session(
+        db,
+        session_id,
+        data,
+        actor_user_id=actor_id,
+        actor_mode="token",
+        ip_address="127.0.0.1",
+        user_agent="pytest",
+    )
+
+    audit.assert_awaited_once()
+    args = audit.await_args.kwargs
+    assert args["event_type"] == "media.asset_registered"
+    assert args["subject_type"] == "media_asset"
+    assert args["subject_id"] == str(asset_id)
+    assert args["actor_user_id"] == actor_id
+
+
+@pytest.mark.asyncio
+async def test_audit_media_asset_processing_retried_event_is_emitted(monkeypatch) -> None:
+    actor_id = uuid4()
+    db = AsyncMock()
+    session_id = uuid4()
+    asset_id = uuid4()
+    recording = SimpleNamespace(id=session_id, media_assets=[])
+    asset = SimpleNamespace(
+        id=asset_id,
+        session_id=session_id,
+        session=recording,
+        kind=MediaKind.SOURCE_AUDIO,
+        is_active=True,
+        archived_at=None,
+        metadata_={},
+        processing_status="failed",
+    )
+
+    async def assert_audit_precedes_commit(*_args, **_kwargs):
+        assert db.commit.await_count == 0
+
+    audit = AsyncMock(side_effect=assert_audit_precedes_commit)
+
+    monkeypatch.setattr(media_service.repository, "get_asset_for_processing", AsyncMock(return_value=asset))
+    monkeypatch.setattr(media_service.repository, "active_processing_job", AsyncMock(return_value=None))
+    monkeypatch.setattr(media_service.repository, "create_processing_job", AsyncMock(return_value=AsyncMock()))
+    monkeypatch.setattr(media_service, "_enqueue_or_mark_failed", AsyncMock())
+    monkeypatch.setattr(media_service, "processing_status_for_session", AsyncMock(return_value=AsyncMock()))
+    monkeypatch.setattr(media_service, "add_audit_event", audit)
+
+    await media_service.retry_asset_processing(
+        db,
+        asset_id,
+        actor_user_id=actor_id,
+        actor_mode="token",
+        ip_address="127.0.0.2",
+        user_agent="pytest",
+    )
+
+    audit.assert_awaited_once()
+    args = audit.await_args.kwargs
+    assert args["event_type"] == "media.processing_retried"
+    assert args["subject_type"] == "media_asset"
+    assert args["subject_id"] == str(asset_id)
+    assert args["actor_user_id"] == actor_id
+
+
+@pytest.mark.asyncio
+async def test_audit_media_asset_archived_event_is_emitted(monkeypatch) -> None:
+    actor_id = uuid4()
+    db = AsyncMock()
+    asset_id = uuid4()
+    session = SimpleNamespace(id=uuid4(), media_assets=[])
+    asset = SimpleNamespace(id=asset_id, archived_at=None, session=session)
+    audit = AsyncMock()
+
+    monkeypatch.setattr(media_service, "require_asset", AsyncMock(return_value=asset))
+    monkeypatch.setattr(media_service.repository, "archive_assets", AsyncMock())
+    monkeypatch.setattr(media_service.repository, "schedule_storage_cleanup", AsyncMock())
+    monkeypatch.setattr(media_service, "_clear_processing_caches", AsyncMock())
+    monkeypatch.setattr(media_service, "add_audit_event", audit)
+
+    await media_service.archive_asset(
+        db,
+        asset_id,
+        actor_user_id=actor_id,
+        actor_mode="token",
+        ip_address="127.0.0.3",
+        user_agent="pytest",
+    )
+
+    audit.assert_awaited_once()
+    args = audit.await_args.kwargs
+    assert args["event_type"] == "media.asset_archived"
+    assert args["subject_type"] == "media_asset"
+    assert args["subject_id"] == str(asset_id)
+    assert args["actor_user_id"] == actor_id
+
+
+@pytest.mark.asyncio
+async def test_audit_hls_retry_is_committed_with_queued_transition(monkeypatch) -> None:
+    actor_id = uuid4()
+    db = AsyncMock()
+    session_id = uuid4()
+    recording = SimpleNamespace(id=session_id, processing_status="failed")
+    job = SimpleNamespace(
+        id=uuid4(),
+        status="failed",
+        error_code="queue_unavailable",
+        error_message="down",
+        finished_at=datetime.now(UTC),
+        queue_job_id=None,
+    )
+
+    async def assert_audit_precedes_commit(*_args, **_kwargs):
+        assert db.commit.await_count == 0
+
+    audit = AsyncMock(side_effect=assert_audit_precedes_commit)
+    monkeypatch.setattr(
+        media_service.sessions_service,
+        "require_session_for_admin",
+        AsyncMock(return_value=recording),
+    )
+    monkeypatch.setattr(
+        media_service.repository,
+        "latest_hls_processing_job",
+        AsyncMock(return_value=job),
+    )
+    monkeypatch.setattr(media_service, "add_audit_event", audit)
+    monkeypatch.setattr(media_service.asyncio, "to_thread", AsyncMock(return_value="queue-1"))
+
+    result = await media_service.retry_hls_processing(
+        db,
+        session_id,
+        actor_user_id=actor_id,
+        actor_mode="token",
+        ip_address="127.0.0.4",
+        user_agent="pytest",
+    )
+
+    assert result is job
+    assert db.commit.await_count == 2
+    assert audit.await_args is not None
+    args = audit.await_args.kwargs
+    assert args["event_type"] == "media.processing_retried"
+    assert args["subject_type"] == "recording_session"
+    assert args["subject_id"] == str(session_id)
+
+
+@pytest.mark.asyncio
+async def test_audit_media_purge_request_is_committed_before_cleanup(monkeypatch) -> None:
+    actor_id = uuid4()
+    db = AsyncMock()
+    asset_id = uuid4()
+    recording = SimpleNamespace(id=uuid4(), media_assets=[])
+    asset = SimpleNamespace(
+        id=asset_id,
+        archived_at=datetime.now(UTC),
+        is_active=False,
+        storage_key="sessions/recordings/archived.wav",
+        session=recording,
+    )
+    storage = SimpleNamespace(is_configured=lambda: True)
+
+    async def assert_audit_precedes_commit(*_args, **_kwargs):
+        assert db.commit.await_count == 0
+
+    audit = AsyncMock(side_effect=assert_audit_precedes_commit)
+    monkeypatch.setattr(media_service, "require_asset", AsyncMock(return_value=asset))
+    monkeypatch.setattr(media_service, "get_object_storage_client", lambda: storage)
+    monkeypatch.setattr(
+        media_service.repository,
+        "schedule_storage_cleanup",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(media_service, "add_audit_event", audit)
+    monkeypatch.setattr(media_service, "_clear_processing_caches", AsyncMock())
+
+    await media_service.purge_archived_asset(
+        db,
+        asset_id,
+        actor_user_id=actor_id,
+        actor_mode="token",
+        ip_address="127.0.0.5",
+        user_agent="pytest",
+    )
+
+    db.commit.assert_awaited_once()
+    assert audit.await_args is not None
+    args = audit.await_args.kwargs
+    assert args["event_type"] == "media.asset_purge_requested"
+    assert args["subject_type"] == "media_asset"
+    assert args["subject_id"] == str(asset_id)
+
+
+@pytest.mark.asyncio
+async def test_audit_filters_admin_service_forwards_query_args(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    expected = []
+    created_from = datetime(2026, 1, 1, tzinfo=UTC)
+    created_to = datetime(2026, 1, 2, tzinfo=UTC)
+    actor_id = uuid4()
+
+    async def fake_list_audit_events(
+        _session,
+        *,
+        event_type,
+        actor_user_id,
+        subject_type,
+        subject_id,
+        created_from: datetime | None,
+        created_to: datetime | None,
+        limit: int,
+        offset: int,
+    ) -> list[object]:
+        captured["event_type"] = event_type
+        captured["actor_user_id"] = actor_user_id
+        captured["subject_type"] = subject_type
+        captured["subject_id"] = subject_id
+        captured["created_from"] = created_from
+        captured["created_to"] = created_to
+        captured["limit"] = limit
+        captured["offset"] = offset
+        return expected
+
+    monkeypatch.setattr(admin_service.repository, "list_audit_events", fake_list_audit_events)
+
+    result = await admin_service.list_audit_events(
+        AsyncMock(),
+        event_type="media.asset_registered",
+        actor_user_id=actor_id,
+        subject_type="media_asset",
+        subject_id="asset-123",
+        created_from=created_from,
+        created_to=created_to,
+        limit=11,
+        offset=5,
+    )
+
+    assert result is expected
+    assert captured == {
+        "event_type": "media.asset_registered",
+        "actor_user_id": actor_id,
+        "subject_type": "media_asset",
+        "subject_id": "asset-123",
+        "created_from": created_from,
+        "created_to": created_to,
+        "limit": 11,
+        "offset": 5,
+    }
+
+
+def test_admin_audit_route_forwards_only_supported_filters(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_list_audit_events(_session, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(admin_service, "list_audit_events", fake_list_audit_events)
+    _set_admin_overrides()
+    client = TestClient(app)
+    try:
+        response = client.get(
+            "/api/v1/admin/audit-events",
+            params={
+                "event_type": "location.updated",
+                "subject_type": "location",
+                "subject_id": "location-1",
+                "limit": 25,
+                "offset": 5,
+            },
+        )
+    finally:
+        _clear_admin_overrides()
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert captured["event_type"] == "location.updated"
+    assert captured["subject_type"] == "location"
+    assert captured["subject_id"] == "location-1"
+    assert "ip_address" not in captured
+    assert "user_agent" not in captured
+
+
+@pytest.mark.asyncio
+async def test_audit_filters_admin_service_rejects_invalid_windows() -> None:
+    with pytest.raises(ValidationError, match="created_from must be timezone-aware"):
+        await admin_service.list_audit_events(AsyncMock(), created_from=datetime(2026, 1, 1))
+
+    with pytest.raises(ValidationError, match="created_from must be before or equal created_to"):
+        await admin_service.list_audit_events(
+            AsyncMock(),
+            created_from=datetime(2026, 1, 2, tzinfo=UTC),
+            created_to=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+
+
+@pytest.mark.asyncio
+async def test_admin_list_filters_are_forwarded_to_repositories(monkeypatch) -> None:
+    db = AsyncMock()
+    location_row = _admin_location()
+    session_row = _admin_session()
+    collection_row = _admin_collection()
+
+    location_list = AsyncMock(return_value=[location_row])
+    session_list = AsyncMock(return_value=[session_row])
+    collection_list = AsyncMock(return_value=[collection_row])
+    monkeypatch.setattr(locations_service.repository, "list_locations_for_admin", location_list)
+    monkeypatch.setattr(sessions_service.repository, "list_sessions_for_admin", session_list)
+    monkeypatch.setattr(collections_service.repository, "list_collections_for_admin", collection_list)
+
+    await locations_service.list_locations_for_admin(
+        db,
+        include_archived=True,
+        q="taiga",
+        coordinate_visibility="hidden",
+        sensitivity_level="protected",
+        limit=25,
+        offset=5,
+    )
+    await sessions_service.list_sessions_for_admin(
+        db,
+        include_archived=True,
+        q="dawn",
+        location_id=session_row.location_id,
+        publication_status="draft",
+        processing_status="pending",
+        access_level="members_only",
+        limit=25,
+        offset=5,
+    )
+    await collections_service.list_collections_for_admin(
+        db,
+        q="field",
+        is_public=False,
+        limit=25,
+        offset=5,
+    )
+
+    location_list.assert_awaited_once_with(
+        db,
+        include_archived=True,
+        q="taiga",
+        coordinate_visibility="hidden",
+        sensitivity_level="protected",
+        limit=25,
+        offset=5,
+    )
+    session_list.assert_awaited_once_with(
+        db,
+        include_archived=True,
+        q="dawn",
+        location_id=session_row.location_id,
+        publication_status="draft",
+        processing_status="pending",
+        access_level="members_only",
+        limit=25,
+        offset=5,
+    )
+    collection_list.assert_awaited_once_with(
+        db,
+        q="field",
+        is_public=False,
+        limit=25,
+        offset=5,
+    )
+
+
+def test_admin_location_detail_exposes_etag_and_update_requires_if_match(monkeypatch) -> None:
+    row = _admin_location()
+    monkeypatch.setattr(
+        locations_service.repository,
+        "get_location_for_admin",
+        AsyncMock(return_value=row),
+    )
+    update = AsyncMock(return_value=row)
+    monkeypatch.setattr(locations_service, "update_location", update)
+    _set_admin_overrides()
+
+    client = TestClient(app)
+    try:
+        detail = client.get(f"/api/v1/admin/locations/{row.id}")
+        missing_precondition = client.patch(
+            f"/api/v1/admin/locations/{row.id}",
+            json={"name": "Updated name"},
+        )
+    finally:
+        _clear_admin_overrides()
+
+    assert detail.status_code == 200
+    assert detail.headers["etag"].startswith('"')
+    assert missing_precondition.status_code == 428
+    assert missing_precondition.json()["detail"] == "If-Match required for this operation"
+    update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stale_admin_revision_is_rejected_before_location_write(monkeypatch) -> None:
+    row = _admin_location()
+    persist = AsyncMock()
+    monkeypatch.setattr(
+        locations_service,
+        "require_location_for_admin_for_update",
+        AsyncMock(return_value=row),
+    )
+    monkeypatch.setattr(locations_service.repository, "update_location", persist)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await locations_service.update_location(
+            AsyncMock(),
+            row.id,
+            locations_service.LocationUpdate(name="Stale update"),
+            if_match='"stale"',
+        )
+
+    assert exc_info.value.status_code == 412
+    persist.assert_not_awaited()
+
+
+def test_admin_account_detail_revisions_and_mutations_require_if_match(monkeypatch) -> None:
+    row = _admin_user(has_membership=True)
+
+    async def fake_get_for_admin(_session, _user_id):
+        return row
+
+    monkeypatch.setattr(users_service.repository, "get_for_admin", fake_get_for_admin)
+    _set_admin_overrides()
+    client = TestClient(app)
+    try:
+        detail = client.get(f"/api/v1/admin/users/{row.id}")
+        assert detail.status_code == 200
+        payload = detail.json()
+        assert payload["revision"] == detail.headers["etag"]
+        assert "membership_revision" not in payload
+
+        role = client.patch(
+            f"/api/v1/admin/users/{row.id}/role",
+            json={"role": "editor"},
+        )
+        membership = client.put(
+            f"/api/v1/admin/memberships/{row.id}",
+            json={"status": "active", "plan": "member"},
+        )
+    finally:
+        _clear_admin_overrides()
+
+    assert role.status_code == 428
+    assert membership.status_code == 428
+
+
+def test_admin_openapi_documents_preconditions_literals_and_search_bounds() -> None:
+    schema = app.openapi()
+
+    def string_option(parameter: dict) -> dict:
+        parameter_schema = parameter["schema"]
+        return next(
+            option
+            for option in parameter_schema.get("anyOf", [parameter_schema])
+            if option.get("type") == "string"
+        )
+
+    operations = [
+        ("/api/v1/admin/locations/{location_id}", "patch"),
+        ("/api/v1/admin/locations/{location_id}", "delete"),
+        ("/api/v1/admin/sessions/{session_id}", "patch"),
+        ("/api/v1/admin/sessions/{session_id}", "delete"),
+        ("/api/v1/admin/collections/{collection_id}", "patch"),
+        ("/api/v1/admin/users/{user_id}/role", "patch"),
+        ("/api/v1/admin/memberships/{user_id}", "put"),
+    ]
+    for path, method in operations:
+        operation = schema["paths"][path][method]
+        if_match = next(
+            parameter
+            for parameter in operation["parameters"]
+            if parameter["in"] == "header" and parameter["name"].lower() == "if-match"
+        )
+        assert if_match["required"] is True
+        assert {"412", "428"}.issubset(operation["responses"])
+        for status_code in ("412", "428"):
+            assert operation["responses"][status_code]["content"]["application/json"]["schema"] == {
+                "$ref": "#/components/schemas/AdminErrorResponse"
+            }
+
+    for path, path_item in schema["paths"].items():
+        if not path.startswith("/api/v1/admin/"):
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            for status_code in ("401", "403"):
+                assert operation["responses"][status_code]["content"]["application/json"]["schema"] == {
+                    "$ref": "#/components/schemas/AdminErrorResponse"
+                }
+
+    identity = schema["components"]["schemas"]["AdminIdentityRead"]
+    assert identity["properties"]["mode"]["enum"] == ["token", "local"]
+    for path in (
+        "/api/v1/admin/locations",
+        "/api/v1/admin/sessions",
+        "/api/v1/admin/collections",
+    ):
+        q_parameter = next(
+            parameter
+            for parameter in schema["paths"][path]["get"]["parameters"]
+            if parameter["name"] == "q"
+        )
+        assert string_option(q_parameter)["maxLength"] == 200
+    email_parameter = next(
+        parameter
+        for parameter in schema["paths"]["/api/v1/admin/users"]["get"]["parameters"]
+        if parameter["name"] == "email"
+    )
+    assert string_option(email_parameter)["maxLength"] == 200
+
+    enum_parameters = {
+        ("/api/v1/admin/locations", "coordinate_visibility"): "CoordinateVisibility",
+        ("/api/v1/admin/locations", "sensitivity_level"): "SensitivityLevel",
+        ("/api/v1/admin/sessions", "publication_status"): "PublicationStatus",
+        ("/api/v1/admin/sessions", "processing_status"): "ProcessingStatus",
+        ("/api/v1/admin/sessions", "access_level"): "SessionAccess",
+        ("/api/v1/admin/users", "role"): "UserRole",
+        ("/api/v1/admin/users", "membership_status"): "MembershipStatus",
+    }
+    for (path, name), schema_name in enum_parameters.items():
+        parameter = next(
+            item
+            for item in schema["paths"][path]["get"]["parameters"]
+            if item["name"] == name
+        )
+        options = parameter["schema"].get("anyOf", [parameter["schema"]])
+        assert {"$ref": f"#/components/schemas/{schema_name}"} in options
+
+
+def test_every_admin_operation_denies_non_admin_before_domain_work() -> None:
+    async def deny_admin():
+        raise HTTPException(status_code=403, detail="Admin role required")
+
+    app.dependency_overrides[get_current_admin] = deny_admin
+    app.dependency_overrides[get_db_session] = lambda: AsyncMock()
+    client = TestClient(app)
+    try:
+        for raw_path, path_item in app.openapi()["paths"].items():
+            if not raw_path.startswith("/api/v1/admin"):
+                continue
+            path = raw_path
+            for parameter in ("location_id", "session_id", "collection_id", "user_id", "asset_id"):
+                path = path.replace(f"{{{parameter}}}", str(uuid4()))
+            for method in path_item:
+                if method not in {"get", "post", "put", "patch", "delete"}:
+                    continue
+                response = client.request(
+                    method.upper(),
+                    path,
+                    json={} if method in {"post", "put", "patch"} else None,
+                    headers={"If-Match": '"deny"'},
+                )
+                assert response.status_code == 403, (method, raw_path, response.text)
+    finally:
+        _clear_admin_overrides()
