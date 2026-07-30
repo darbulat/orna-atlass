@@ -13,3 +13,4 @@ ADRs document durable decisions that affect several modules. Status values are `
 - [ADR-0009: Account recovery is fail-closed across delivery and browser callbacks](0009-fail-closed-account-recovery.md)
 - [ADR-0010: OAuth identities link only after exact-account reauthentication and explicit confirmation](0010-explicit-oauth-account-linking.md)
 - [ADR-0011: Bereke hosted checkout for lifetime membership](0011-bereke-hosted-checkout.md)
+- [ADR-0012: Isolate Bereke template checkout as an explicit test mode](0012-bereke-template-test-mode.md)
