@@ -320,6 +320,13 @@ test("editorial headers omit search while Atlas keeps its map search without mar
   await expect(page.locator(".atlas-route-intro")).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1, name: "Explore the world by sound." })).toHaveCount(0);
   await expect(page.getByText(/search a place, choose a listening time/i)).toHaveCount(0);
+  const atlasHeading = page.getByRole("heading", { level: 1, name: "ORNA Atlas" });
+  await expect(atlasHeading).toHaveCount(1);
+  await expect(atlasHeading).toHaveCSS("clip-path", "inset(50%)");
+  const atlasHeadingBox = await atlasHeading.boundingBox();
+  expect(atlasHeadingBox).not.toBeNull();
+  expect(atlasHeadingBox!.width).toBeLessThanOrEqual(1);
+  expect(atlasHeadingBox!.height).toBeLessThanOrEqual(1);
   const atlasSearch = page.locator("#atlas-search");
   await expect(atlasSearch).toBeVisible();
   await atlasSearch.fill("Pin");
@@ -391,12 +398,18 @@ test.describe("mobile header without JavaScript", () => {
 
 test("home globe fails closed for unavailable or malformed atlas responses", async ({ page, request }) => {
   test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  await page.setViewportSize({ width: 390, height: 667 });
 
   for (const mode of ["unavailable", "malformed-atlas", "malformed-point", "invalid-date", "malformed-dawn"]) {
     const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=${mode}`);
     expect(control.ok()).toBe(true);
     await page.goto("/");
-    await expect(page.getByRole("alert").filter({ hasText: "Atlas unavailable" })).toBeVisible();
+    const unavailable = page.getByRole("alert").filter({ hasText: "Atlas unavailable" });
+    await expect(unavailable).toBeVisible();
+    const unavailableBox = await unavailable.boundingBox();
+    expect(unavailableBox).not.toBeNull();
+    expect(unavailableBox!.x).toBe(22);
+    expect(unavailableBox!.x + unavailableBox!.width).toBe(368);
     await expect(page.getByRole("region", { name: "ORNA Atlas" })).toHaveCount(0);
   }
 });
