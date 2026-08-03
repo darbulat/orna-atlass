@@ -24,11 +24,7 @@ export default async function Page({ searchParams }: { searchParams?: Promise<{ 
     return (
       <main id="main-content" className="shell atlas-shell">
         <SiteHeader active="map" />
-        <header className="atlas-page-intro atlas-route-intro">
-          <p className="eyebrow">ORNA Atlas</p>
-          <h1>Explore the world by sound.</h1>
-          <p>Search a place, choose a listening time, or select a point on the map to hear its landscape.</p>
-        </header>
+        <h1 className="visually-hidden">ORNA Atlas</h1>
         <AtlasExplorer
           initialView={view}
           points={points}
