@@ -11,6 +11,8 @@ from orna_atlas.app.core.config import Settings, decode_resend_webhook_secret
 
 
 WEBHOOK_TOLERANCE_SECONDS = 300
+MAX_ATTACHMENT_COUNT = 100
+MAX_ATTACHMENT_TOTAL_BYTES = 25 * 1024 * 1024
 
 
 class ResendProviderError(RuntimeError):
@@ -79,22 +81,52 @@ class ResendClient:
             email = email_response.json()
 
             attachment_response = await client.get(
-                f"/emails/receiving/{email_id}/attachments", params={"limit": 100}
+                f"/emails/receiving/{email_id}/attachments",
+                params={"limit": MAX_ATTACHMENT_COUNT},
             )
             attachment_response.raise_for_status()
-            attachment_items = attachment_response.json().get("data", [])
+            attachment_page = attachment_response.json()
+            attachment_items = attachment_page.get("data", [])
+            if not isinstance(attachment_items, list):
+                raise ResendProviderError("Invalid attachment list from provider")
+            if attachment_page.get("has_more") is True or any(
+                attachment_page.get(field) for field in ("next", "next_cursor")
+            ):
+                raise ResendProviderError("Inbound email exceeds the attachment count limit")
+            if (
+                attachment_page.get("has_more") is None
+                and len(attachment_items) >= MAX_ATTACHMENT_COUNT
+            ):
+                raise ResendProviderError("Inbound email may exceed the attachment count limit")
+
             attachments: list[dict[str, str]] = []
+            total_attachment_bytes = 0
             async with httpx.AsyncClient(timeout=timeout) as download_client:
                 for item in attachment_items:
-                    download_response = await download_client.get(item["download_url"])
-                    if not download_response.is_success:
-                        raise ResendProviderError(
-                            "Attachment download failed "
-                            f"with status {download_response.status_code}"
-                        ) from None
+                    content = bytearray()
+                    try:
+                        async with download_client.stream("GET", item["download_url"]) as response:
+                            if not response.is_success:
+                                raise ResendProviderError(
+                                    f"Attachment download failed with status {response.status_code}"
+                                ) from None
+                            async for chunk in response.aiter_bytes():
+                                if (
+                                    total_attachment_bytes + len(content) + len(chunk)
+                                    > MAX_ATTACHMENT_TOTAL_BYTES
+                                ):
+                                    raise ResendProviderError(
+                                        "Inbound email exceeds the attachment size limit"
+                                    ) from None
+                                content.extend(chunk)
+                    except ResendProviderError:
+                        raise
+                    except httpx.HTTPError:
+                        raise ResendProviderError("Attachment download failed") from None
+                    total_attachment_bytes += len(content)
                     attachment = {
                         "filename": item.get("filename") or f"attachment-{item['id']}",
-                        "content": base64.b64encode(download_response.content).decode(),
+                        "content": base64.b64encode(content).decode(),
                         "content_type": item["content_type"],
                     }
                     if item.get("content_id"):

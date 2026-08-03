@@ -1,6 +1,7 @@
 import base64
 import binascii
 import re
+from email.utils import parseaddr
 from functools import lru_cache
 from ipaddress import ip_address, ip_network
 from urllib.parse import unquote, urlsplit
@@ -67,6 +68,9 @@ def _is_valid_production_oauth_url(value: str) -> bool:
         and not parsed.query
         and not parsed.fragment
     )
+
+
+SUPPORT_INBOUND_EMAIL = "support@orna.land"
 
 
 def decode_resend_webhook_secret(value: str) -> bytes:
@@ -369,6 +373,11 @@ class Settings(BaseSettings):
                 "RESEND_API_KEY, RESEND_WEBHOOK_SECRET and SUPPORT_FORWARD_TO "
                 "must be configured together"
             )
+        if (
+            self.support_forward_to is not None
+            and parseaddr(self.support_forward_to.strip())[1].lower() == SUPPORT_INBOUND_EMAIL
+        ):
+            raise ValueError("SUPPORT_FORWARD_TO must not be the inbound support address")
         if not self.support_from_email.strip():
             raise ValueError("SUPPORT_FROM_EMAIL must not be blank")
         if normalized_environment == "production":

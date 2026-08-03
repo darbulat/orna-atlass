@@ -98,6 +98,22 @@ def test_support_forwarding_configuration_is_all_or_none(
 
 
 @pytest.mark.parametrize(
+    "forward_to",
+    ["support@orna.land", " SUPPORT@ORNA.LAND ", "ORNA Support <support@orna.land>"],
+)
+def test_support_forwarding_rejects_recursive_destination(forward_to: str) -> None:
+    with pytest.raises(ValidationError, match="SUPPORT_FORWARD_TO"):
+        Settings.model_validate(
+            {
+                "_env_file": None,
+                "RESEND_API_KEY": "re_test_key",
+                "RESEND_WEBHOOK_SECRET": WEBHOOK_SECRET,
+                "SUPPORT_FORWARD_TO": forward_to,
+            }
+        )
+
+
+@pytest.mark.parametrize(
     "secret",
     [
         "AAAA",
@@ -127,7 +143,7 @@ def test_signed_support_email_is_forwarded_once(monkeypatch) -> None:
     ).encode()
     forward = AsyncMock()
     client_factory = MagicMock(return_value=SimpleNamespace(forward_received_email=forward))
-    monkeypatch.setattr(support_router, "ResendClient", client_factory)
+    monkeypatch.setattr("orna_atlas.app.modules.support.service.ResendClient", client_factory)
 
     response = TestClient(_app(_settings())).post(
         "/api/v1/support/webhooks/resend",
@@ -153,7 +169,7 @@ def test_signed_non_support_email_is_acknowledged_without_resend_api_call(monkey
         }
     ).encode()
     client_factory = AsyncMock()
-    monkeypatch.setattr(support_router, "ResendClient", client_factory)
+    monkeypatch.setattr("orna_atlas.app.modules.support.service.ResendClient", client_factory)
 
     response = TestClient(_app(_settings())).post(
         "/api/v1/support/webhooks/resend",
@@ -181,7 +197,7 @@ def test_missing_or_invalid_signature_is_rejected(headers: dict[str, str], monke
         b'{"type":"email.received","data":{"email_id":"email_123","to":["support@orna.land"]}}'
     )
     client_factory = AsyncMock()
-    monkeypatch.setattr(support_router, "ResendClient", client_factory)
+    monkeypatch.setattr("orna_atlas.app.modules.support.service.ResendClient", client_factory)
 
     response = TestClient(_app(_settings())).post(
         "/api/v1/support/webhooks/resend", content=payload, headers=headers
@@ -195,7 +211,7 @@ def test_missing_or_invalid_signature_is_rejected(headers: dict[str, str], monke
 def test_signed_malformed_payload_is_rejected(monkeypatch) -> None:
     payload = b"not-json"
     client_factory = MagicMock()
-    monkeypatch.setattr(support_router, "ResendClient", client_factory)
+    monkeypatch.setattr("orna_atlas.app.modules.support.service.ResendClient", client_factory)
 
     response = TestClient(_app(_settings())).post(
         "/api/v1/support/webhooks/resend",
@@ -222,8 +238,7 @@ def test_resend_api_failure_is_not_acknowledged(monkeypatch) -> None:
         )
     )
     monkeypatch.setattr(
-        support_router,
-        "ResendClient",
+        "orna_atlas.app.modules.support.service.ResendClient",
         MagicMock(return_value=SimpleNamespace(forward_received_email=forward)),
     )
 
@@ -330,6 +345,82 @@ async def test_attachment_download_does_not_receive_resend_api_key(monkeypatch) 
 
 
 @pytest.mark.asyncio
+async def test_resend_client_rejects_truncated_attachment_page(monkeypatch) -> None:
+    email_response = httpx.Response(
+        200,
+        json={"text": "Body"},
+        request=httpx.Request("GET", "https://api.resend.com/emails/receiving/email_123"),
+    )
+    attachments_response = httpx.Response(
+        200,
+        json={"data": [], "has_more": True},
+        request=httpx.Request(
+            "GET", "https://api.resend.com/emails/receiving/email_123/attachments"
+        ),
+    )
+    get = AsyncMock(side_effect=[email_response, attachments_response])
+    post = AsyncMock()
+    context = AsyncMock()
+    context.__aenter__.return_value = SimpleNamespace(get=get, post=post)
+    monkeypatch.setattr(
+        "orna_atlas.app.integrations.resend.httpx.AsyncClient", MagicMock(return_value=context)
+    )
+
+    with pytest.raises(ResendProviderError, match="attachment count"):
+        await ResendClient(_settings()).forward_received_email(
+            email_id="email_123",
+            to="owner@example.test",
+            from_email="ORNA Support <support@orna.land>",
+            idempotency_key="support-msg_123",
+        )
+
+    post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resend_client_bounds_total_attachment_bytes(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/emails/receiving/email_123":
+            return httpx.Response(200, json={"text": "Body"})
+        if request.url.path == "/emails/receiving/email_123/attachments":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "att_external",
+                            "filename": "recording.txt",
+                            "content_type": "text/plain",
+                            "download_url": "https://attachments.example.test/object",
+                        }
+                    ],
+                    "has_more": False,
+                },
+            )
+        if request.url.host == "attachments.example.test":
+            return httpx.Response(200, content=b"12345")
+        if request.url.path == "/emails":
+            return httpx.Response(200, json={"id": "sent_1"})
+        return httpx.Response(404)
+
+    real_async_client = httpx.AsyncClient
+
+    def async_client(**kwargs: Any) -> httpx.AsyncClient:
+        return real_async_client(**kwargs, transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr("orna_atlas.app.integrations.resend.httpx.AsyncClient", async_client)
+    monkeypatch.setattr("orna_atlas.app.integrations.resend.MAX_ATTACHMENT_TOTAL_BYTES", 4)
+
+    with pytest.raises(ResendProviderError, match="attachment size"):
+        await ResendClient(_settings()).forward_received_email(
+            email_id="email_123",
+            to="owner@example.test",
+            from_email="ORNA Support <support@orna.land>",
+            idempotency_key="support-msg_123",
+        )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("download_status", [302, 403])
 async def test_attachment_download_failure_does_not_expose_signed_url(
     monkeypatch, download_status: int
@@ -416,10 +507,13 @@ async def test_resend_client_forwards_body_sender_and_attachments(monkeypatch) -
         json={"id": "sent_1"},
         request=httpx.Request("POST", "https://api.resend.com/emails"),
     )
-    get = AsyncMock(side_effect=[email_response, attachments_response, download_response])
+    get = AsyncMock(side_effect=[email_response, attachments_response])
     post = AsyncMock(return_value=send_response)
+    stream_context = AsyncMock()
+    stream_context.__aenter__.return_value = download_response
+    stream = MagicMock(return_value=stream_context)
     context = AsyncMock()
-    context.__aenter__.return_value = SimpleNamespace(get=get, post=post)
+    context.__aenter__.return_value = SimpleNamespace(get=get, post=post, stream=stream)
     constructor_args: dict[str, object] = {}
 
     def async_client(**kwargs: object) -> AsyncMock:

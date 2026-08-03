@@ -16,3 +16,4 @@ ADRs document durable decisions that affect several modules. Status values are `
 - [ADR-0012: Admin workspace uses fail-closed authorization and aggregate concurrency](0012-admin-workspace-safety-boundaries.md)
 - [ADR-0013: Isolate Bereke template checkout as an explicit test mode](0013-bereke-template-test-mode.md)
 - [ADR-0014: Forward inbound support e-mail through a signed Resend webhook](0014-resend-support-webhook.md)
+- [ADR-0015: Bound and service-own inbound support forwarding](0015-bound-support-forwarding.md)
