@@ -46,6 +46,9 @@ def configure_logging() -> None:
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.INFO)
+    # HTTPX includes the complete outbound URL at INFO. Provider attachment URLs can carry
+    # short-lived query credentials, so keep transport success logs below the production threshold.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
