@@ -41,7 +41,8 @@ cancellation of that same row; those updates never revoke an independent payment
 
 An ambiguous provider-registration result moves the purchase to `provider_outcome_unknown` and blocks
 automatic registration of another real order. A self-service full-refund request is accepted only for
-14 calendar days after the confirmed `paid_at`; later exceptions require an audited support operation.
+14 calendar days after the confirmed `paid_at`; retrying an already-created refund request remains
+idempotent after that window, while a new late request requires an audited support operation.
 Callback request bytes, parameter count and field sizes are bounded before signature resolution.
 
 An explicitly configured billing test mode may replace the production offer with the fixed Bereke

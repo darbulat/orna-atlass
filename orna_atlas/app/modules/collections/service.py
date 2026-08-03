@@ -33,6 +33,7 @@ def summary_from_collection(
         for link in collection.session_links
         if link.session.access_level in access_levels
         and getattr(link.session, "publication_status", "published") == "published"
+        and getattr(link.session, "archived_at", None) is None
         and is_publicly_discoverable(link.session.location)
     ]
     public_locations = [
@@ -65,6 +66,7 @@ def detail_from_collection(
         for link in collection.session_links
         if link.session.access_level in access_levels
         and getattr(link.session, "publication_status", "published") == "published"
+        and getattr(link.session, "archived_at", None) is None
         and is_publicly_discoverable(link.session.location)
     ]
     return CollectionDetailRead(

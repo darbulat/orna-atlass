@@ -24,6 +24,8 @@ Every entitlement-varying catalog projection uses the canonical policy. Membersh
 
 Self-service full-refund requests are accepted through 14 calendar days after `paid_at`; later exceptions require a separate audited support/admin operation. Bereke callback bodies and fields are bounded in the application as well as at ingress.
 
+The schema cutover remains compatible with callback writers from the previous release. Revision 0018 leaves legacy `creating` rows unchanged; the new checkout service lazily quarantines such a row before any possible repeat provider call. Revision 0019 takes a bounded writer lock while atomically installing a compatibility trigger and backfilling grants. Until all old writers are gone, that trigger mirrors paid/refund purchase state into the purchase-scoped grant, closing the point-in-time backfill gap without changing independent legacy/admin grants.
+
 ## Consequences
 
 Pricing changes require a new offer row rather than mutation of purchase history. Schema, OpenAPI and frontend validation must accept configured supported values instead of exact hardcoded pairs. Price activation and checkout creation need row locking/concurrency tests. Ambiguous provider outcomes may require operator reconciliation and can reduce checkout availability, but cannot silently create duplicate real charges.

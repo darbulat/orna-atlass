@@ -87,16 +87,24 @@ async def revoke_grant(
 
 
 async def has_active_grant(session: AsyncSession, user_id: UUID) -> bool:
-    grant_id = await session.scalar(
-        select(MembershipEntitlementGrant.id)
+    return user_id in await active_grant_user_ids(session, [user_id])
+
+
+async def active_grant_user_ids(
+    session: AsyncSession, user_ids: list[UUID]
+) -> set[UUID]:
+    if not user_ids:
+        return set()
+    result = await session.scalars(
+        select(MembershipEntitlementGrant.user_id)
         .where(
-            MembershipEntitlementGrant.user_id == user_id,
+            MembershipEntitlementGrant.user_id.in_(user_ids),
             MembershipEntitlementGrant.status == "active",
             or_(
                 MembershipEntitlementGrant.expires_at.is_(None),
                 MembershipEntitlementGrant.expires_at > datetime.now(UTC),
             ),
         )
-        .limit(1)
+        .distinct()
     )
-    return grant_id is not None
+    return set(result.all())

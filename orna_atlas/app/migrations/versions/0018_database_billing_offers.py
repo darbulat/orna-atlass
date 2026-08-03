@@ -28,18 +28,9 @@ def upgrade() -> None:
         "billing_purchases",
         "status IN ('creating', 'provider_outcome_unknown', 'pending', 'paid', 'failed', 'expired', 'refund_requested', 'refunded')",
     )
-    # The old implementation committed `creating` before crossing the provider boundary. Any
-    # surviving row may therefore represent an accepted order whose response was lost; quarantine
-    # all of them rather than guessing that provider registration never happened.
-    op.execute(
-        sa.text(
-            """
-            UPDATE billing_purchases
-            SET status = 'provider_outcome_unknown', checkout_url = NULL, updated_at = now()
-            WHERE status = 'creating'
-            """
-        )
-    )
+    # Do not rewrite legacy `creating` rows while old callback workers may still be running.
+    # The new service lazily quarantines such a row before any attempted registration; keeping
+    # the old status during cutover lets old verified callback handlers complete it safely.
     op.create_table(
         "billing_offers",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),

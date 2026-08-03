@@ -168,15 +168,20 @@ async def create_checkout(
         if _expire_stale_checkout(existing):
             await db.commit()
             return _checkout_read(existing)
-        if existing.status != "creating":
-            return _checkout_read(existing)
-        purchase = existing
-        merchant_reference = existing.merchant_reference
-        amount_minor = existing.amount_minor
-        currency = existing.currency
+        if existing.status == "creating":
+            # A surviving row may come from the pre-quarantine release, which crossed the
+            # provider boundary while status was still `creating`. Do not replay it.
+            existing.status = "provider_outcome_unknown"
+            existing.checkout_url = None
+            await db.commit()
+        return _checkout_read(existing)
     else:
         open_purchase = await repository.get_open_for_user(db, user_id)
         if open_purchase is not None and not _expire_stale_checkout(open_purchase):
+            if open_purchase.status == "creating":
+                open_purchase.status = "provider_outcome_unknown"
+                open_purchase.checkout_url = None
+                await db.commit()
             return _checkout_read(open_purchase)
         # Bereke's hosted gateway limits orderNumber to 36 characters.
         merchant_reference = f"orna-{uuid4().hex[:31]}"
@@ -248,13 +253,13 @@ async def request_refund(
     purchase = await repository.get_for_user_for_update(db, purchase_id, user_id)
     if purchase is None:
         raise NotFoundError("Purchase not found")
+    existing = await repository.get_refund_request(db, purchase_id)
+    if existing is not None:
+        return RefundRequestRead.model_validate(existing)
     if purchase.status not in {"paid", "refund_requested"}:
         raise ConflictError("Only a completed payment can be refunded")
     if purchase.paid_at is None or datetime.now(UTC) > purchase.paid_at + timedelta(days=14):
         raise ConflictError("Self-service refunds are available for 14 calendar days")
-    existing = await repository.get_refund_request(db, purchase_id)
-    if existing is not None:
-        return RefundRequestRead.model_validate(existing)
     refund = await repository.create_refund_request(db, purchase_id, user_id)
     purchase.status = "refund_requested"
     await add_audit_event(

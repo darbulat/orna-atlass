@@ -41,6 +41,25 @@ test("direct atlas SSR forwards browser cookies to the catalog API", async ({
   expect((await observed.json()).cookie).toContain("orna_access=ssr-access-token");
 });
 
+test("invalid refresh cookie is cleared and atlas recovers anonymously", async ({
+  context,
+  page,
+}) => {
+  await context.addCookies([{
+    name: "orna_refresh",
+    value: "invalid-refresh-e2e",
+    domain: "127.0.0.1",
+    path: "/",
+  }]);
+
+  await page.goto("/atlas");
+
+  await expect(page.getByRole("heading", { name: "Atlas" })).toBeVisible();
+  await expect(page.getByText("Restoring your membership access…")).toHaveCount(0);
+  const cookies = await context.cookies();
+  expect(cookies.some((cookie) => cookie.name === "orna_refresh")).toBe(false);
+});
+
 test("atlas globe exposes a 10 km floor and requests the World Imagery layer", async ({ page }) => {
   const worldImageryRequest = page.waitForRequest((request) => (
     request.url().includes("/World_Imagery/MapServer")
@@ -1089,6 +1108,62 @@ test("members-only atlas point is visibly locked and opens a truthful soft paywa
   await expect.poll(() => page.evaluate(() => (
     (window as typeof window & { __analytics?: Array<{ name?: string }> }).__analytics?.map((event) => event.name) ?? []
   ))).toContain("paywall_dismissed");
+});
+
+test("unavailable membership remains visibly locked and honors an authoritative denial", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=locked-point`);
+  expect(control.ok()).toBeTruthy();
+  await page.route("**/api/v1/memberships/me", (route) => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ detail: "Membership service unavailable" }),
+  }));
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Night" }).click();
+  const lockedPoint = page.locator(".location-card", { hasText: "Members Cove" });
+  await expect(lockedPoint).not.toContainText("Checking access");
+  await expect(lockedPoint).toContainText("🔒");
+  await lockedPoint.click();
+
+  await expect(page.getByRole("dialog", { name: /Members-only soundscape/i })).toBeVisible();
+});
+
+test("unavailable membership still honors authoritative members-only detail access", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=locked-point`);
+  expect(control.ok()).toBeTruthy();
+  const publicSession = await (await request.get(`${mockApiUrl}/api/v1/sessions/first-session`)).json();
+  await page.route("**/api/v1/memberships/me", (route) => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ detail: "Membership service unavailable" }),
+  }));
+  await page.route("**/api/v1/sessions/members-cove-long-form", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ...publicSession,
+      id: "20000000-0000-4000-8000-000000000012",
+      slug: "members-cove-long-form",
+      title: "Members Cove Long Form",
+      access_level: "members_only",
+      location: { ...publicSession.location, name: "Members Cove", slug: "members-cove" },
+    }),
+  }));
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Night" }).click();
+  const lockedPoint = page.locator(".location-card", { hasText: "Members Cove" });
+  await expect(lockedPoint).not.toContainText("Checking access");
+  await expect(lockedPoint).toContainText("🔒");
+  await lockedPoint.click();
+
+  await expect(
+    page.getByRole("region", { name: "Session player" }).getByRole("heading", { name: "Members Cove" }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog", { name: /Members-only soundscape/i })).toHaveCount(0);
 });
 
 test("free signup from a locked recording stays on the membership explanation", async ({ page, request }) => {

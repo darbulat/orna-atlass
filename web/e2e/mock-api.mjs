@@ -394,7 +394,12 @@ const server = createServer((request, response) => {
       send(response, 200, { access_token: "refreshed" });
       return;
     }
-    send(response, 401, { detail: "Authentication is required" });
+    send(response, 401, { detail: "Authentication is required" }, {
+      "Set-Cookie": [
+        "orna_access=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
+        "orna_refresh=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
+      ],
+    });
     return;
   }
   if (request.method === "POST" && path === "/__e2e/session-detail-auth") {
@@ -501,6 +506,10 @@ const server = createServer((request, response) => {
   }
   if (request.method === "GET" && path === "/api/v1/atlas/points") {
     lastAtlasCookie = request.headers.cookie ?? "";
+    if (lastAtlasCookie.includes("orna_refresh=invalid-refresh-e2e")) {
+      send(response, 401, { detail: "Access authentication requires refresh" });
+      return;
+    }
     const responseMode = nextAtlasResponse;
     nextAtlasResponse = "ok";
     if (responseMode === "unavailable") {

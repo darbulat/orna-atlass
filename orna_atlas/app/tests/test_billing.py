@@ -738,13 +738,15 @@ async def test_different_key_reuses_in_flight_checkout(monkeypatch) -> None:
     )
 
     assert result.purchase_id == purchase.id
-    assert result.status == "creating"
+    assert result.status == "provider_outcome_unknown"
+    assert purchase.status == "provider_outcome_unknown"
+    db.commit.assert_awaited_once()
     provider.create_checkout.assert_not_awaited()
     service.repository.create_purchase.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_checkout_retry_recovers_provider_call_left_in_creating(monkeypatch) -> None:
+async def test_checkout_retry_quarantines_legacy_creating_without_provider_call(monkeypatch) -> None:
     user_id = uuid4()
     purchase = SimpleNamespace(
         id=uuid4(),
@@ -774,12 +776,10 @@ async def test_checkout_retry_recovers_provider_call_left_in_creating(monkeypatc
         db, user_id, "request-1", provider, SimpleNamespace(billing_enabled=True)
     )
 
-    assert result.status == "pending"
-    assert purchase.provider_order_id == "order-1"
-    provider.create_checkout.assert_awaited_once()
-    assert provider.create_checkout.await_args.kwargs["amount_minor"] == 1750
-    assert provider.create_checkout.await_args.kwargs["currency"] == "KZT"
-    assert db.commit.await_count == 2
+    assert result.status == "provider_outcome_unknown"
+    assert purchase.provider_order_id is None
+    provider.create_checkout.assert_not_awaited()
+    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -844,7 +844,7 @@ async def test_checkout_cancellation_cannot_leave_provider_call_retryable(monkey
 
     async def cancelled(**_kwargs):
         assert purchase.status == "provider_outcome_unknown"
-        db.commit.assert_awaited_once()
+        assert db.commit.await_count == 2
         raise asyncio.CancelledError
 
     provider.create_checkout.side_effect = cancelled
@@ -853,7 +853,9 @@ async def test_checkout_cancellation_cannot_leave_provider_call_retryable(monkey
         "require_user",
         AsyncMock(return_value=SimpleNamespace(id=user_id, email_verified=True)),
     )
-    monkeypatch.setattr(service.repository, "get_by_idempotency", AsyncMock(return_value=purchase))
+    monkeypatch.setattr(service.repository, "get_by_idempotency", AsyncMock(return_value=None))
+    monkeypatch.setattr(service.repository, "get_open_for_user", AsyncMock(return_value=None))
+    monkeypatch.setattr(service.repository, "create_purchase", AsyncMock(return_value=purchase))
 
     with pytest.raises(asyncio.CancelledError):
         await service.create_checkout(
@@ -861,7 +863,7 @@ async def test_checkout_cancellation_cannot_leave_provider_call_retryable(monkey
         )
 
     assert purchase.status == "provider_outcome_unknown"
-    db.commit.assert_awaited_once()
+    assert db.commit.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -1126,6 +1128,40 @@ async def test_refund_request_rejects_purchase_after_fourteen_days(monkeypatch) 
     with pytest.raises(ConflictError, match="14 calendar days"):
         await service.request_refund(db, user_id, purchase.id)
 
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_completed_refund_retry_returns_existing_request_after_window(monkeypatch) -> None:
+    user_id = uuid4()
+    purchase = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        merchant_reference="orna-refund-retry",
+        status="refunded",
+        paid_at=datetime.now(UTC) - timedelta(days=15),
+    )
+    refund = SimpleNamespace(
+        id=uuid4(),
+        purchase_id=purchase.id,
+        status="requested",
+        created_at=datetime.now(UTC) - timedelta(days=2),
+    )
+    db = AsyncMock()
+    monkeypatch.setattr(service, "require_user", AsyncMock())
+    monkeypatch.setattr(
+        service.repository, "get_for_user_for_update", AsyncMock(return_value=purchase)
+    )
+    monkeypatch.setattr(
+        service.repository, "get_refund_request", AsyncMock(return_value=refund)
+    )
+    create_refund = AsyncMock()
+    monkeypatch.setattr(service.repository, "create_refund_request", create_refund)
+
+    result = await service.request_refund(db, user_id, purchase.id)
+
+    assert result.id == refund.id
+    create_refund.assert_not_awaited()
     db.commit.assert_not_awaited()
 
 

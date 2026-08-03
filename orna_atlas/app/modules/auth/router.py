@@ -772,10 +772,19 @@ async def refresh(
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE),
     session: AsyncSession = Depends(get_db_session),
-) -> TokenResponse:
+) -> TokenResponse | Response:
     if not refresh_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token required")
-    payload, replacement = await service.rotate_refresh_token(session, refresh_token)
+    try:
+        payload, replacement = await service.rotate_refresh_token(session, refresh_token)
+    except AuthenticationError as exc:
+        error_response = JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": exc.detail},
+        )
+        _clear_auth_cookies(error_response)
+        error_response.headers["Cache-Control"] = "no-store"
+        return error_response
     _set_auth_cookies(response, payload, replacement)
     return payload
 

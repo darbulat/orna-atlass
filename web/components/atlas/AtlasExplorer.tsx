@@ -88,7 +88,7 @@ function isPoint(item: AtlasPoint | AtlasCluster): item is AtlasPoint {
 }
 
 function isLockedPoint(point: AtlasPoint | null | undefined, entitlementState: EntitlementState) {
-  return entitlementState === "not_entitled"
+  return entitlementState !== "entitled"
     && point?.latest_session?.access_level === "members_only";
 }
 

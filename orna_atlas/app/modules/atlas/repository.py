@@ -232,6 +232,7 @@ async def search_locations_and_sessions(
         .where(
             RecordingSession.access_level.in_(access_levels),
             RecordingSession.publication_status == "published",
+            RecordingSession.archived_at.is_(None),
             publicly_discoverable_clause(),
             or_(Location.name.ilike(term), Location.region.ilike(term), Location.habitat.ilike(term)),
         )
@@ -250,6 +251,7 @@ async def search_locations_and_sessions(
         .where(
             RecordingSession.access_level.in_(access_levels),
             RecordingSession.publication_status == "published",
+            RecordingSession.archived_at.is_(None),
             publicly_discoverable_clause(),
             or_(RecordingSession.title.ilike(term), RecordingSession.description.ilike(term)),
         )

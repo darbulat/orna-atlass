@@ -141,6 +141,7 @@ def point_from_location(
             for session in location.sessions
             if session.access_level in ({"public", "members_only"} if include_locked else {"public"})
             and getattr(session, "publication_status", "published") == "published"
+            and getattr(session, "archived_at", None) is None
         ),
         key=lambda item: item.recorded_at,
         reverse=True,

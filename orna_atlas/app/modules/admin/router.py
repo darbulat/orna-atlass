@@ -632,18 +632,17 @@ async def update_membership(
     current_user: CurrentUser = admin_dependency,
 ) -> MembershipRead:
     context = build_admin_mutation_context(current_user, request)
-    return MembershipRead.model_validate(
-        await memberships_service.update_membership(
-            session,
-            user_id,
-            data,
-            actor_user_id=context.actor_user_id,
-            if_match=if_match,
-            actor_mode=context.actor_mode,
-            ip_address=context.ip_address,
-            user_agent=context.user_agent,
-        )
+    await memberships_service.update_membership(
+        session,
+        user_id,
+        data,
+        actor_user_id=context.actor_user_id,
+        if_match=if_match,
+        actor_mode=context.actor_mode,
+        ip_address=context.ip_address,
+        user_agent=context.user_agent,
     )
+    return await memberships_service.entitlement_for_user(session, user_id)
 
 
 @router.get("/billing/offers/lifetime-member", response_model=AdminBillingOfferRead)

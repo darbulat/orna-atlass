@@ -1366,6 +1366,27 @@ async def test_logout_clears_root_scoped_refresh_cookie(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_invalid_refresh_clears_root_scoped_auth_cookies(monkeypatch) -> None:
+    monkeypatch.setattr(
+        router.service,
+        "rotate_refresh_token",
+        AsyncMock(side_effect=AuthenticationError("Invalid refresh token")),
+    )
+
+    result = cast(Response, await router.refresh(Response(), "revoked-token", AsyncMock()))
+
+    assert result.status_code == 401
+    assert result.headers["Cache-Control"] == "no-store"
+    refresh_cookie = next(
+        value
+        for value in result.headers.getlist("set-cookie")
+        if value.startswith(f"{REFRESH_COOKIE}=")
+    )
+    assert "Path=/" in refresh_cookie
+    assert "Max-Age=0" in refresh_cookie
+
+
+@pytest.mark.asyncio
 async def test_password_reset_request_schedules_delivery_outside_response_path(monkeypatch) -> None:
     deliver = AsyncMock()
     monkeypatch.setattr(router.service, "deliver_password_reset", deliver)

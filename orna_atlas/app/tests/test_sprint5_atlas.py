@@ -124,6 +124,54 @@ def test_mixed_location_keeps_its_public_preview_when_a_newer_member_session_exi
     assert entitled_payload["latest_session"]["access_level"] == "members_only"
 
 
+def test_entitled_atlas_preview_skips_newer_archived_member_session() -> None:
+    now = datetime.now(UTC)
+    location = SimpleNamespace(
+        id=uuid4(),
+        slug="archived-member-marsh",
+        name="Archived Member Marsh",
+        description=None,
+        country_code="EE",
+        region="Laanemaa",
+        habitat="wetland",
+        latitude=58.91,
+        longitude=23.72,
+        timezone="Europe/Tallinn",
+        sensitivity_level="normal",
+        coordinate_visibility="exact_public",
+        sessions=[
+            SimpleNamespace(
+                id=uuid4(),
+                slug="withdrawn-member-session",
+                title="Withdrawn Member Session",
+                recorded_at=now,
+                duration_seconds=7200,
+                access_level="members_only",
+                publication_status="published",
+                archived_at=now,
+            ),
+            SimpleNamespace(
+                id=uuid4(),
+                slug="public-preview",
+                title="Public Preview",
+                recorded_at=now - timedelta(days=1),
+                duration_seconds=1800,
+                access_level="public",
+                publication_status="published",
+                archived_at=None,
+            ),
+        ],
+    )
+
+    payload = service.point_from_location(
+        location, include_locked=True, prefer_entitled_session=True
+    )
+
+    assert payload.session_count == 1
+    assert payload.latest_session is not None
+    assert payload.latest_session.slug == "public-preview"
+
+
 def test_protected_location_uses_public_coordinates() -> None:
     now = datetime.now(UTC)
     location = SimpleNamespace(

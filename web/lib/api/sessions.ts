@@ -70,7 +70,14 @@ export async function withBrowserAuthRefresh<T>(request: () => Promise<T>): Prom
       throw error;
     }
   }
-  await refreshAccessCookie();
+  try {
+    await refreshAccessCookie();
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) throw error;
+    // The refresh endpoint clears an invalid root-scoped cookie. Retry the
+    // original request once so anonymous-capable catalogs recover immediately;
+    // protected APIs remain authoritative and return 401 again.
+  }
   return request();
 }
 

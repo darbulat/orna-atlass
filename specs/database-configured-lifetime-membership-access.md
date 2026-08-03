@@ -100,7 +100,7 @@ Member catalog projections use the canonical entitlement policy. Eligible means 
 9. Given an anonymous or free account, members-only detail remains not found/denied according to the existing contract and playback remains unavailable.
 10. Given an entitled member, draft, archived, private, hidden-location and unready recordings remain excluded or fail closed.
 11. Given a verified full refund within the valid lifecycle, only the grant linked to that purchase is revoked; another paid/admin grant preserves access.
-12. Given a self-service refund request after 14 calendar days, the API returns a typed conflict while an explicitly authorized support/admin path remains separate and audited.
+12. Given a new self-service refund request after 14 calendar days, the API returns a typed conflict; retrying a request accepted within the window returns that existing request, while an explicitly authorized support/admin path remains separate and audited.
 13. Given an oversized or over-parameterized callback request, the application rejects it before full unbounded buffering or provider lookup.
 14. Given payment completion in the browser, membership state and entitlement-varying catalog data refresh without stale locks or a public cache leak.
 
@@ -117,9 +117,9 @@ Member catalog projections use the canonical entitlement policy. Eligible means 
 
 ## Rollout, rollback and observability
 
-1. Add/backfill offer and entitlement-grant schema while old reads remain compatible.
-2. Deploy callback/grant and purchase-snapshot logic with new checkout disabled.
-3. Backfill every existing active membership conservatively as an independent legacy grant, because the old row cannot prove payment ownership; separately backfill eligible paid purchases as payment grants.
+1. Add/backfill offer and entitlement-grant schema while old reads and callback writers remain compatible: preserve legacy `creating` rows for lazy fail-closed quarantine, and install the purchase/grant compatibility trigger under a writer lock before completing the grant backfill.
+2. Deploy callback/grant and purchase-snapshot logic with new checkout disabled; retain the compatibility trigger while any previous callback process may still run.
+3. Backfill every existing active membership conservatively as an independent legacy grant, because the old row cannot prove payment ownership; separately backfill eligible paid purchases as payment grants and verify paid/refunded purchase-grant reconciliation.
 4. Activate entitlement-aware reads and account-safe cache behavior.
 5. Configure one active production offer through the audited admin path.
 6. Run sandbox/reconciliation, fiscal-receipt and complete member-journey smoke checks before enabling checkout.

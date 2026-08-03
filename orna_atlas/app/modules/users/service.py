@@ -103,11 +103,19 @@ class AdminUserProjection:
     membership_updated_at: datetime | None
 
 
-def _project_admin_user(user: User) -> AdminUserProjection:
+def _project_admin_user(user: User, *, is_entitled: bool) -> AdminUserProjection:
     if user.membership is None:
         membership = MembershipAbsentRead(user_id=user.id)
     else:
-        membership = MembershipRead.model_validate(user.membership)
+        membership = MembershipRead(
+            id=user.membership.id,
+            user_id=user.membership.user_id,
+            status="active" if is_entitled else user.membership.status,
+            plan=user.membership.plan,
+            starts_at=user.membership.starts_at,
+            expires_at=user.membership.expires_at,
+            is_entitled=is_entitled,
+        )
     return AdminUserProjection(
         user=UserRead.model_validate(
             {
@@ -144,14 +152,23 @@ async def list_admin(
         limit=limit,
         offset=offset,
     )
-    return [_project_admin_user(user) for user in users]
+    entitled_user_ids = await memberships_repository.active_grant_user_ids(
+        session, [user.id for user in users]
+    )
+    return [
+        _project_admin_user(user, is_entitled=user.id in entitled_user_ids)
+        for user in users
+    ]
 
 
 async def require_admin_user(session: AsyncSession, user_id: UUID) -> AdminUserProjection:
     user = await repository.get_for_admin(session, user_id)
     if user is None:
         raise AuthenticationError("User is unavailable")
-    return _project_admin_user(user)
+    entitled_user_ids = await memberships_repository.active_grant_user_ids(
+        session, [user.id]
+    )
+    return _project_admin_user(user, is_entitled=user.id in entitled_user_ids)
 
 
 async def bootstrap_first_admin(session: AsyncSession, email: str) -> User:
