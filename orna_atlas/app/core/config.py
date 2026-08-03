@@ -1,4 +1,7 @@
+import base64
+import binascii
 import re
+from email.utils import parseaddr
 from functools import lru_cache
 from ipaddress import ip_address, ip_network
 from urllib.parse import unquote, urlsplit
@@ -23,14 +26,10 @@ def _private_key_identity(value: str) -> bytes | None:
 
 def _is_p256_private_key(value: str) -> bool:
     try:
-        key = serialization.load_pem_private_key(
-            value.replace("\\n", "\n").encode(), password=None
-        )
+        key = serialization.load_pem_private_key(value.replace("\\n", "\n").encode(), password=None)
     except (TypeError, UnsupportedAlgorithm, ValueError):
         return False
-    return isinstance(key, ec.EllipticCurvePrivateKey) and isinstance(
-        key.curve, ec.SECP256R1
-    )
+    return isinstance(key, ec.EllipticCurvePrivateKey) and isinstance(key.curve, ec.SECP256R1)
 
 
 _HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
@@ -50,7 +49,10 @@ def _is_valid_hostname(value: str) -> bool:
 
 def _is_valid_production_oauth_url(value: str) -> bool:
     decoded = unquote(value)
-    if any(character.isspace() or ord(character) < 32 or ord(character) == 127 or character == "\\" for character in decoded):
+    if any(
+        character.isspace() or ord(character) < 32 or ord(character) == 127 or character == "\\"
+        for character in decoded
+    ):
         return False
     try:
         parsed = urlsplit(value)
@@ -68,6 +70,23 @@ def _is_valid_production_oauth_url(value: str) -> bool:
     )
 
 
+SUPPORT_INBOUND_EMAIL = "support@orna.land"
+
+
+def decode_resend_webhook_secret(value: str) -> bytes:
+    if not value.startswith("whsec_"):
+        raise ValueError("RESEND_WEBHOOK_SECRET must use the whsec_ format")
+    encoded = value.removeprefix("whsec_")
+    encoded += "=" * (-len(encoded) % 4)
+    try:
+        signing_key = base64.b64decode(encoded, altchars=b"-_", validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("RESEND_WEBHOOK_SECRET must contain valid base64") from exc
+    if len(signing_key) < 16:
+        raise ValueError("RESEND_WEBHOOK_SECRET signing key is too short")
+    return signing_key
+
+
 class Settings(BaseSettings):
     app_name: str = "ORNA Atlas API"
     api_prefix: str = "/api/v1"
@@ -78,14 +97,22 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0", validation_alias="REDIS_URL")
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     s3_endpoint_url: str | None = Field(default=None, validation_alias="S3_ENDPOINT_URL")
-    s3_public_endpoint_url: str | None = Field(default=None, validation_alias="S3_PUBLIC_ENDPOINT_URL")
+    s3_public_endpoint_url: str | None = Field(
+        default=None, validation_alias="S3_PUBLIC_ENDPOINT_URL"
+    )
     s3_region: str = Field(default="us-east-1", validation_alias="S3_REGION")
-    s3_private_bucket: str = Field(default="orna-audio-private", validation_alias="S3_PRIVATE_BUCKET")
+    s3_private_bucket: str = Field(
+        default="orna-audio-private", validation_alias="S3_PRIVATE_BUCKET"
+    )
     s3_public_bucket: str = Field(default="orna-media-public", validation_alias="S3_PUBLIC_BUCKET")
     s3_access_key_id: str | None = Field(default=None, validation_alias="S3_ACCESS_KEY_ID")
     s3_secret_access_key: str | None = Field(default=None, validation_alias="S3_SECRET_ACCESS_KEY")
-    s3_presign_expires_seconds: int = Field(default=900, validation_alias="S3_PRESIGN_EXPIRES_SECONDS")
-    audio_job_timeout_seconds: int = Field(default=600, ge=60, validation_alias="AUDIO_JOB_TIMEOUT_SECONDS")
+    s3_presign_expires_seconds: int = Field(
+        default=900, validation_alias="S3_PRESIGN_EXPIRES_SECONDS"
+    )
+    audio_job_timeout_seconds: int = Field(
+        default=600, ge=60, validation_alias="AUDIO_JOB_TIMEOUT_SECONDS"
+    )
     audio_job_timeout_per_hour_seconds: int = Field(
         default=3600,
         ge=60,
@@ -121,9 +148,7 @@ class Settings(BaseSettings):
     audio_job_result_ttl_seconds: int = Field(
         default=3600, ge=60, validation_alias="AUDIO_JOB_RESULT_TTL_SECONDS"
     )
-    media_retention_days: int = Field(
-        default=30, ge=0, validation_alias="MEDIA_RETENTION_DAYS"
-    )
+    media_retention_days: int = Field(default=30, ge=0, validation_alias="MEDIA_RETENTION_DAYS")
     environment: str = Field(default="development", validation_alias="APP_ENVIRONMENT")
     auth_secret_key: str = Field(
         default="development-only-change-me-32-bytes",
@@ -168,6 +193,14 @@ class Settings(BaseSettings):
     smtp_password: str | None = Field(default=None, validation_alias="SMTP_PASSWORD")
     smtp_from_email: str | None = Field(default=None, validation_alias="SMTP_FROM_EMAIL")
     smtp_starttls: bool = Field(default=True, validation_alias="SMTP_STARTTLS")
+    resend_api_key: str | None = Field(default=None, validation_alias="RESEND_API_KEY")
+    resend_webhook_secret: str | None = Field(
+        default=None, validation_alias="RESEND_WEBHOOK_SECRET"
+    )
+    support_forward_to: str | None = Field(default=None, validation_alias="SUPPORT_FORWARD_TO")
+    support_from_email: str = Field(
+        default="ORNA Support <support@orna.land>", validation_alias="SUPPORT_FROM_EMAIL"
+    )
     google_client_id: str | None = Field(default=None, validation_alias="GOOGLE_CLIENT_ID")
     google_client_secret: str | None = Field(default=None, validation_alias="GOOGLE_CLIENT_SECRET")
     apple_client_id: str | None = Field(default=None, validation_alias="APPLE_CLIENT_ID")
@@ -192,9 +225,7 @@ class Settings(BaseSettings):
     bereke_callback_secret: str | None = Field(
         default=None, validation_alias="BEREKE_CALLBACK_SECRET"
     )
-    bereke_callback_url: str | None = Field(
-        default=None, validation_alias="BEREKE_CALLBACK_URL"
-    )
+    bereke_callback_url: str | None = Field(default=None, validation_alias="BEREKE_CALLBACK_URL")
     bereke_checkout_hosts: list[str] = Field(
         default_factory=list, validation_alias="BEREKE_CHECKOUT_HOSTS"
     )
@@ -237,9 +268,13 @@ class Settings(BaseSettings):
         for provider, values in provider_fields.items():
             if any(values) and not all(values):
                 missing = [
-                    name for name, value in zip(provider_names[provider], values, strict=True) if not value
+                    name
+                    for name, value in zip(provider_names[provider], values, strict=True)
+                    if not value
                 ]
-                raise ValueError(f"{', '.join(missing)} required when {provider} OAuth is configured")
+                raise ValueError(
+                    f"{', '.join(missing)} required when {provider} OAuth is configured"
+                )
         oauth_enabled = any(all(values) for values in provider_fields.values())
         billing_fields = {
             "BEREKE_CHECKOUT_CREATE_URL": self.bereke_checkout_create_url,
@@ -268,7 +303,8 @@ class Settings(BaseSettings):
             }
             if normalized_environment == "production":
                 invalid_urls = [
-                    name for name, value in billing_urls.items()
+                    name
+                    for name, value in billing_urls.items()
                     if not _is_valid_production_oauth_url(value)
                 ]
                 if invalid_urls:
@@ -277,9 +313,7 @@ class Settings(BaseSettings):
                     )
             if any(not _is_valid_hostname(host) for host in self.bereke_checkout_hosts):
                 raise ValueError("BEREKE_CHECKOUT_HOSTS must contain valid hostnames")
-        if all(provider_fields["apple"]) and not _is_p256_private_key(
-            self.apple_private_key or ""
-        ):
+        if all(provider_fields["apple"]) and not _is_p256_private_key(self.apple_private_key or ""):
             raise ValueError("APPLE_PRIVATE_KEY must be a valid P-256 EC private key")
         if self.auth_signing_algorithm not in {"HS256", "RS256"}:
             raise ValueError("AUTH_SIGNING_ALGORITHM must be HS256 or RS256")
@@ -324,6 +358,28 @@ class Settings(BaseSettings):
             raise ValueError("SMTP_HOST and SMTP_FROM_EMAIL must be configured together")
         if bool(self.smtp_username) != bool(self.smtp_password):
             raise ValueError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
+        support_values = {
+            "RESEND_API_KEY": self.resend_api_key,
+            "RESEND_WEBHOOK_SECRET": self.resend_webhook_secret,
+            "SUPPORT_FORWARD_TO": self.support_forward_to,
+        }
+        for name, value in support_values.items():
+            if value is not None and not value.strip():
+                raise ValueError(f"{name} must not be blank")
+        if self.resend_webhook_secret is not None:
+            decode_resend_webhook_secret(self.resend_webhook_secret)
+        if any(support_values.values()) and not all(support_values.values()):
+            raise ValueError(
+                "RESEND_API_KEY, RESEND_WEBHOOK_SECRET and SUPPORT_FORWARD_TO "
+                "must be configured together"
+            )
+        if (
+            self.support_forward_to is not None
+            and parseaddr(self.support_forward_to.strip())[1].lower() == SUPPORT_INBOUND_EMAIL
+        ):
+            raise ValueError("SUPPORT_FORWARD_TO must not be the inbound support address")
+        if not self.support_from_email.strip():
+            raise ValueError("SUPPORT_FROM_EMAIL must not be blank")
         if normalized_environment == "production":
             if smtp_fields_present:
                 callback = urlsplit(self.magic_link_callback_url)
@@ -335,9 +391,7 @@ class Settings(BaseSettings):
                 if callback.username is not None or callback.password is not None:
                     raise ValueError("MAGIC_LINK_CALLBACK_URL must not contain credentials")
                 if not _is_valid_production_oauth_url(self.magic_link_callback_url):
-                    raise ValueError(
-                        "MAGIC_LINK_CALLBACK_URL must be a valid production HTTPS URL"
-                    )
+                    raise ValueError("MAGIC_LINK_CALLBACK_URL must be a valid production HTTPS URL")
                 if callback.query or callback.fragment:
                     raise ValueError("MAGIC_LINK_CALLBACK_URL must not contain query or fragment")
                 if callback.path.rstrip("/") != expected_path:
@@ -384,7 +438,9 @@ class Settings(BaseSettings):
                 self.hls_token_secret == "development-only-hls-token-secret-32-bytes"
                 or len(self.hls_token_secret) < 32
             ):
-                raise ValueError("HLS_TOKEN_SECRET must contain at least 32 characters in production")
+                raise ValueError(
+                    "HLS_TOKEN_SECRET must contain at least 32 characters in production"
+                )
             if any(
                 secret == self.auth_secret_key
                 for secret in self.hls_token_previous_secrets.values()
@@ -403,14 +459,13 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "HLS_TOKEN_PREVIOUS_SECRETS values must contain at least 32 characters in production"
                 )
-            if (
-                self.auth_signing_algorithm == "HS256"
-                and (
-                    self.auth_secret_key == "development-only-change-me-32-bytes"
-                    or len(self.auth_secret_key) < 32
-                )
+            if self.auth_signing_algorithm == "HS256" and (
+                self.auth_secret_key == "development-only-change-me-32-bytes"
+                or len(self.auth_secret_key) < 32
             ):
-                raise ValueError("AUTH_SECRET_KEY must contain at least 32 characters in production")
+                raise ValueError(
+                    "AUTH_SECRET_KEY must contain at least 32 characters in production"
+                )
             if not self.auth_cookie_secure:
                 raise ValueError("AUTH_COOKIE_SECURE must be true in production")
         return self

@@ -10,7 +10,11 @@ from threading import Thread
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from orna_atlas.app.core.logging import JsonFormatter, RequestLoggingMiddleware
+from orna_atlas.app.core.logging import (
+    JsonFormatter,
+    RequestLoggingMiddleware,
+    configure_logging,
+)
 from orna_atlas.app.core.metrics import metrics_response
 from orna_atlas.app.main import app as atlas_app
 
@@ -23,6 +27,17 @@ def test_json_formatter_includes_structured_fields() -> None:
     assert payload["message"] == "completed"
     assert payload["request_id"] == "request-1"
     assert payload["level"] == "INFO"
+
+
+def test_outbound_http_client_urls_are_not_logged_at_info() -> None:
+    httpx_logger = logging.getLogger("httpx")
+    previous_level = httpx_logger.level
+    try:
+        httpx_logger.setLevel(logging.NOTSET)
+        configure_logging()
+        assert httpx_logger.level == logging.WARNING
+    finally:
+        httpx_logger.setLevel(previous_level)
 
 
 def test_request_middleware_preserves_valid_correlation_id(caplog) -> None:
@@ -54,9 +69,7 @@ def test_request_middleware_logs_route_template_without_hls_token(caplog) -> Non
 
     canary = "canary-secret-playback-token"
     with caplog.at_level(logging.INFO, logger="orna_atlas.request"):
-        response = TestClient(app).get(
-            f"/media/hls/asset-1/{canary}/segments/segment-1.m4s"
-        )
+        response = TestClient(app).get(f"/media/hls/asset-1/{canary}/segments/segment-1.m4s")
 
     assert response.status_code == 200
     record = next(item for item in caplog.records if item.message == "request_complete")
@@ -155,9 +168,9 @@ def test_https_gateway_redirects_www_to_canonical_host() -> None:
 
     assert "server_name ${PUBLIC_HOST} www.${PUBLIC_HOST};" in config
     assert "server_name www.${PUBLIC_HOST};" in config
-    www_https_server = config.split("server_name www.${PUBLIC_HOST};", 1)[1].split(
-        "\nserver {", 1
-    )[0]
+    www_https_server = config.split("server_name www.${PUBLIC_HOST};", 1)[1].split("\nserver {", 1)[
+        0
+    ]
     assert "ssl_certificate /etc/letsencrypt/live/${PUBLIC_HOST}/fullchain.pem;" in www_https_server
     assert "return 301 https://${PUBLIC_HOST}$request_uri;" in www_https_server
 

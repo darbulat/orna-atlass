@@ -28,6 +28,7 @@ from orna_atlas.app.modules.library.router import router as library_router
 from orna_atlas.app.modules.media.router import router as media_router
 from orna_atlas.app.modules.memberships.router import router as memberships_router
 from orna_atlas.app.modules.sessions.router import router as sessions_router
+from orna_atlas.app.modules.support.router import router as support_router
 from orna_atlas.app.modules.users.router import router as users_router
 
 class DependencyStatus(BaseModel):
@@ -124,6 +125,7 @@ def create_app() -> FastAPI:
     app.include_router(library_router, prefix=settings.api_prefix)
     app.include_router(media_router, prefix=settings.api_prefix)
     app.include_router(sessions_router, prefix=settings.api_prefix)
+    app.include_router(support_router, prefix=settings.api_prefix)
 
     def custom_openapi():
         if app.openapi_schema is not None:
