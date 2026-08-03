@@ -29,12 +29,21 @@ Mock silence is development fixture behavior, not a successful production fallba
 
 Membership entitlement is active only when `status=active` and `expires_at` is absent or in the future. Public sessions may issue anonymous grants; `members_only` sessions require an active entitlement. Editor and admin roles may inspect protected playback for editorial operations. Every successful grant creates an audit event; denied requests never create a success event.
 
-Lifetime Member Access is a digital entitlement sold for one non-recurring USD 10.00 payment. The
-server owns the product, amount and currency. A browser return, client assertion or unverified provider
-message never grants access: only an idempotently processed Bereke confirmation whose merchant
-reference, provider order, amount and currency match the recorded purchase may activate lifetime
-membership with no expiry. A provider-confirmed refund revokes payment-backed access unless another
-valid entitlement remains.
+Lifetime Member Access is a digital entitlement sold as one non-recurring payment. The active
+production amount and supported currency come from an append-only, versioned PostgreSQL offer; each
+purchase stores the offer ID/version and its own immutable amount/currency snapshot. A browser return,
+client assertion or unverified provider message never grants access: only an idempotently processed
+Bereke confirmation whose merchant reference, provider order, amount and currency match the recorded
+purchase may activate a purchase-backed lifetime grant. A provider-confirmed refund revokes only that
+purchase grant, while administrative, legacy and other payment grants remain independent. A migrated
+`legacy` grant represents its original membership row and follows later audited activation, expiry or
+cancellation of that same row; those updates never revoke an independent payment-backed grant.
+
+An ambiguous provider-registration result moves the purchase to `provider_outcome_unknown` and blocks
+automatic registration of another real order. A self-service full-refund request is accepted only for
+14 calendar days after the confirmed `paid_at`; retrying an already-created refund request remains
+idempotent after that window, while a new late request requires an audited support operation.
+Callback request bytes, parameter count and field sizes are bounded before signature resolution.
 
 An explicitly configured billing test mode may replace the production offer with the fixed Bereke
 template price of KZT 2.00. Test mode must be visible to the buyer, must create a distinct provider

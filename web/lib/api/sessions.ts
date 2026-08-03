@@ -49,7 +49,7 @@ export function apiUrl(path: string): string {
   return `${baseUrl}${path}`;
 }
 
-function refreshAccessCookie(signal?: AbortSignal): Promise<void> {
+export function refreshAccessCookie(signal?: AbortSignal): Promise<void> {
   return refreshAuthentication((refreshSignal) => fetchJson<components["schemas"]["TokenResponse"]>(
     apiUrl("/api/v1/auth/refresh"),
     {
@@ -60,6 +60,25 @@ function refreshAccessCookie(signal?: AbortSignal): Promise<void> {
       signal: refreshSignal,
     },
   ), signal);
+}
+
+export async function withBrowserAuthRefresh<T>(request: () => Promise<T>): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (typeof window === "undefined" || !(error instanceof ApiError) || error.status !== 401) {
+      throw error;
+    }
+  }
+  try {
+    await refreshAccessCookie();
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) throw error;
+    // The refresh endpoint clears an invalid root-scoped cookie. Retry the
+    // original request once so anonymous-capable catalogs recover immediately;
+    // protected APIs remain authoritative and return 401 again.
+  }
+  return request();
 }
 
 function invalidResponse(detail: string): ApiError {
@@ -307,7 +326,7 @@ export async function recoverBrowserSessionDetail(slug: string): Promise<Session
 export function fetchAtlasPoints(
   _view: string | undefined,
   habitats: string[] = [],
-  options: { cache?: RequestCache } = {},
+  options: { cache?: RequestCache; headers?: HeadersInit } = {},
 ): Promise<AtlasPointsResponse> {
   const zoom = 5;
   // Request the API's complete supported point window so client-side features
@@ -315,10 +334,13 @@ export function fetchAtlasPoints(
   const params = new URLSearchParams({ zoom: String(zoom), limit: "1000" });
   habitats.forEach((habitat) => params.append("habitat", habitat));
 
-  return fetchJson<unknown>(apiUrl(`/api/v1/atlas/points?${params.toString()}`), {
-    ...(options.cache ? { cache: options.cache } : { next: { revalidate: 60 } }),
-    headers: { Accept: "application/json" },
-  }).then(validateAtlasPointsResponse);
+  return withBrowserAuthRefresh(() =>
+    fetchJson<unknown>(apiUrl(`/api/v1/atlas/points?${params.toString()}`), {
+      cache: options.cache ?? "no-store",
+      credentials: "include",
+      headers: { Accept: "application/json", ...options.headers },
+    }).then(validateAtlasPointsResponse),
+  );
 }
 
 export function searchAtlas(query: string, limit = 8): Promise<SearchResult[]> {
@@ -328,10 +350,13 @@ export function searchAtlas(query: string, limit = 8): Promise<SearchResult[]> {
   }
   const params = new URLSearchParams({ q: trimmed, limit: String(limit) });
 
-  return fetchJson<unknown>(apiUrl(`/api/v1/search?${params.toString()}`), {
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-  }).then(validateSearchResults);
+  return withBrowserAuthRefresh(() =>
+    fetchJson<unknown>(apiUrl(`/api/v1/search?${params.toString()}`), {
+      cache: "no-store",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }).then(validateSearchResults),
+  );
 }
 
 export function fetchCurrentDawn(

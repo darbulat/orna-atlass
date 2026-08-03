@@ -40,5 +40,8 @@ decision.
   verified OAuth email conflicts with an existing account.
 - [`lifetime-membership-billing.md`](lifetime-membership-billing.md) — implemented one-time USD
   10.00 lifetime membership through Bereke hosted checkout.
+- [`database-configured-lifetime-membership-access.md`](database-configured-lifetime-membership-access.md)
+  — accepted replacement contract for database-configured lifetime pricing, immutable purchase
+  snapshots, provenance-safe refunds and complete eligible member-catalog access.
 
 `TEMPLATE.md` is scaffolding and does not describe an implemented or accepted feature.

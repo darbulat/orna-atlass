@@ -61,6 +61,10 @@ def create_app() -> FastAPI:
         (f"{settings.api_prefix}/sessions", "get"),
         (f"{settings.api_prefix}/sessions/{{locator}}", "get"),
         (f"{settings.api_prefix}/sessions/{{session_id}}/playback-grants", "post"),
+        (f"{settings.api_prefix}/collections", "get"),
+        (f"{settings.api_prefix}/collections/{{slug}}", "get"),
+        (f"{settings.api_prefix}/search", "get"),
+        (f"{settings.api_prefix}/atlas/points", "get"),
     }
 
     @app.middleware("http")

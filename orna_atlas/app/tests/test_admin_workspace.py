@@ -460,6 +460,11 @@ async def test_admin_users_list_forwards_filters(monkeypatch) -> None:
         return [user]
 
     monkeypatch.setattr(users_service.repository, "list_for_admin", fake_list_for_admin)
+    monkeypatch.setattr(
+        users_service.memberships_repository,
+        "active_grant_user_ids",
+        AsyncMock(return_value={user.id}),
+    )
 
     rows = await users_service.list_admin(
         AsyncMock(),
@@ -480,6 +485,35 @@ async def test_admin_users_list_forwards_filters(monkeypatch) -> None:
         "offset": 3,
     }
     assert rows[0].membership.status == "active"
+
+
+@pytest.mark.asyncio
+async def test_admin_projection_uses_active_grant_union_over_cancelled_membership(monkeypatch) -> None:
+    user = _admin_user(has_membership=True)
+    user.membership.status = "cancelled"
+    monkeypatch.setattr(
+        users_service.repository,
+        "list_for_admin",
+        AsyncMock(return_value=[user]),
+    )
+    monkeypatch.setattr(
+        users_service.memberships_repository,
+        "active_grant_user_ids",
+        AsyncMock(return_value={user.id}),
+    )
+
+    rows = await users_service.list_admin(
+        AsyncMock(),
+        email=None,
+        role=None,
+        is_active=None,
+        membership_status="active",
+        limit=50,
+        offset=0,
+    )
+
+    assert rows[0].membership.status == "active"
+    assert rows[0].membership.is_entitled is True
 
 
 def test_admin_users_routes_project_membership_or_absent(monkeypatch) -> None:
@@ -503,6 +537,11 @@ def test_admin_users_routes_project_membership_or_absent(monkeypatch) -> None:
 
     monkeypatch.setattr(users_service.repository, "list_for_admin", fake_list_for_admin)
     monkeypatch.setattr(users_service.repository, "get_for_admin", fake_get_for_admin)
+    monkeypatch.setattr(
+        users_service.memberships_repository,
+        "active_grant_user_ids",
+        AsyncMock(return_value={row_with_membership.id}),
+    )
     _set_admin_overrides()
 
     client = TestClient(app)
@@ -1203,6 +1242,11 @@ def test_admin_account_detail_revisions_and_mutations_require_if_match(monkeypat
         return row
 
     monkeypatch.setattr(users_service.repository, "get_for_admin", fake_get_for_admin)
+    monkeypatch.setattr(
+        users_service.memberships_repository,
+        "active_grant_user_ids",
+        AsyncMock(return_value={row.id}),
+    )
     _set_admin_overrides()
     client = TestClient(app)
     try:

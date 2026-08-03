@@ -85,7 +85,7 @@ async def test_different_idempotency_keys_share_one_in_flight_checkout() -> None
         await asyncio.wait_for(provider.started.wait(), timeout=2)
         second = await asyncio.wait_for(create("checkout-second"), timeout=2)
 
-        assert second.status == "creating"
+        assert second.status == "provider_outcome_unknown"
         assert second.checkout_url is None
         assert provider.calls == 1
         assert provider.customer_emails == [f"billing-{user_id}@example.test"]

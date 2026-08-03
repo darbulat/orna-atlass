@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -109,10 +110,66 @@ def test_mixed_location_keeps_its_public_preview_when_a_newer_member_session_exi
     )
 
     payload = service.point_from_location(location, include_locked=True).model_dump(mode="json")
+    entitled_payload = service.point_from_location(
+        location,
+        include_locked=True,
+        prefer_entitled_session=True,
+    ).model_dump(mode="json")
 
     assert payload["session_count"] == 2
     assert payload["latest_session"]["slug"] == "public-preview"
     assert payload["latest_session"]["access_level"] == "public"
+    assert entitled_payload["session_count"] == 2
+    assert entitled_payload["latest_session"]["slug"] == "new-member-session"
+    assert entitled_payload["latest_session"]["access_level"] == "members_only"
+
+
+def test_entitled_atlas_preview_skips_newer_archived_member_session() -> None:
+    now = datetime.now(UTC)
+    location = SimpleNamespace(
+        id=uuid4(),
+        slug="archived-member-marsh",
+        name="Archived Member Marsh",
+        description=None,
+        country_code="EE",
+        region="Laanemaa",
+        habitat="wetland",
+        latitude=58.91,
+        longitude=23.72,
+        timezone="Europe/Tallinn",
+        sensitivity_level="normal",
+        coordinate_visibility="exact_public",
+        sessions=[
+            SimpleNamespace(
+                id=uuid4(),
+                slug="withdrawn-member-session",
+                title="Withdrawn Member Session",
+                recorded_at=now,
+                duration_seconds=7200,
+                access_level="members_only",
+                publication_status="published",
+                archived_at=now,
+            ),
+            SimpleNamespace(
+                id=uuid4(),
+                slug="public-preview",
+                title="Public Preview",
+                recorded_at=now - timedelta(days=1),
+                duration_seconds=1800,
+                access_level="public",
+                publication_status="published",
+                archived_at=None,
+            ),
+        ],
+    )
+
+    payload = service.point_from_location(
+        location, include_locked=True, prefer_entitled_session=True
+    )
+
+    assert payload.session_count == 1
+    assert payload.latest_session is not None
+    assert payload.latest_session.slug == "public-preview"
 
 
 def test_protected_location_uses_public_coordinates() -> None:
@@ -152,8 +209,8 @@ async def test_search_trims_short_queries_and_maps_locations(monkeypatch) -> Non
     calls = []
     location_id = uuid4()
 
-    async def fake_search(session, *, query, limit, offset):
-        calls.append((query, limit, offset))
+    async def fake_search(session, *, query, limit, offset, access_levels):
+        calls.append((query, limit, offset, access_levels))
         location = Location(
             id=location_id,
             slug="oak-forest",
@@ -178,10 +235,37 @@ async def test_search_trims_short_queries_and_maps_locations(monkeypatch) -> Non
 
     results = await service.search(SimpleNamespace(), query=" oak ", limit=5, offset=2)
 
-    assert calls == [("oak", 5, 2)]
+    assert calls == [("oak", 5, 2, ("public",))]
     assert results[0].type == "location"
     assert results[0].id == location_id
     assert results[0].slug == "oak-forest"
     assert results[0].atlas_point is not None
     assert results[0].atlas_point.slug == "oak-forest"
     assert results[0].atlas_point.timezone == "Europe/Riga"
+
+
+@pytest.mark.asyncio
+async def test_search_requests_members_only_projection_for_entitled_user(monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    async def fake_search(session, *, query, limit, offset, access_levels=("public",)):
+        calls.append(access_levels)
+        return []
+
+    monkeypatch.setattr(service.repository, "search_locations_and_sessions", fake_search)
+    monkeypatch.setattr(
+        service.sessions_service,
+        "visible_access_levels",
+        AsyncMock(return_value=("public", "members_only")),
+        raising=False,
+    )
+
+    await service.search(
+        SimpleNamespace(),
+        query="owl",
+        limit=5,
+        offset=0,
+        current_user=SimpleNamespace(id=str(uuid4()), role="member"),
+    )
+
+    assert calls == [("public", "members_only")]

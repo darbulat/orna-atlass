@@ -228,6 +228,73 @@ def test_collection_summary_counts_public_sessions_only() -> None:
     assert summary["location_count"] == 1
 
 
+def test_collection_summary_counts_members_only_for_entitled_projection() -> None:
+    location = SimpleNamespace(coordinate_visibility="exact_public")
+    collection = SimpleNamespace(
+        id=uuid4(),
+        slug="member-archive",
+        title="Member Archive",
+        description=None,
+        sort_order=0,
+        location_links=[],
+        session_links=[
+            SimpleNamespace(
+                session=SimpleNamespace(
+                    access_level="public",
+                    publication_status="published",
+                    location=location,
+                )
+            ),
+            SimpleNamespace(
+                session=SimpleNamespace(
+                    access_level="members_only",
+                    publication_status="published",
+                    location=location,
+                )
+            ),
+        ],
+    )
+
+    summary = collections_service.summary_from_collection(
+        collection, access_levels=("public", "members_only")
+    ).model_dump(mode="json")
+
+    assert summary["session_count"] == 2
+
+
+def test_entitled_collection_excludes_archived_sessions_from_summary_and_detail() -> None:
+    location = SimpleNamespace(coordinate_visibility="exact_public")
+    collection = SimpleNamespace(
+        id=uuid4(),
+        slug="withdrawn-member-archive",
+        title="Withdrawn Member Archive",
+        description=None,
+        sort_order=0,
+        location_links=[],
+        session_links=[
+            SimpleNamespace(
+                session=SimpleNamespace(
+                    access_level="members_only",
+                    publication_status="published",
+                    archived_at=datetime.now(UTC),
+                    location=location,
+                )
+            )
+        ],
+    )
+
+    summary = collections_service.summary_from_collection(
+        collection, access_levels=("public", "members_only")
+    )
+    detail = collections_service.detail_from_collection(
+        collection, access_levels=("public", "members_only")
+    )
+
+    assert summary.session_count == 0
+    assert detail.session_count == 0
+    assert detail.sessions == []
+
+
 def test_collection_detail_includes_summary_counts() -> None:
     now = datetime.now(UTC)
     public_location = SimpleNamespace(coordinate_visibility="exact_public")

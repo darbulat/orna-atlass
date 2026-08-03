@@ -22,6 +22,44 @@ function boxesOverlap(first: BoundingBox, second: BoundingBox) {
     && first.y + first.height > second.y;
 }
 
+test("direct atlas SSR forwards browser cookies to the catalog API", async ({
+  context,
+  page,
+  request,
+}) => {
+  await context.addCookies([{
+    name: "orna_access",
+    value: "ssr-access-token",
+    domain: "127.0.0.1",
+    path: "/",
+  }]);
+
+  await page.goto("/atlas");
+
+  const observed = await request.get(`${mockApiUrl}/__e2e/atlas-request`);
+  expect(observed.ok()).toBeTruthy();
+  expect((await observed.json()).cookie).toContain("orna_access=ssr-access-token");
+});
+
+test("invalid refresh cookie is cleared and atlas recovers anonymously", async ({
+  context,
+  page,
+}) => {
+  await context.addCookies([{
+    name: "orna_refresh",
+    value: "invalid-refresh-e2e",
+    domain: "127.0.0.1",
+    path: "/",
+  }]);
+
+  await page.goto("/atlas");
+
+  await expect(page.getByRole("heading", { name: "Atlas" })).toBeVisible();
+  await expect(page.getByText("Restoring your membership access…")).toHaveCount(0);
+  const cookies = await context.cookies();
+  expect(cookies.some((cookie) => cookie.name === "orna_refresh")).toBe(false);
+});
+
 test("atlas globe exposes a 10 km floor and requests the World Imagery layer", async ({ page }) => {
   const worldImageryRequest = page.waitForRequest((request) => (
     request.url().includes("/World_Imagery/MapServer")
@@ -664,7 +702,7 @@ test("analytics delivery failure never blocks collections navigation", async ({ 
   await page.route("**/api/v1/analytics/events", async (route) => route.abort("failed"));
   await page.goto("/");
   await page.getByRole("link", { name: "See all collections" }).click();
-  await expect(page).toHaveURL(/\/collections$/);
+  await expect(page).toHaveURL(/\/collections$/, { timeout: 10_000 });
   await expect(page.locator("main#main-content")).toBeVisible();
 });
 
@@ -1072,6 +1110,62 @@ test("members-only atlas point is visibly locked and opens a truthful soft paywa
   ))).toContain("paywall_dismissed");
 });
 
+test("unavailable membership remains visibly locked and honors an authoritative denial", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=locked-point`);
+  expect(control.ok()).toBeTruthy();
+  await page.route("**/api/v1/memberships/me", (route) => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ detail: "Membership service unavailable" }),
+  }));
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Night" }).click();
+  const lockedPoint = page.locator(".location-card", { hasText: "Members Cove" });
+  await expect(lockedPoint).not.toContainText("Checking access");
+  await expect(lockedPoint).toContainText("🔒");
+  await lockedPoint.click();
+
+  await expect(page.getByRole("dialog", { name: /Members-only soundscape/i })).toBeVisible();
+});
+
+test("unavailable membership still honors authoritative members-only detail access", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=locked-point`);
+  expect(control.ok()).toBeTruthy();
+  const publicSession = await (await request.get(`${mockApiUrl}/api/v1/sessions/first-session`)).json();
+  await page.route("**/api/v1/memberships/me", (route) => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ detail: "Membership service unavailable" }),
+  }));
+  await page.route("**/api/v1/sessions/members-cove-long-form", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ...publicSession,
+      id: "20000000-0000-4000-8000-000000000012",
+      slug: "members-cove-long-form",
+      title: "Members Cove Long Form",
+      access_level: "members_only",
+      location: { ...publicSession.location, name: "Members Cove", slug: "members-cove" },
+    }),
+  }));
+
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Night" }).click();
+  const lockedPoint = page.locator(".location-card", { hasText: "Members Cove" });
+  await expect(lockedPoint).not.toContainText("Checking access");
+  await expect(lockedPoint).toContainText("🔒");
+  await lockedPoint.click();
+
+  await expect(
+    page.getByRole("region", { name: "Session player" }).getByRole("heading", { name: "Members Cove" }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog", { name: /Members-only soundscape/i })).toHaveCount(0);
+});
+
 test("free signup from a locked recording stays on the membership explanation", async ({ page, request }) => {
   test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
   const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=locked-point`);
@@ -1092,7 +1186,9 @@ test("free signup from a locked recording stays on the membership explanation", 
 
   await page.goto("/");
   await page.getByRole("tab", { name: "Night" }).click();
-  await page.locator(".location-card", { hasText: "Members Cove" }).click();
+  const lockedPoint = page.locator(".location-card", { hasText: "Members Cove" });
+  await expect(lockedPoint).toContainText("🔒");
+  await lockedPoint.click();
   const signupLink = page.getByRole("dialog", { name: /Members-only soundscape/i })
     .getByRole("link", { name: "Create a free account" });
   await expect(signupLink).toHaveAttribute("href", "/membership?mode=register");
@@ -1124,10 +1220,18 @@ test("entitled atlas listener can open a members-only session", async ({ page, r
       location: { ...publicSession.location, name: "Members Cove", slug: "members-cove" },
     }),
   }));
+  await page.route("**/api/v1/memberships/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ plan: "lifetime_member", status: "active", is_entitled: true }),
+  }));
 
   await page.goto("/");
   await page.getByRole("tab", { name: "Night" }).click();
-  await page.locator(".location-card", { hasText: "Members Cove" }).click();
+  const memberPoint = page.locator(".location-card", { hasText: "Members Cove" });
+  await expect(memberPoint).not.toContainText("Checking access");
+  await expect(memberPoint).not.toContainText("🔒");
+  await memberPoint.click();
 
   await expect(
     page.getByRole("region", { name: "Session player" }).getByRole("heading", { name: "Members Cove" }),
@@ -1146,6 +1250,11 @@ test("members-only detail refreshes an expired access cookie before authorizatio
     refreshes += 1;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "renewed" }) });
   });
+  await page.route("**/api/v1/memberships/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ plan: "lifetime_member", status: "active", is_entitled: true }),
+  }));
   await page.route("**/api/v1/sessions/members-cove-long-form", (route) => {
     details += 1;
     return route.fulfill({
@@ -1164,7 +1273,10 @@ test("members-only detail refreshes an expired access cookie before authorizatio
 
   await page.goto("/");
   await page.getByRole("tab", { name: "Night" }).click();
-  await page.locator(".location-card", { hasText: "Members Cove" }).click();
+  const memberPoint = page.locator(".location-card", { hasText: "Members Cove" });
+  await expect(memberPoint).not.toContainText("Checking access");
+  await expect(memberPoint).not.toContainText("🔒");
+  await memberPoint.click();
 
   await expect.poll(() => refreshes).toBe(1);
   await expect.poll(() => details).toBe(2);

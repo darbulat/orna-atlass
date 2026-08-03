@@ -1,12 +1,12 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import exists, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from orna_atlas.app.modules.users.models import User
-from orna_atlas.app.modules.memberships.models import Membership
+from orna_atlas.app.modules.memberships.models import Membership, MembershipEntitlementGrant
 
 
 async def get_by_id(session: AsyncSession, user_id: UUID) -> User | None:
@@ -117,10 +117,25 @@ async def list_for_admin(
 
     if membership_status:
         normalized = membership_status.lower()
-        if normalized == "inactive":
-            stmt = stmt.where((Membership.status == "inactive") | (Membership.id.is_(None)))
+        active_grant = exists(
+            select(MembershipEntitlementGrant.id).where(
+                MembershipEntitlementGrant.user_id == User.id,
+                MembershipEntitlementGrant.status == "active",
+                or_(
+                    MembershipEntitlementGrant.expires_at.is_(None),
+                    MembershipEntitlementGrant.expires_at > datetime.now(UTC),
+                ),
+            )
+        )
+        if normalized == "active":
+            stmt = stmt.where(active_grant)
+        elif normalized == "inactive":
+            stmt = stmt.where(
+                ~active_grant,
+                (Membership.status == "inactive") | (Membership.id.is_(None)),
+            )
         else:
-            stmt = stmt.where(Membership.status == normalized)
+            stmt = stmt.where(~active_grant, Membership.status == normalized)
 
     result = await session.execute(stmt)
     return list(result.scalars().unique().all())

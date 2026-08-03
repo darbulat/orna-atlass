@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 
 import { SiteHeader } from "../../../components/site-header";
+import { AuthRecoveryBoundary } from "../../../components/auth-recovery-boundary";
 import { ApiError, apiErrorMessage } from "../../../lib/api/client";
 import { fetchCollectionDetail, type CollectionDetail } from "../../../lib/api/collections";
 
@@ -8,22 +10,36 @@ export const dynamic = "force-dynamic";
 
 export default async function CollectionPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const cookieHeader = (await cookies()).getAll().map(({ name, value }) => `${name}=${value}`).join("; ");
   let collection: CollectionDetail;
   try {
-    collection = await fetchCollectionDetail(slug);
+    collection = await fetchCollectionDetail(slug, cookieHeader ? { Cookie: cookieHeader } : {});
   } catch (error) {
     const notFound = error instanceof ApiError && error.status === 404;
+    const recoverAuthentication = error instanceof ApiError && error.status === 401;
     return (
       <main className="shell" id="main-content">
         <SiteHeader active="collections" />
-        <section className="panel unavailable-panel" role={notFound ? "status" : "alert"}>
+        <section
+          className="panel unavailable-panel"
+          role={notFound || recoverAuthentication ? "status" : "alert"}
+        >
           <p className="eyebrow">Collection</p>
-          <h1>{notFound ? "Collection not found" : "Collection unavailable"}</h1>
-          <p>
+          <h1>
             {notFound
+              ? "Collection not found"
+              : recoverAuthentication
+                ? "Restoring membership access"
+                : "Collection unavailable"}
+          </h1>
+          <p>
+            {recoverAuthentication
+              ? "Your session is being refreshed before this collection is shown."
+              : notFound
               ? "This collection does not exist or is no longer published."
               : apiErrorMessage(error, "This collection could not be loaded.")}
           </p>
+          {recoverAuthentication ? <AuthRecoveryBoundary /> : null}
           <small>{formatSlug(slug)}</small>
         </section>
       </main>

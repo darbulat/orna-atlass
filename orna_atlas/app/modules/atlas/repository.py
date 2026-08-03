@@ -218,15 +218,21 @@ async def list_atlas_clusters(
 
 
 async def search_locations_and_sessions(
-    session: AsyncSession, *, query: str, limit: int, offset: int
+    session: AsyncSession,
+    *,
+    query: str,
+    limit: int,
+    offset: int,
+    access_levels: tuple[str, ...] = ("public",),
 ) -> list[Location | RecordingSession]:
     term = f"%{query}%"
     location_hits = (
         select(Location)
         .join(RecordingSession)
         .where(
-            RecordingSession.access_level == "public",
+            RecordingSession.access_level.in_(access_levels),
             RecordingSession.publication_status == "published",
+            RecordingSession.archived_at.is_(None),
             publicly_discoverable_clause(),
             or_(Location.name.ilike(term), Location.region.ilike(term), Location.habitat.ilike(term)),
         )
@@ -243,8 +249,9 @@ async def search_locations_and_sessions(
         select(RecordingSession)
         .join(Location)
         .where(
-            RecordingSession.access_level == "public",
+            RecordingSession.access_level.in_(access_levels),
             RecordingSession.publication_status == "published",
+            RecordingSession.archived_at.is_(None),
             publicly_discoverable_clause(),
             or_(RecordingSession.title.ilike(term), RecordingSession.description.ilike(term)),
         )

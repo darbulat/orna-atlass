@@ -1,6 +1,6 @@
 # Spec: Lifetime membership billing
 
-- Status: implemented
+- Status: superseded by `database-configured-lifetime-membership-access.md`
 - Owner: backend/frontend
 - Last updated: 2026-07-30
 - Related issue/PR: direct user request

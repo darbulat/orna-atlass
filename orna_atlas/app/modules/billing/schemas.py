@@ -2,11 +2,14 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+from orna_atlas.app.modules.admin.context import build_admin_etag
 
 
 PurchaseStatus = Literal[
-    "creating", "pending", "paid", "failed", "expired", "refund_requested", "refunded"
+    "creating", "provider_outcome_unknown", "pending", "paid", "failed", "expired",
+    "refund_requested", "refunded"
 ]
 
 
@@ -19,6 +22,29 @@ class BillingOfferRead(BaseModel):
     is_recurring: Literal[False] = False
     checkout_available: bool
     refund_summary: str = "Full refund requests are accepted within 14 calendar days."
+
+
+class AdminBillingOfferCreate(BaseModel):
+    amount_minor: int = Field(gt=0)
+    currency: Literal["USD", "KZT"]
+
+
+class AdminBillingOfferRead(BaseModel):
+    id: UUID
+    product_code: str
+    version: int
+    amount_minor: int
+    currency: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    @computed_field(return_type=str)
+    @property
+    def revision(self) -> str:
+        return build_admin_etag(resource_id=self.id, updated_at=self.updated_at)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CheckoutCreate(BaseModel):

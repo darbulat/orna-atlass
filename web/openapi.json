@@ -41,6 +41,86 @@
         "title": "AccountTokenRequest",
         "type": "object"
       },
+      "AdminBillingOfferCreate": {
+        "properties": {
+          "amount_minor": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "enum": [
+              "USD",
+              "KZT"
+            ],
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount_minor",
+          "currency"
+        ],
+        "title": "AdminBillingOfferCreate",
+        "type": "object"
+      },
+      "AdminBillingOfferRead": {
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "revision": {
+            "readOnly": true,
+            "title": "Revision",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "product_code",
+          "version",
+          "amount_minor",
+          "currency",
+          "is_active",
+          "created_at",
+          "updated_at",
+          "revision"
+        ],
+        "title": "AdminBillingOfferRead",
+        "type": "object"
+      },
       "AdminCollectionResource": {
         "properties": {
           "created_at": {
@@ -1165,6 +1245,7 @@
           "status": {
             "enum": [
               "creating",
+              "provider_outcome_unknown",
               "pending",
               "paid",
               "failed",
@@ -3797,6 +3878,7 @@
           "status": {
             "enum": [
               "creating",
+              "provider_outcome_unknown",
               "pending",
               "paid",
               "failed",
@@ -5059,6 +5141,213 @@
           }
         ],
         "summary": "List Audit Events",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/billing/offers/lifetime-member": {
+      "get": {
+        "operationId": "get_lifetime_membership_offer_api_v1_admin_billing_offers_lifetime_member_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBillingOfferRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorResponse"
+                }
+              }
+            },
+            "description": "Administrator access required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Lifetime Membership Offer",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "operationId": "replace_lifetime_membership_offer_api_v1_admin_billing_offers_lifetime_member_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "title": "If-Match",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-orna-admin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Orna-Admin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "orna_access",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orna Access"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminBillingOfferCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBillingOfferRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorResponse"
+                }
+              }
+            },
+            "description": "Administrator access required"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorResponse"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorResponse"
+                }
+              }
+            },
+            "description": "Precondition Required"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Replace Lifetime Membership Offer",
         "tags": [
           "admin"
         ]
@@ -8352,6 +8641,15 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {},
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
         "summary": "Get Atlas Points",
         "tags": [
           "atlas"
@@ -9424,6 +9722,15 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {},
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
         "summary": "List Collections",
         "tags": [
           "collections"
@@ -9466,6 +9773,15 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {},
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
         "summary": "Get Collection",
         "tags": [
           "collections"
@@ -9727,6 +10043,15 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {},
+          {
+            "HTTPBearer": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
         "summary": "Search",
         "tags": [
           "atlas"

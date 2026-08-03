@@ -1,17 +1,22 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 
 import { SiteHeader } from "../../components/site-header";
-import { apiErrorMessage } from "../../lib/api/client";
+import { AuthRecoveryBoundary } from "../../components/auth-recovery-boundary";
+import { ApiError, apiErrorMessage } from "../../lib/api/client";
 import { fetchCollections, type CollectionSummary } from "../../lib/api/collections";
 
 export const dynamic = "force-dynamic";
 
 export default async function CollectionsPage() {
+  const cookieHeader = (await cookies()).getAll().map(({ name, value }) => `${name}=${value}`).join("; ");
   let collections: CollectionSummary[] = [];
   let error: string | null = null;
+  let recoverAuthentication = false;
   try {
-    collections = await fetchCollections(48);
+    collections = await fetchCollections(48, cookieHeader ? { Cookie: cookieHeader } : {});
   } catch (cause) {
+    recoverAuthentication = cause instanceof ApiError && cause.status === 401;
     error = apiErrorMessage(cause, "Collections could not be loaded.");
   }
 
@@ -24,7 +29,8 @@ export default async function CollectionsPage() {
           <h1>Collections</h1>
           <p>Follow habitats, migrations and field-recording stories across the atlas.</p>
         </section>
-        {error ? <p className="atlas-data-warning" role="alert">{error}</p> : null}
+        {recoverAuthentication ? <AuthRecoveryBoundary /> : null}
+        {error && !recoverAuthentication ? <p className="atlas-data-warning" role="alert">{error}</p> : null}
         {!error && collections.length === 0 ? <p role="status">No published collections yet.</p> : null}
         <section className="panel featured-grid" aria-label="Published collections">
           {collections.map((collection) => (

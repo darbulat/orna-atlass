@@ -6,7 +6,12 @@ relying on incidental router imports leaves parts of the mapper registry empty.
 
 from orna_atlas.app.modules.admin.models import AuditEvent
 from orna_atlas.app.modules.auth.models import RefreshToken
-from orna_atlas.app.modules.billing.models import BillingProviderEvent, BillingPurchase, BillingRefundRequest
+from orna_atlas.app.modules.billing.models import (
+    BillingOffer,
+    BillingProviderEvent,
+    BillingPurchase,
+    BillingRefundRequest,
+)
 from orna_atlas.app.modules.collections.models import Collection, CollectionLocation, CollectionSession
 from orna_atlas.app.modules.locations.models import Location
 from orna_atlas.app.modules.library.models import ListeningHistory, UserFavorite
@@ -16,7 +21,7 @@ from orna_atlas.app.modules.media.models import (
     ProcessingJob,
     RecordingSegment,
 )
-from orna_atlas.app.modules.memberships.models import Membership
+from orna_atlas.app.modules.memberships.models import Membership, MembershipEntitlementGrant
 from orna_atlas.app.modules.sessions.models import BirdVocalPart, RecordingSession
 from orna_atlas.app.modules.users.models import User
 
@@ -24,6 +29,7 @@ __all__ = [
     "AuditEvent",
     "BirdVocalPart",
     "BillingProviderEvent",
+    "BillingOffer",
     "BillingPurchase",
     "BillingRefundRequest",
     "Collection",
@@ -34,6 +40,7 @@ __all__ = [
     "ListeningHistory",
     "MediaAsset",
     "Membership",
+    "MembershipEntitlementGrant",
     "ProcessingJob",
     "RecordingSegment",
     "RecordingSession",
