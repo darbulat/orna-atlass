@@ -25,10 +25,9 @@ export async function fetchBillingOffer(init: RequestInit = {}): Promise<Billing
   const offer = await billingRequest<BillingOffer>("/api/v1/billing/offer", init);
   if (
     offer.product_code !== "lifetime_member"
-    || !(
-      (offer.amount_minor === 1000 && offer.currency === "USD")
-      || (offer.amount_minor === 200 && offer.currency === "KZT")
-    )
+    || !Number.isSafeInteger(offer.amount_minor)
+    || offer.amount_minor <= 0
+    || !["USD", "KZT"].includes(offer.currency)
     || offer.is_recurring !== false
   ) {
     throw new ApiError("The membership offer is unavailable", { kind: "invalid_response" });

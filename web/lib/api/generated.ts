@@ -21,6 +21,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/billing/offers/lifetime-member": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Lifetime Membership Offer */
+        get: operations["get_lifetime_membership_offer_api_v1_admin_billing_offers_lifetime_member_get"];
+        /** Replace Lifetime Membership Offer */
+        put: operations["replace_lifetime_membership_offer_api_v1_admin_billing_offers_lifetime_member_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/collections": {
         parameters: {
             query?: never;
@@ -1142,6 +1160,46 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** AdminBillingOfferCreate */
+        AdminBillingOfferCreate: {
+            /** Amount Minor */
+            amount_minor: number;
+            /**
+             * Currency
+             * @enum {string}
+             */
+            currency: "USD" | "KZT";
+        };
+        /** AdminBillingOfferRead */
+        AdminBillingOfferRead: {
+            /** Amount Minor */
+            amount_minor: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Product Code */
+            product_code: string;
+            /** Revision */
+            readonly revision: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
         /** AdminCollectionResource */
         AdminCollectionResource: {
             /**
@@ -1589,7 +1647,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "creating" | "pending" | "paid" | "failed" | "expired" | "refund_requested" | "refunded";
+            status: "creating" | "provider_outcome_unknown" | "pending" | "paid" | "failed" | "expired" | "refund_requested" | "refunded";
         };
         /** CollectionCreate */
         CollectionCreate: {
@@ -2546,7 +2604,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "creating" | "pending" | "paid" | "failed" | "expired" | "refund_requested" | "refunded";
+            status: "creating" | "provider_outcome_unknown" | "pending" | "paid" | "failed" | "expired" | "refund_requested" | "refunded";
         };
         /** RecordingIntegrityRead */
         RecordingIntegrityRead: {
@@ -2963,6 +3021,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_lifetime_membership_offer_api_v1_admin_billing_offers_lifetime_member_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-orna-admin"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminBillingOfferRead"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_lifetime_membership_offer_api_v1_admin_billing_offers_lifetime_member_put: {
+        parameters: {
+            query?: never;
+            header: {
+                "If-Match": string;
+                "x-orna-admin"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                orna_access?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminBillingOfferCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminBillingOfferRead"];
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Administrator access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorResponse"];
                 };
             };
         };

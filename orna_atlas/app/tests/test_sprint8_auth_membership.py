@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 from uuid import uuid4
 
 import pytest
@@ -40,9 +40,120 @@ from orna_atlas.app.modules.auth.schemas import (
     RegisterRequest,
 )
 from orna_atlas.app.modules.memberships.models import Membership
+from orna_atlas.app.modules.memberships import service as memberships_service
+from orna_atlas.app.modules.memberships.schemas import MembershipUpdate
 from orna_atlas.app.modules.sessions import service as sessions_service
 from orna_atlas.app.modules.users import service as users_service
 from orna_atlas.app import seed_atlas
+
+
+@pytest.mark.asyncio
+async def test_membership_projection_uses_active_grant_union(monkeypatch) -> None:
+    user_id = uuid4()
+    row = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        status="cancelled",
+        plan="lifetime_member",
+        starts_at=datetime.now(UTC),
+        expires_at=None,
+    )
+    monkeypatch.setattr(
+        memberships_service.repository, "get_for_user", AsyncMock(return_value=row)
+    )
+    monkeypatch.setattr(
+        memberships_service.repository, "has_active_grant", AsyncMock(return_value=True)
+    )
+
+    result = await memberships_service.entitlement_for_user(AsyncMock(), user_id)
+
+    assert result.is_entitled is True
+    assert result.status == "active"
+
+
+@pytest.mark.asyncio
+async def test_admin_cancellation_revokes_migrated_legacy_membership_grant(monkeypatch) -> None:
+    user_id = uuid4()
+    membership = SimpleNamespace(id=uuid4(), updated_at=datetime.now(UTC))
+    db = AsyncMock()
+    monkeypatch.setattr(
+        memberships_service,
+        "require_user_for_update",
+        AsyncMock(return_value=SimpleNamespace(id=user_id, updated_at=datetime.now(UTC))),
+    )
+    monkeypatch.setattr(
+        memberships_service.repository, "get_for_user", AsyncMock(return_value=membership)
+    )
+    monkeypatch.setattr(
+        memberships_service.repository, "upsert", AsyncMock(return_value=membership)
+    )
+    revoke_grant = AsyncMock(return_value=True)
+    monkeypatch.setattr(memberships_service.repository, "revoke_grant", revoke_grant)
+    monkeypatch.setattr(memberships_service, "add_audit_event", AsyncMock())
+
+    await memberships_service.update_membership(
+        db,
+        user_id,
+        MembershipUpdate(status="cancelled", plan="lifetime_member"),
+        actor_user_id=uuid4(),
+    )
+
+    assert revoke_grant.await_args_list == [
+        call(db, source_type="legacy", source_id=membership.id),
+        call(db, source_type="admin", source_id=membership.id),
+    ]
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_admin_reactivation_preserves_migrated_legacy_grant_source(monkeypatch) -> None:
+    user_id = uuid4()
+    membership = SimpleNamespace(id=uuid4(), updated_at=datetime.now(UTC))
+    db = AsyncMock()
+    monkeypatch.setattr(
+        memberships_service,
+        "require_user_for_update",
+        AsyncMock(return_value=SimpleNamespace(id=user_id, updated_at=datetime.now(UTC))),
+    )
+    monkeypatch.setattr(
+        memberships_service.repository, "get_for_user", AsyncMock(return_value=membership)
+    )
+    monkeypatch.setattr(
+        memberships_service.repository, "upsert", AsyncMock(return_value=membership)
+    )
+    monkeypatch.setattr(
+        memberships_service.repository,
+        "membership_grant_source_type",
+        AsyncMock(return_value="legacy"),
+    )
+    upsert_grant = AsyncMock()
+    monkeypatch.setattr(memberships_service.repository, "upsert_grant", upsert_grant)
+    monkeypatch.setattr(memberships_service, "add_audit_event", AsyncMock())
+
+    await memberships_service.update_membership(
+        db,
+        user_id,
+        MembershipUpdate(status="active", plan="lifetime_member"),
+        actor_user_id=uuid4(),
+    )
+
+    upsert_grant.assert_awaited_once_with(
+        db,
+        user_id,
+        source_type="legacy",
+        source_id=membership.id,
+        plan="lifetime_member",
+        expires_at=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_playback_entitlement_fails_closed_without_active_grant(monkeypatch) -> None:
+    monkeypatch.setattr(
+        memberships_service.repository, "has_active_grant", AsyncMock(return_value=False)
+    )
+
+    assert not await memberships_service.has_playback_entitlement(AsyncMock(), uuid4())
 
 
 def test_password_hash_is_salted_and_verifiable() -> None:

@@ -1,7 +1,7 @@
 import type { components } from "./generated";
 import { runExplicitAuthentication } from "./auth-refresh";
 import { ApiError, fetchJson } from "./client";
-import { apiUrl } from "./sessions";
+import { apiUrl, withBrowserAuthRefresh } from "./sessions";
 import {
   beginAccountAuthBoundary,
   cancelAccountAuthBoundary,
@@ -249,7 +249,9 @@ export async function fetchCurrentUser(): Promise<User> {
 
 export async function fetchMembership(): Promise<Membership> {
   const accountEpoch = getAccountAuthEpoch();
-  const membership = await apiRequest<Membership>("/api/v1/memberships/me");
+  const membership = await withBrowserAuthRefresh(() =>
+    apiRequest<Membership>("/api/v1/memberships/me"),
+  );
   if (accountEpoch !== getAccountAuthEpoch()) {
     throw new DOMException("Authentication changed while loading membership", "AbortError");
   }

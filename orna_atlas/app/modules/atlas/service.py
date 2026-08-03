@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import HttpUrl, TypeAdapter, ValidationError as PydanticValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from orna_atlas.app.core.security import CurrentUser
+from orna_atlas.app.modules.sessions import service as sessions_service
 
 from orna_atlas.app.core.domain_errors import ValidationError
 from orna_atlas.app.modules.atlas import repository
@@ -125,7 +127,12 @@ def _dawn_candidate_limit(limit: int) -> int:
     )
 
 
-def point_from_location(location: Location, *, include_locked: bool = False) -> AtlasPoint | None:
+def point_from_location(
+    location: Location,
+    *,
+    include_locked: bool = False,
+    prefer_entitled_session: bool = False,
+) -> AtlasPoint | None:
     if location.latitude is None or location.longitude is None:
         return None
     discoverable_sessions = sorted(
@@ -138,9 +145,13 @@ def point_from_location(location: Location, *, include_locked: bool = False) -> 
         key=lambda item: item.recorded_at,
         reverse=True,
     )
-    latest = next(
-        (session for session in discoverable_sessions if session.access_level == "public"),
-        discoverable_sessions[0] if discoverable_sessions else None,
+    latest = (
+        discoverable_sessions[0]
+        if prefer_entitled_session and discoverable_sessions
+        else next(
+            (session for session in discoverable_sessions if session.access_level == "public"),
+            discoverable_sessions[0] if discoverable_sessions else None,
+        )
     )
     return AtlasPoint(
         id=location.id,
@@ -174,6 +185,7 @@ def point_from_location(location: Location, *, include_locked: bool = False) -> 
 
 async def get_atlas_points(
     session: AsyncSession,
+    current_user: CurrentUser | None = None,
     *,
     bbox: str | None,
     zoom: int,
@@ -209,10 +221,18 @@ async def get_atlas_points(
             habitats=normalized_habitats,
             limit=limit,
         )
+        access_levels = await sessions_service.visible_access_levels(session, current_user)
         payload_points = [
             point
             for location in locations
-            if (point := point_from_location(location, include_locked=True)) is not None
+            if (
+                point := point_from_location(
+                    location,
+                    include_locked=True,
+                    prefer_entitled_session="members_only" in access_levels,
+                )
+            )
+            is not None
         ]
     return AtlasPointsResponse(
         bbox=None
@@ -355,19 +375,33 @@ async def get_follow_dawn(
     )
 
 
-async def search(session: AsyncSession, *, query: str, limit: int, offset: int) -> list[SearchResult]:
+async def search(
+    session: AsyncSession,
+    *,
+    query: str,
+    limit: int,
+    offset: int,
+    current_user: CurrentUser | None = None,
+) -> list[SearchResult]:
     if len(query.strip()) < 2:
         return []
+    access_levels = await sessions_service.visible_access_levels(session, current_user)
     rows = await repository.search_locations_and_sessions(
         session,
         query=query.strip(),
         limit=limit,
         offset=offset,
+        access_levels=access_levels,
     )
     results: list[SearchResult] = []
     for row in rows:
         if isinstance(row, Location):
-            atlas_point = point_from_location(row)
+            entitled = "members_only" in access_levels
+            atlas_point = point_from_location(
+                row,
+                include_locked=entitled,
+                prefer_entitled_session=entitled,
+            )
             results.append(
                 SearchResult(
                     type="location",

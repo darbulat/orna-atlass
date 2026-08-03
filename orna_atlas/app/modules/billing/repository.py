@@ -5,10 +5,32 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from orna_atlas.app.modules.billing.models import (
+    BillingOffer,
     BillingProviderEvent,
     BillingPurchase,
     BillingRefundRequest,
 )
+
+
+async def get_active_offer(
+    db: AsyncSession, product_code: str = "lifetime_member", *, for_update: bool = False
+) -> BillingOffer | None:
+    statement = select(BillingOffer).where(
+        BillingOffer.product_code == product_code,
+        BillingOffer.is_active.is_(True),
+    )
+    if for_update:
+        statement = statement.with_for_update()
+    return await db.scalar(statement)
+
+
+async def next_offer_version(
+    db: AsyncSession, product_code: str = "lifetime_member"
+) -> int:
+    current = await db.scalar(
+        select(func.max(BillingOffer.version)).where(BillingOffer.product_code == product_code)
+    )
+    return (current or 0) + 1
 
 
 async def create_purchase(
@@ -19,6 +41,8 @@ async def create_purchase(
     idempotency_key: str,
     amount_minor: int,
     currency: str,
+    offer_id: UUID | None = None,
+    offer_version: int | None = None,
 ) -> BillingPurchase:
     purchase = BillingPurchase(
         user_id=user_id,
@@ -27,6 +51,8 @@ async def create_purchase(
         product_code="lifetime_member",
         amount_minor=amount_minor,
         currency=currency,
+        offer_id=offer_id,
+        offer_version=offer_version,
         status="creating",
     )
     db.add(purchase)
@@ -74,7 +100,7 @@ async def get_open_for_user(db: AsyncSession, user_id: UUID) -> BillingPurchase 
         select(BillingPurchase)
         .where(
             BillingPurchase.user_id == user_id,
-            BillingPurchase.status.in_(("creating", "pending")),
+            BillingPurchase.status.in_(("creating", "provider_outcome_unknown", "pending")),
         )
         .order_by(BillingPurchase.created_at.desc(), BillingPurchase.id)
         .limit(1)

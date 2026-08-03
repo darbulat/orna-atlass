@@ -29,6 +29,11 @@ from orna_atlas.app.modules.admin.schemas import (
     AuditEventRead,
 )
 from orna_atlas.app.modules.collections import service as collections_service
+from orna_atlas.app.modules.billing import service as billing_service
+from orna_atlas.app.modules.billing.schemas import (
+    AdminBillingOfferCreate,
+    AdminBillingOfferRead,
+)
 from orna_atlas.app.modules.collections.schemas import CollectionCreate, CollectionUpdate
 from orna_atlas.app.core.pagination import PageLimit, PageOffset
 from orna_atlas.app.modules.locations import service as locations_service
@@ -639,6 +644,46 @@ async def update_membership(
             user_agent=context.user_agent,
         )
     )
+
+
+@router.get("/billing/offers/lifetime-member", response_model=AdminBillingOfferRead)
+async def get_lifetime_membership_offer(
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
+    _: CurrentUser = admin_dependency,
+) -> AdminBillingOfferRead:
+    offer = await billing_service.active_offer_for_admin(session)
+    entity = AdminBillingOfferRead.model_validate(offer)
+    response.headers["ETag"] = entity.revision
+    return entity
+
+
+@router.put(
+    "/billing/offers/lifetime-member",
+    response_model=AdminBillingOfferRead,
+    dependencies=[Depends(_require_admin_cookie_origin)],
+)
+async def replace_lifetime_membership_offer(
+    data: AdminBillingOfferCreate,
+    request: Request,
+    response: Response,
+    if_match: str = Header(alias="If-Match"),
+    session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser = admin_dependency,
+) -> AdminBillingOfferRead:
+    context = build_admin_mutation_context(current_user, request)
+    offer = await billing_service.replace_active_offer(
+        session,
+        data,
+        if_match=if_match,
+        actor_user_id=context.actor_user_id,
+        actor_mode=context.actor_mode,
+        ip_address=context.ip_address,
+        user_agent=context.user_agent,
+    )
+    entity = AdminBillingOfferRead.model_validate(offer)
+    response.headers["ETag"] = entity.revision
+    return entity
 
 
 @router.get("/audit-events", response_model=list[AuditEventRead])

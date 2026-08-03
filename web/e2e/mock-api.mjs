@@ -253,6 +253,7 @@ let sessionDetailAuthState = "ok";
 let sessionDetailAuthReads = 0;
 let sessionDetailRefreshCalls = 0;
 let nextSearchResponse = "ok";
+let lastAtlasCookie = "";
 
 function headers(extra = {}) {
   return {
@@ -416,6 +417,10 @@ const server = createServer((request, response) => {
     });
     return;
   }
+  if (request.method === "GET" && path === "/__e2e/atlas-request") {
+    send(response, 200, { cookie: lastAtlasCookie });
+    return;
+  }
   if (request.method === "POST" && path === "/__e2e/atlas-response") {
     const mode = url.searchParams.get("mode");
     if (!["valid-optional-point", "valid-boundary-fields", "locked-point", "session-navigation", "carousel-boundaries", "dawn-only-location", "multiple-dawn", "next-only-dawn", "next-only-dawn-list", "dawn-refresh-location", "invalid-date", "malformed-atlas", "malformed-point", "malformed-dawn", "malformed-dawn-refresh", "unavailable"].includes(mode)) {
@@ -495,6 +500,7 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.method === "GET" && path === "/api/v1/atlas/points") {
+    lastAtlasCookie = request.headers.cookie ?? "";
     const responseMode = nextAtlasResponse;
     nextAtlasResponse = "ok";
     if (responseMode === "unavailable") {

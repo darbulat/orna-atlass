@@ -76,7 +76,7 @@ async def require_public_session_by_slug(session: AsyncSession, slug: str) -> Re
     return recording
 
 
-async def _visible_access_levels(
+async def visible_access_levels(
     session: AsyncSession, current_user: CurrentUser | None
 ) -> tuple[str, ...]:
     if current_user is None:
@@ -95,7 +95,7 @@ async def list_visible_sessions(
     limit: int = 50,
     offset: int = 0,
 ) -> list[RecordingSession]:
-    access_levels = await _visible_access_levels(session, current_user)
+    access_levels = await visible_access_levels(session, current_user)
     return await repository.list_sessions(
         session, limit=limit, offset=offset, access_levels=access_levels
     )
@@ -135,7 +135,7 @@ async def list_sessions_for_admin(
 async def require_visible_session(
     session: AsyncSession, locator: str, current_user: CurrentUser | None
 ) -> RecordingSession:
-    access_levels = await _visible_access_levels(session, current_user)
+    access_levels = await visible_access_levels(session, current_user)
     try:
         session_id = UUID(locator)
     except ValueError:

@@ -1,3 +1,4 @@
+from typing import Literal, cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,14 +23,29 @@ async def entitlement_for_user(
     session: AsyncSession, user_id: UUID
 ) -> MembershipRead | MembershipAbsentRead:
     membership = await repository.get_for_user(session, user_id)
+    is_entitled = await repository.has_active_grant(session, user_id)
     if membership is None:
         return MembershipAbsentRead(user_id=user_id)
-    return MembershipRead.model_validate(membership)
+    return MembershipRead(
+        id=membership.id,
+        user_id=membership.user_id,
+        status=(
+            "active"
+            if is_entitled
+            else cast(
+                Literal["inactive", "active", "cancelled", "expired"],
+                membership.status,
+            )
+        ),
+        plan=membership.plan,
+        starts_at=membership.starts_at,
+        expires_at=membership.expires_at,
+        is_entitled=is_entitled,
+    )
 
 
 async def has_playback_entitlement(session: AsyncSession, user_id: UUID) -> bool:
-    membership = await repository.get_for_user(session, user_id)
-    return membership is not None and membership.is_entitled
+    return await repository.has_active_grant(session, user_id)
 
 
 async def update_membership(
@@ -57,6 +73,23 @@ async def update_membership(
             ),
         )
     membership = await repository.upsert(session, user_id, data)
+    if data.status == "active":
+        source_type = await repository.membership_grant_source_type(
+            session, membership.id
+        )
+        await repository.upsert_grant(
+            session,
+            user_id,
+            source_type=source_type,
+            source_id=membership.id,
+            plan=data.plan,
+            expires_at=data.expires_at,
+        )
+    else:
+        for source_type in ("legacy", "admin"):
+            await repository.revoke_grant(
+                session, source_type=source_type, source_id=membership.id
+            )
     await add_audit_event(
         session,
         event_type="membership.updated",

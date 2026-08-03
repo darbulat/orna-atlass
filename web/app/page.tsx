@@ -1,18 +1,24 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 
 import { AnalyticsLink } from "../components/analytics-link";
+import { AuthRecoveryBoundary } from "../components/auth-recovery-boundary";
 import { AtlasExplorer } from "../components/atlas/AtlasExplorer";
 import { FeaturedSessions } from "../components/featured-sessions";
 import { PopularLocations } from "../components/popular-locations";
 import { LifetimeMembershipOffer } from "../components/lifetime-membership-offer";
 import { SiteHeader } from "../components/site-header";
 import { fetchCollections, type CollectionSummary } from "../lib/api/collections";
+import { ApiError } from "../lib/api/client";
 import { fetchAtlasPoints, fetchCurrentDawn, fetchFeaturedSessions, includeDawnLocations } from "../lib/api/sessions";
 
 export const dynamic = "force-dynamic";
 
-async function fetchHomeAtlas() {
-  const atlas = await fetchAtlasPoints("globe", [], { cache: "no-store" });
+async function fetchHomeAtlas(cookieHeader: string) {
+  const atlas = await fetchAtlasPoints("globe", [], {
+    cache: "no-store",
+    headers: cookieHeader ? { Cookie: cookieHeader } : {},
+  });
   const dawn = await fetchCurrentDawn(Math.max(250, atlas.points.length), { cache: "no-store" });
   return { points: includeDawnLocations(atlas.points, dawn), dawn };
 }
@@ -23,13 +29,19 @@ export default async function HomePage({
   searchParams: Promise<{ search?: string | string[] }>;
 }) {
   const params = await searchParams;
+  const cookieHeader = (await cookies()).getAll().map(({ name, value }) => `${name}=${value}`).join("; ");
   const initialSearchQuery = typeof params.search === "string" ? params.search.slice(0, 200) : "";
   const [atlasResult, collectionsResult, featuredResult] = await Promise.allSettled([
-    fetchHomeAtlas(),
-    fetchCollections(6),
+    fetchHomeAtlas(cookieHeader),
+    fetchCollections(6, cookieHeader ? { Cookie: cookieHeader } : {}),
     fetchFeaturedSessions(3),
   ]);
   const collections = collectionsResult.status === "fulfilled" ? collectionsResult.value : null;
+  const recoverAuthentication = [atlasResult, collectionsResult].some(
+    (result) => result.status === "rejected"
+      && result.reason instanceof ApiError
+      && result.reason.status === 401,
+  );
   const popularLocations = atlasResult.status === "fulfilled"
     ? atlasResult.value.points
       .filter((item) => item.type === "point")
@@ -44,6 +56,7 @@ export default async function HomePage({
     <div className="shell home-shell">
       <SiteHeader className="home-nav" active="map" />
       <main id="main-content">
+        {recoverAuthentication ? <AuthRecoveryBoundary /> : null}
         {atlasResult.status === "fulfilled" ? (
           <div className="home-atlas-entry" id="atlas-entry">
             <AtlasExplorer

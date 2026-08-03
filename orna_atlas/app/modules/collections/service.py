@@ -21,13 +21,17 @@ from orna_atlas.app.modules.collections.schemas import (
 from orna_atlas.app.modules.locations.schemas import LocationRead
 from orna_atlas.app.modules.locations.public import is_publicly_discoverable
 from orna_atlas.app.modules.sessions.schemas import PublicSessionRead
+from orna_atlas.app.core.security import CurrentUser
+from orna_atlas.app.modules.sessions import service as sessions_service
 
 
-def summary_from_collection(collection: Collection) -> CollectionSummaryRead:
-    public_sessions = [
+def summary_from_collection(
+    collection: Collection, *, access_levels: tuple[str, ...] = ("public",)
+) -> CollectionSummaryRead:
+    visible_sessions = [
         link.session
         for link in collection.session_links
-        if link.session.access_level == "public"
+        if link.session.access_level in access_levels
         and getattr(link.session, "publication_status", "published") == "published"
         and is_publicly_discoverable(link.session.location)
     ]
@@ -43,12 +47,14 @@ def summary_from_collection(collection: Collection) -> CollectionSummaryRead:
         description=collection.description,
         sort_order=collection.sort_order,
         location_count=len(public_locations),
-        session_count=len(public_sessions),
+        session_count=len(visible_sessions),
     )
 
 
-def detail_from_collection(collection: Collection) -> CollectionDetailRead:
-    summary = summary_from_collection(collection)
+def detail_from_collection(
+    collection: Collection, *, access_levels: tuple[str, ...] = ("public",)
+) -> CollectionDetailRead:
+    summary = summary_from_collection(collection, access_levels=access_levels)
     locations = [
         LocationRead.model_validate(link.location)
         for link in collection.location_links
@@ -57,7 +63,7 @@ def detail_from_collection(collection: Collection) -> CollectionDetailRead:
     sessions = [
         PublicSessionRead.model_validate(link.session)
         for link in collection.session_links
-        if link.session.access_level == "public"
+        if link.session.access_level in access_levels
         and getattr(link.session, "publication_status", "published") == "published"
         and is_publicly_discoverable(link.session.location)
     ]
@@ -90,9 +96,16 @@ def admin_read_from_collection(collection: Collection) -> CollectionAdminRead:
     )
 
 
-async def list_public_collections(session: AsyncSession, *, limit: int = 50, offset: int = 0) -> list[CollectionSummaryRead]:
+async def list_public_collections(
+    session: AsyncSession,
+    current_user: CurrentUser | None = None,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[CollectionSummaryRead]:
     collections = await repository.list_public_collections(session, limit=limit, offset=offset)
-    return [summary_from_collection(item) for item in collections]
+    access_levels = await sessions_service.visible_access_levels(session, current_user)
+    return [summary_from_collection(item, access_levels=access_levels) for item in collections]
 
 
 async def list_collections_for_admin(
@@ -119,11 +132,14 @@ async def require_collection_for_admin(session: AsyncSession, collection_id: UUI
     return admin_read_from_collection(collection)
 
 
-async def require_public_collection_by_slug(session: AsyncSession, slug: str) -> CollectionDetailRead:
+async def require_public_collection_by_slug(
+    session: AsyncSession, slug: str, current_user: CurrentUser | None = None
+) -> CollectionDetailRead:
     collection = await repository.get_collection_by_slug(session, slug)
     if collection is None:
         raise NotFoundError("Collection not found")
-    return detail_from_collection(collection)
+    access_levels = await sessions_service.visible_access_levels(session, current_user)
+    return detail_from_collection(collection, access_levels=access_levels)
 
 
 async def require_collection(session: AsyncSession, collection_id: UUID) -> Collection:

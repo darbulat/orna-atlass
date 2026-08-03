@@ -1,11 +1,12 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from orna_atlas.app.core.rate_limit import search_rate_limit
 
 from orna_atlas.app.db.session import get_db_session
+from orna_atlas.app.core.security import CurrentUser, get_optional_catalog_user
 from orna_atlas.app.integrations.redis import get_redis_client
 from orna_atlas.app.modules.atlas import service
 from orna_atlas.app.modules.atlas.schemas import (
@@ -51,12 +52,14 @@ async def _cached_response(cache_key: str, response_model, producer, *, ttl: int
 
 @router.get("/atlas/points", response_model=AtlasPointsResponse)
 async def get_atlas_points(
+    response: Response,
     bbox: str | None = None,
     zoom: int = Query(default=3, ge=0, le=22),
     habitat: list[str] | None = Query(default=None),
     time_mode: TimeModeQuery = "local",
     limit: int = Query(default=250, ge=1, le=1000),
     session: AsyncSession = Depends(get_db_session),
+    current_user: CurrentUser | None = Depends(get_optional_catalog_user),
 ):
     parsed_bbox = service.parse_bbox(bbox)
     normalized_habitats = service.normalize_habitats(habitat)
@@ -67,17 +70,26 @@ async def get_atlas_points(
         time_mode=time_mode,
         limit=limit,
     )
-    return await _cached_response(
-        cache_key,
-        AtlasPointsResponse,
-        lambda: service.get_atlas_points(
+    async def produce() -> AtlasPointsResponse:
+        return await service.get_atlas_points(
             session,
+            current_user,
             bbox=bbox,
             zoom=zoom,
             habitats=habitat,
             time_mode=time_mode,
             limit=limit,
-        ),
+        )
+
+    if current_user is not None:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Vary"] = "Authorization, Cookie"
+        return await produce()
+
+    return await _cached_response(
+        cache_key,
+        AtlasPointsResponse,
+        produce,
         ttl=60,
     )
 
@@ -118,9 +130,15 @@ async def get_follow_dawn(
     dependencies=[Depends(search_rate_limit)],
 )
 async def search(
+    response: Response,
     q: str = Query(min_length=1, max_length=120),
     limit: int = Query(default=10, ge=1, le=25),
     offset: int = Query(default=0, ge=0),
+    current_user: CurrentUser | None = Depends(get_optional_catalog_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await service.search(session, query=q, limit=limit, offset=offset)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Vary"] = "Authorization, Cookie"
+    return await service.search(
+        session, query=q, limit=limit, offset=offset, current_user=current_user
+    )

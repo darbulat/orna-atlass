@@ -12,7 +12,7 @@ from uuid import UUID
 import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
 from jwt.algorithms import RSAAlgorithm
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -295,6 +295,20 @@ async def get_optional_active_user(
     session: AsyncSession = Depends(get_db_session),
 ) -> CurrentUser | None:
     return await _resolve_active_user(session, claims) if claims is not None else None
+
+
+async def get_optional_catalog_user(
+    request: Request,
+    current_user: CurrentUser | None = Depends(get_optional_active_user),
+) -> CurrentUser | None:
+    """Require cookie refresh before returning a silently anonymous personalized catalog."""
+    if current_user is None and request.cookies.get(REFRESH_COOKIE):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access authentication requires refresh",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return current_user
 
 
 async def get_current_user(

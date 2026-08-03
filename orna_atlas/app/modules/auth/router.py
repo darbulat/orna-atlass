@@ -176,14 +176,17 @@ def _set_auth_cookies(response: Response, payload: TokenResponse, refresh_token:
         REFRESH_COOKIE,
         refresh_token,
         max_age=settings.refresh_token_ttl_days * 86400,
-        path=f"{settings.api_prefix}/auth",
+        # Catalog endpoints must distinguish genuine anonymous requests from
+        # expired access cookies that remain recoverable. HttpOnly/SameSite
+        # protect the token while root scope lets those endpoints observe it.
+        path="/",
         **common,
     )
 
 
 def _clear_auth_cookies(response: Response) -> None:
     response.delete_cookie(ACCESS_COOKIE)
-    response.delete_cookie(REFRESH_COOKIE, path=f"{get_settings().api_prefix}/auth")
+    response.delete_cookie(REFRESH_COOKIE, path="/")
 
 
 @router.post(
@@ -784,6 +787,5 @@ async def logout(
     session: AsyncSession = Depends(get_db_session),
 ) -> LogoutResponse:
     await service.logout(session, refresh_token)
-    response.delete_cookie(ACCESS_COOKIE)
-    response.delete_cookie(REFRESH_COOKIE, path=f"{get_settings().api_prefix}/auth")
+    _clear_auth_cookies(response)
     return LogoutResponse()

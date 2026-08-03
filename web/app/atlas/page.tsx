@@ -1,7 +1,12 @@
+import { cookies } from "next/headers";
+
 import { AtlasExplorer } from "../../components/atlas/AtlasExplorer";
+import { AuthRecoveryBoundary } from "../../components/auth-recovery-boundary";
 import { SiteHeader } from "../../components/site-header";
-import { apiErrorMessage } from "../../lib/api/client";
+import { ApiError, apiErrorMessage } from "../../lib/api/client";
 import { fetchAtlasPoints, fetchCurrentDawn, includeDawnLocations } from "../../lib/api/sessions";
+
+export const dynamic = "force-dynamic";
 
 export default async function Page({ searchParams }: { searchParams?: Promise<{ view?: string; location?: string }> }) {
   const resolvedSearchParams = await searchParams;
@@ -12,7 +17,13 @@ export default async function Page({ searchParams }: { searchParams?: Promise<{ 
       : "globe";
   try {
     const requestedLocation = resolvedSearchParams?.location;
-    const requestOptions = requestedLocation ? { cache: "no-store" as const } : {};
+    const cookieHeader = (await cookies()).getAll()
+      .map(({ name, value }) => `${name}=${value}`)
+      .join("; ");
+    const requestOptions = {
+      cache: "no-store" as const,
+      headers: cookieHeader ? { Cookie: cookieHeader } : undefined,
+    };
     const atlas = await fetchAtlasPoints(view, [], requestOptions);
     const dawnLimit = Math.max(250, atlas.points.length);
     const dawn = await fetchCurrentDawn(dawnLimit, requestOptions);
@@ -44,6 +55,7 @@ export default async function Page({ searchParams }: { searchParams?: Promise<{ 
     return (
       <main id="main-content" className="shell atlas-shell">
         <SiteHeader active="map" />
+        {error instanceof ApiError && error.status === 401 ? <AuthRecoveryBoundary /> : null}
         <section className="panel unavailable-panel" role="alert">
           <p className="eyebrow">Atlas unavailable</p>
           <h1>We could not load the listening map.</h1>

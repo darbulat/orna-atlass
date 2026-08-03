@@ -22,6 +22,62 @@ from orna_atlas.app.modules.billing.schemas import (
 )
 
 router = APIRouter(prefix="/billing", tags=["billing"])
+
+CALLBACK_MAX_BYTES = 16 * 1024
+CALLBACK_MAX_PARAMETERS = 32
+CALLBACK_MAX_NAME_BYTES = 128
+CALLBACK_MAX_VALUE_BYTES = 4096
+
+
+async def _read_callback_pairs(request: Request) -> list[tuple[str, str]]:
+    raw_query = request.scope.get("query_string", b"")
+    if len(raw_query) > CALLBACK_MAX_BYTES:
+        raise ValidationError("Bereke callback is too large")
+    if raw_query and raw_query.count(b"&") + 1 > CALLBACK_MAX_PARAMETERS:
+        raise ValidationError("Bereke callback has too many parameters")
+    try:
+        pairs = list(
+            parse_qsl(
+                raw_query.decode("ascii"),
+                keep_blank_values=True,
+                strict_parsing=True,
+                max_num_fields=CALLBACK_MAX_PARAMETERS,
+            )
+        )
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ValidationError("Invalid Bereke callback query") from exc
+
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(raw_query) + len(body) + len(chunk) > CALLBACK_MAX_BYTES:
+            raise ValidationError("Bereke callback is too large")
+        body.extend(chunk)
+    if body:
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
+        if content_type != "application/x-www-form-urlencoded":
+            raise ValidationError("Invalid Bereke callback content type")
+        try:
+            pairs.extend(
+                parse_qsl(
+                    body.decode(),
+                    keep_blank_values=True,
+                    strict_parsing=True,
+                    max_num_fields=CALLBACK_MAX_PARAMETERS,
+                )
+            )
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValidationError("Invalid Bereke callback form") from exc
+    if len(pairs) > CALLBACK_MAX_PARAMETERS:
+        raise ValidationError("Bereke callback has too many parameters")
+    if any(
+        len(name.encode()) > CALLBACK_MAX_NAME_BYTES
+        or len(value.encode()) > CALLBACK_MAX_VALUE_BYTES
+        for name, value in pairs
+    ):
+        raise ValidationError("Bereke callback parameter is too large")
+    if len({name for name, _value in pairs}) != len(pairs):
+        raise ValidationError("Duplicate Bereke callback parameters")
+    return pairs
 bearer_scheme = HTTPBearer(auto_error=False)
 cookie_scheme = APIKeyCookie(name="orna_access", auto_error=False)
 
@@ -40,8 +96,8 @@ AppSettings = Annotated[Settings, Depends(get_settings)]
 
 
 @router.get("/offer", response_model=BillingOfferRead)
-async def read_offer(settings: AppSettings) -> BillingOfferRead:
-    return service.public_offer(settings)
+async def read_offer(db: Database, settings: AppSettings) -> BillingOfferRead:
+    return await service.public_offer(db, settings)
 
 
 @router.post("/checkouts", response_model=CheckoutRead, status_code=status.HTTP_201_CREATED)
@@ -100,18 +156,7 @@ async def bereke_callback(
     db: Database,
     settings: AppSettings,
 ) -> Response:
-    pairs = list(request.query_params.multi_items())
-    body = await request.body()
-    if body:
-        content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
-        if content_type != "application/x-www-form-urlencoded":
-            raise ValidationError("Invalid Bereke callback content type")
-        try:
-            pairs.extend(parse_qsl(body.decode(), keep_blank_values=True, strict_parsing=True))
-        except (UnicodeDecodeError, ValueError) as exc:
-            raise ValidationError("Invalid Bereke callback form") from exc
-    if len({name for name, _value in pairs}) != len(pairs):
-        raise ValidationError("Duplicate Bereke callback parameters")
+    pairs = await _read_callback_pairs(request)
     callback = await BerekeHostedCheckoutClient(settings).resolve_callback(dict(pairs))
     if callback is not None:
         await service.apply_callback(db, callback)

@@ -12,6 +12,7 @@ import type {
 } from "../../lib/api/sessions";
 import { ApiError, apiErrorMessage } from "../../lib/api/client";
 import { fetchCurrentDawn, fetchSessionDetail, includeDawnLocations, searchAtlas } from "../../lib/api/sessions";
+import { fetchMembership } from "../../lib/api/auth";
 import { useGlobalPlayerSuppression, usePlayer } from "../audio/PlayerProvider";
 import { SessionPlayer } from "../audio/SessionPlayer";
 import { LocationCardPhoto } from "../location-card-photo";
@@ -34,6 +35,7 @@ import {
 } from "./globeZoom";
 
 type AtlasView = "globe" | "map" | "list";
+type EntitlementState = "loading" | "entitled" | "not_entitled" | "unavailable";
 
 type Props = {
   initialView: AtlasView;
@@ -51,6 +53,7 @@ type CesiumGlobeProps = {
   focusRequest: number;
   activeDawnSlugs: Set<string>;
   onSelectPoint: (point: AtlasPoint) => void;
+  entitlementState: EntitlementState;
 };
 
 const worldImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -84,8 +87,9 @@ function isPoint(item: AtlasPoint | AtlasCluster): item is AtlasPoint {
   return item.type === "point";
 }
 
-function isLockedPoint(point: AtlasPoint | null | undefined) {
-  return point?.latest_session?.access_level === "members_only";
+function isLockedPoint(point: AtlasPoint | null | undefined, entitlementState: EntitlementState) {
+  return entitlementState === "not_entitled"
+    && point?.latest_session?.access_level === "members_only";
 }
 
 function markerStyle(point: AtlasPoint | AtlasCluster) {
@@ -158,7 +162,7 @@ function configureCesiumBaseUrl({ buildModuleUrl }: CesiumModule) {
   urlBuilder.setBaseUrl?.("/cesium/");
 }
 
-function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSelectPoint }: CesiumGlobeProps) {
+function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSelectPoint, entitlementState }: CesiumGlobeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<CesiumViewer | null>(null);
   const cesiumRef = useRef<CesiumModule | null>(null);
@@ -564,7 +568,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       const selected = isPoint(item) && item.slug === selectedSlug;
       const hovered = isPoint(item) && item.slug === hoveredPoint?.point.slug;
       const dawnActive = isPoint(item) && activeDawnSlugs.has(item.slug);
-      const locked = isPoint(item) && item.latest_session?.access_level === "members_only";
+      const locked = isPoint(item) && isLockedPoint(item, entitlementState);
       const markerColor = selected
         ? Color.fromCssColorString("#f7f5ea")
         : locked
@@ -611,7 +615,7 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
     });
 
     viewer.scene.requestRender();
-  }, [activeDawnSlugs, hoveredPoint?.point.slug, isViewerReady, points, selectedSlug]);
+  }, [activeDawnSlugs, entitlementState, hoveredPoint?.point.slug, isViewerReady, points, selectedSlug]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -747,6 +751,8 @@ export function AtlasExplorer({
   const { currentSession: globalPlayerSession, play } = usePlayer();
   const locationCardCount = useLocationCardCount();
   const [atlasPoints, setAtlasPoints] = useState(points);
+  const [entitlementState, setEntitlementState] = useState<EntitlementState>("loading");
+
   const [currentDawn, setCurrentDawn] = useState(dawn);
   const [view] = useState<AtlasView>(initialView);
   const requestedInitialLocation = preferredInitialSlug
@@ -772,6 +778,10 @@ export function AtlasExplorer({
   const [globeFocusRequest, setGlobeFocusRequest] = useState(0);
   const [carouselStart, setCarouselStart] = useState(0);
   const allLocations = useMemo(() => atlasPoints.filter(isPoint), [atlasPoints]);
+  const hasMemberContent = useMemo(
+    () => allLocations.some((location) => location.latest_session?.access_level === "members_only"),
+    [allLocations],
+  );
   const activeDawnSlugs = useMemo(
     () => new Set(currentDawn.active_locations.map((item) => item.location.slug)),
     [currentDawn.active_locations],
@@ -834,13 +844,37 @@ export function AtlasExplorer({
   const canPageLocations = locations.length > locationCardCount;
   const selectedSessionSlug = selected?.latest_session?.slug ?? null;
   const navigableLocations = locations.filter(
-    (location) => location.latest_session?.access_level === "public",
+    (location) => !isLockedPoint(location, entitlementState),
   );
   const sidePanelLocationIndex = sidePanelSessionSlug
     ? navigableLocations.findIndex((location) => location.latest_session?.slug === sidePanelSessionSlug)
     : -1;
 
   useGlobalPlayerSuppression(isLocalPlayerVisible);
+
+  useEffect(() => {
+    if (!hasMemberContent) {
+      setEntitlementState("not_entitled");
+      return;
+    }
+    let active = true;
+    void fetchMembership()
+      .then((membership) => {
+        if (active) {
+          setEntitlementState(membership.is_entitled ? "entitled" : "not_entitled");
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setEntitlementState(
+            error instanceof ApiError && error.status === 401
+              ? "not_entitled"
+              : "unavailable",
+          );
+        }
+      });
+    return () => { active = false; };
+  }, [hasMemberContent]);
 
   useEffect(() => {
     const openSession = (event: Event) => {
@@ -1073,7 +1107,7 @@ export function AtlasExplorer({
         const lockedLocation = allLocations.find(
           (location) => location.latest_session?.slug === sidePanelSessionSlug,
         );
-        if ((status === 403 || status === 404) && isLockedPoint(lockedLocation)) {
+        if ((status === 403 || status === 404) && isLockedPoint(lockedLocation, entitlementState)) {
           paywallTriggerRef.current = document.activeElement instanceof HTMLElement
             ? document.activeElement
             : null;
@@ -1101,7 +1135,7 @@ export function AtlasExplorer({
     return () => {
       isCurrent = false;
     };
-  }, [allLocations, isSidePanelOpen, play, sidePanelSession, sidePanelSessionSlug]);
+  }, [allLocations, entitlementState, isSidePanelOpen, play, sidePanelSession, sidePanelSessionSlug]);
 
   function revealLocationInCarousel(slug: string) {
     if (locations.length <= locationCardCount) {
@@ -1256,6 +1290,10 @@ export function AtlasExplorer({
   function openLocationSession(location: AtlasPoint) {
     const sessionSlug = location.latest_session?.slug;
     if (!sessionSlug) return;
+    if (
+      entitlementState === "loading"
+      && location.latest_session?.access_level === "members_only"
+    ) return;
     setGlobeFocusRequest((current) => current + 1);
     setSidePanelSessionSlug(sessionSlug);
     setIsSidePanelOpen(true);
@@ -1265,6 +1303,10 @@ export function AtlasExplorer({
     if (!selectedSessionSlug) {
       return;
     }
+    if (
+      entitlementState === "loading"
+      && selected?.latest_session?.access_level === "members_only"
+    ) return;
     setGlobeFocusRequest((current) => current + 1);
     previewIntentSlugRef.current = selectedSessionSlug;
     setSidePanelSessionSlug(selectedSessionSlug);
@@ -1296,6 +1338,7 @@ export function AtlasExplorer({
               selectedSlug={selectedSlug}
               focusRequest={globeFocusRequest}
               activeDawnSlugs={activeDawnSlugs}
+              entitlementState={entitlementState}
               onSelectPoint={(point) => {
                 selectLocation(point, { revealInCarousel: true });
                 openLocationSession(point);
@@ -1319,7 +1362,7 @@ export function AtlasExplorer({
                         openLocationSession(location);
                       }}
                     >
-                      <strong>{isLockedPoint(location) ? `🔒 ${location.name}` : location.name}</strong>
+                      <strong>{isLockedPoint(location, entitlementState) ? `🔒 ${location.name}` : location.name}</strong>
                       <span>{[location.region, location.country_code].filter(Boolean).join(" · ")}</span>
                     </button>
                   </li>
@@ -1351,9 +1394,17 @@ export function AtlasExplorer({
                 type="button"
                 aria-controls="atlas-session-player"
                 aria-expanded={isSidePanelOpen}
+                disabled={
+                  entitlementState === "loading"
+                  && selected.latest_session.access_level === "members_only"
+                }
                 onClick={openSelectedSession}
               >
-                {isLockedPoint(selected) ? "Unlock full session" : "Listen"}
+                {entitlementState === "loading" && selected?.latest_session?.access_level === "members_only"
+                  ? "Checking access"
+                  : isLockedPoint(selected, entitlementState)
+                    ? "Unlock full session"
+                    : "Listen"}
                 <span aria-hidden="true">›</span>
               </button>
             ) : (
@@ -1362,7 +1413,7 @@ export function AtlasExplorer({
                 <span aria-hidden="true">›</span>
               </button>
             )}
-            {isLockedPoint(selected) ? <span className="atlas-members-label">Members only</span> : null}
+            {isLockedPoint(selected, entitlementState) ? <span className="atlas-members-label">Members only</span> : null}
           </div>
           {showInternalNavigation ? (
             <Link className="about-link" href="/about">
@@ -1454,7 +1505,7 @@ export function AtlasExplorer({
                     photoUrl={location.photo_url}
                     variant="atlas"
                   />
-                  <span>{isLockedPoint(location) ? `🔒 ${location.name}` : location.name}</span>
+                  <span>{isLockedPoint(location, entitlementState) ? `🔒 ${location.name}` : location.name}</span>
                   <small>{location.country_code ?? location.region ?? "Atlas site"}</small>
                   <i aria-hidden="true" />
                 </button>

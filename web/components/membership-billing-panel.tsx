@@ -19,7 +19,7 @@ function newIdempotencyKey(): string {
 }
 
 const PAYMENT_POLL_INTERVAL_MS = 1_500;
-const CHECKOUT_PENDING_STATUSES = new Set(["creating", "pending"]);
+const CHECKOUT_PENDING_STATUSES = new Set(["creating", "provider_outcome_unknown", "pending"]);
 
 type MembershipBillingPanelProps = {
   emailVerified: boolean;
@@ -113,7 +113,9 @@ export function MembershipBillingPanel({
         setMessage(
           checkout.status === "expired"
             ? "That checkout expired. Try again to open a new secure checkout."
-            : "Your checkout is being prepared. Refresh this page before trying again.",
+            : checkout.status === "provider_outcome_unknown"
+              ? "The payment provider response is unresolved. Do not start another payment; refresh for confirmation or contact support."
+              : "Your checkout is being prepared. Refresh this page before trying again.",
         );
         return;
       }

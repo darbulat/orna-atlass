@@ -17,3 +17,4 @@ ADRs document durable decisions that affect several modules. Status values are `
 - [ADR-0013: Isolate Bereke template checkout as an explicit test mode](0013-bereke-template-test-mode.md)
 - [ADR-0014: Forward inbound support e-mail through a signed Resend webhook](0014-resend-support-webhook.md)
 - [ADR-0015: Bound and service-own inbound support forwarding](0015-bound-support-forwarding.md)
+- [ADR-0016: Version billing offers and preserve entitlement provenance](0016-database-billing-offers-and-entitlement-grants.md)

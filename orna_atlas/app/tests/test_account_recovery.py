@@ -3,12 +3,13 @@ from datetime import UTC, datetime
 import json
 import threading
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import pytest
-from fastapi import BackgroundTasks, Response
+from fastapi import BackgroundTasks, HTTPException, Request, Response
 from fastapi.testclient import TestClient
 from redis.exceptions import RedisError
 
@@ -16,11 +17,15 @@ from orna_atlas.app.core.async_utils import finish_cancelled_compensation
 from orna_atlas.app.core.config import Settings
 from orna_atlas.app.core.domain_errors import AuthenticationError, ServiceUnavailableError
 from orna_atlas.app.core.rate_limit import auth_rate_limit
-from orna_atlas.app.core.security import ACCESS_COOKIE, REFRESH_COOKIE
+from orna_atlas.app.core.security import (
+    ACCESS_COOKIE,
+    REFRESH_COOKIE,
+    get_optional_catalog_user,
+)
 from orna_atlas.app.db.session import get_db_session
 from orna_atlas.app.main import create_app
 from orna_atlas.app.modules.auth import account_tokens, router, service
-from orna_atlas.app.modules.auth.schemas import PasswordResetRequest
+from orna_atlas.app.modules.auth.schemas import PasswordResetRequest, TokenResponse
 
 
 class FakeRedis:
@@ -1289,6 +1294,10 @@ def test_optional_auth_openapi_allows_anonymous_sessions_without_weakening_auth(
         ("/api/v1/sessions", "get"),
         ("/api/v1/sessions/{locator}", "get"),
         ("/api/v1/sessions/{session_id}/playback-grants", "post"),
+        ("/api/v1/collections", "get"),
+        ("/api/v1/collections/{slug}", "get"),
+        ("/api/v1/search", "get"),
+        ("/api/v1/atlas/points", "get"),
     ):
         assert paths[path][method]["security"] == [
             {},
@@ -1299,6 +1308,61 @@ def test_optional_auth_openapi_allows_anonymous_sessions_without_weakening_auth(
         {"HTTPBearer": []},
         {"APIKeyCookie": []},
     ]
+
+
+@pytest.mark.asyncio
+async def test_optional_auth_requires_refresh_when_only_refresh_cookie_remains() -> None:
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/v1/atlas/points",
+            "headers": [(b"cookie", f"{REFRESH_COOKIE}=refresh-token".encode())],
+        }
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_optional_catalog_user(request, current_user=None)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Access authentication requires refresh"
+
+
+def test_refresh_cookie_is_scoped_for_catalog_recovery() -> None:
+    response = Response()
+
+    router._set_auth_cookies(
+        response,
+        cast(TokenResponse, SimpleNamespace(access_token="access-token")),
+        "refresh-token",
+    )
+
+    refresh_cookie = next(
+        value
+        for value in response.headers.getlist("set-cookie")
+        if value.startswith(f"{REFRESH_COOKIE}=")
+    )
+    assert "Path=/" in refresh_cookie
+    assert "HttpOnly" in refresh_cookie
+
+
+@pytest.mark.asyncio
+async def test_logout_clears_root_scoped_refresh_cookie(monkeypatch) -> None:
+    logout = AsyncMock()
+    monkeypatch.setattr(router.service, "logout", logout)
+    response = Response()
+    session = AsyncMock()
+
+    await router.logout(response, "refresh-token", session)
+
+    logout.assert_awaited_once_with(session, "refresh-token")
+    refresh_cookie = next(
+        value
+        for value in response.headers.getlist("set-cookie")
+        if value.startswith(f"{REFRESH_COOKIE}=")
+    )
+    assert "Path=/" in refresh_cookie
+    assert "Max-Age=0" in refresh_cookie
 
 
 @pytest.mark.asyncio
@@ -1362,7 +1426,7 @@ def test_ambiguous_password_reset_clears_http_only_auth_cookies(monkeypatch) -> 
 
     with TestClient(app, raise_server_exceptions=False) as client:
         client.cookies.set(ACCESS_COOKIE, "old-access", path="/")
-        client.cookies.set(REFRESH_COOKIE, "old-refresh", path="/api/v1/auth")
+        client.cookies.set(REFRESH_COOKIE, "old-refresh", path="/")
         response = client.post(
             "/api/v1/auth/password-reset/confirm",
             json={"token": "r" * 43, "password": "new secure password"},
@@ -1412,7 +1476,7 @@ def test_password_reset_confirmation_clears_authentication_cookies(monkeypatch) 
 
     with TestClient(app) as client:
         client.cookies.set(ACCESS_COOKIE, "old-access")
-        client.cookies.set(REFRESH_COOKIE, "old-refresh", path="/api/v1/auth")
+        client.cookies.set(REFRESH_COOKIE, "old-refresh", path="/")
         response = client.post(
             "/api/v1/auth/password-reset/confirm",
             json={"token": "r" * 43, "password": "new secure password"},

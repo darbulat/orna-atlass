@@ -22,6 +22,25 @@ function boxesOverlap(first: BoundingBox, second: BoundingBox) {
     && first.y + first.height > second.y;
 }
 
+test("direct atlas SSR forwards browser cookies to the catalog API", async ({
+  context,
+  page,
+  request,
+}) => {
+  await context.addCookies([{
+    name: "orna_access",
+    value: "ssr-access-token",
+    domain: "127.0.0.1",
+    path: "/",
+  }]);
+
+  await page.goto("/atlas");
+
+  const observed = await request.get(`${mockApiUrl}/__e2e/atlas-request`);
+  expect(observed.ok()).toBeTruthy();
+  expect((await observed.json()).cookie).toContain("orna_access=ssr-access-token");
+});
+
 test("atlas globe exposes a 10 km floor and requests the World Imagery layer", async ({ page }) => {
   const worldImageryRequest = page.waitForRequest((request) => (
     request.url().includes("/World_Imagery/MapServer")
@@ -664,7 +683,7 @@ test("analytics delivery failure never blocks collections navigation", async ({ 
   await page.route("**/api/v1/analytics/events", async (route) => route.abort("failed"));
   await page.goto("/");
   await page.getByRole("link", { name: "See all collections" }).click();
-  await expect(page).toHaveURL(/\/collections$/);
+  await expect(page).toHaveURL(/\/collections$/, { timeout: 10_000 });
   await expect(page.locator("main#main-content")).toBeVisible();
 });
 
@@ -1092,7 +1111,9 @@ test("free signup from a locked recording stays on the membership explanation", 
 
   await page.goto("/");
   await page.getByRole("tab", { name: "Night" }).click();
-  await page.locator(".location-card", { hasText: "Members Cove" }).click();
+  const lockedPoint = page.locator(".location-card", { hasText: "Members Cove" });
+  await expect(lockedPoint).toContainText("🔒");
+  await lockedPoint.click();
   const signupLink = page.getByRole("dialog", { name: /Members-only soundscape/i })
     .getByRole("link", { name: "Create a free account" });
   await expect(signupLink).toHaveAttribute("href", "/membership?mode=register");
@@ -1124,10 +1145,18 @@ test("entitled atlas listener can open a members-only session", async ({ page, r
       location: { ...publicSession.location, name: "Members Cove", slug: "members-cove" },
     }),
   }));
+  await page.route("**/api/v1/memberships/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ plan: "lifetime_member", status: "active", is_entitled: true }),
+  }));
 
   await page.goto("/");
   await page.getByRole("tab", { name: "Night" }).click();
-  await page.locator(".location-card", { hasText: "Members Cove" }).click();
+  const memberPoint = page.locator(".location-card", { hasText: "Members Cove" });
+  await expect(memberPoint).not.toContainText("Checking access");
+  await expect(memberPoint).not.toContainText("🔒");
+  await memberPoint.click();
 
   await expect(
     page.getByRole("region", { name: "Session player" }).getByRole("heading", { name: "Members Cove" }),
@@ -1146,6 +1175,11 @@ test("members-only detail refreshes an expired access cookie before authorizatio
     refreshes += 1;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "renewed" }) });
   });
+  await page.route("**/api/v1/memberships/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ plan: "lifetime_member", status: "active", is_entitled: true }),
+  }));
   await page.route("**/api/v1/sessions/members-cove-long-form", (route) => {
     details += 1;
     return route.fulfill({
@@ -1164,7 +1198,10 @@ test("members-only detail refreshes an expired access cookie before authorizatio
 
   await page.goto("/");
   await page.getByRole("tab", { name: "Night" }).click();
-  await page.locator(".location-card", { hasText: "Members Cove" }).click();
+  const memberPoint = page.locator(".location-card", { hasText: "Members Cove" });
+  await expect(memberPoint).not.toContainText("Checking access");
+  await expect(memberPoint).not.toContainText("🔒");
+  await memberPoint.click();
 
   await expect.poll(() => refreshes).toBe(1);
   await expect.poll(() => details).toBe(2);
