@@ -173,6 +173,18 @@ test("home globe omits marketing copy over the interactive map", async ({ page }
 
   const atlas = page.getByRole("region", { name: "ORNA Atlas" });
   await expect(atlas.locator(".dawn-copy")).toBeVisible();
+  const atlasBox = await atlas.boundingBox();
+  expect(atlasBox).not.toBeNull();
+  expect(atlasBox!.x).toBe(0);
+  expect(atlasBox!.y).toBe(0);
+  expect(atlasBox!.width).toBe(390);
+
+  for (const section of [page.locator(".editorial-section").first(), page.locator(".lifetime-offer")]) {
+    const sectionBox = await section.boundingBox();
+    expect(sectionBox).not.toBeNull();
+    expect(sectionBox!.x).toBe(22);
+    expect(sectionBox!.x + sectionBox!.width).toBe(368);
+  }
   await expect(page.locator(".home-atlas-intro")).toHaveCount(0);
   await expect(page.getByText("The living atlas of natural sound.", { exact: true })).toHaveCount(0);
 });
@@ -298,15 +310,16 @@ test("home globe header omits duplicate search and routes account access through
   await expect(page.locator("#atlas-search")).toBeVisible();
 });
 
-test("editorial headers omit search while Atlas keeps its map search", async ({ page }) => {
+test("editorial headers omit search while Atlas keeps its map search without marketing copy", async ({ page }) => {
   await page.goto("/about");
   const navigation = page.getByRole("navigation", { name: "Primary navigation" });
   await expect(navigation.getByRole("button", { name: /search/i })).toHaveCount(0);
   await expect(navigation.getByRole("link", { name: /search/i })).toHaveCount(0);
 
   await page.goto("/atlas");
-  await expect(page.getByRole("heading", { level: 1, name: "Explore the world by sound." })).toBeVisible();
-  await expect(page.getByText(/search a place, choose a listening time/i)).toBeVisible();
+  await expect(page.locator(".atlas-route-intro")).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Explore the world by sound." })).toHaveCount(0);
+  await expect(page.getByText(/search a place, choose a listening time/i)).toHaveCount(0);
   const atlasSearch = page.locator("#atlas-search");
   await expect(atlasSearch).toBeVisible();
   await atlasSearch.fill("Pin");
