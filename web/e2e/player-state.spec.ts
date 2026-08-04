@@ -173,8 +173,18 @@ test("mobile global player can be minimized, restored, and dismissed", async ({ 
   await page.getByRole("link", { name: "Back to atlas" }).click();
 
   const player = page.getByRole("complementary", { name: "Global audio player" });
-  await player.getByRole("button", { name: "Minimize player" }).click();
-  await expect(player.getByRole("button", { name: "Restore player" })).toBeFocused();
+  const minimizeButton = player.getByRole("button", { name: "Minimize player" });
+  const minimizeButtonBox = await minimizeButton.boundingBox();
+  expect(minimizeButtonBox).not.toBeNull();
+  expect(minimizeButtonBox!.width).toBe(52);
+  expect(minimizeButtonBox!.height).toBe(52);
+  await minimizeButton.click();
+  const restoreButton = player.getByRole("button", { name: "Restore player" });
+  await expect(restoreButton).toBeFocused();
+  const restoreButtonBox = await restoreButton.boundingBox();
+  expect(restoreButtonBox).not.toBeNull();
+  expect(restoreButtonBox!.width).toBe(52);
+  expect(restoreButtonBox!.height).toBe(52);
   const minimizedBox = await player.boundingBox();
   expect(minimizedBox).not.toBeNull();
   expect(minimizedBox!.width).toBeLessThanOrEqual(56);

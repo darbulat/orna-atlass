@@ -685,7 +685,7 @@ function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
         <span aria-hidden="true">{isPlaying ? "Ⅱ" : "▶"}</span>
       </button>
       <button
-        className="global-player-icon-action"
+        className="global-player-icon-action global-player-minimize"
         ref={minimizeButtonRef}
         type="button"
         aria-label="Minimize player"
