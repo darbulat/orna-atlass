@@ -302,6 +302,7 @@ test("paid billing stays inside narrow viewports with a maximum-length order ref
   for (const { width, enlargedText } of [
     { width: 320, enlargedText: false },
     { width: 390, enlargedText: false },
+    { width: 320, enlargedText: true },
     { width: 390, enlargedText: true },
   ]) {
     await page.setViewportSize({ width, height: 844 });
@@ -323,17 +324,24 @@ test("paid billing stays inside narrow viewports with a maximum-length order ref
       const controls = visibleElements
         .filter((element) => element.matches("a, button"))
         .map((element) => element.getBoundingClientRect());
+      const summaryRows = Array.from(
+        panel.querySelectorAll<HTMLElement>(".billing-purchase-summary > div"),
+      );
       return {
         viewport,
         scrollWidth: document.documentElement.scrollWidth,
         controlsTallEnough: controls.every((box) => box.height >= 44),
         offenders: visibleBoxes.filter((box) => box.left < 0 || box.right > viewport),
+        summaryRowsStacked: summaryRows.every(
+          (row) => getComputedStyle(row).gridTemplateColumns.trim().split(/\s+/).length === 1,
+        ),
       };
     });
 
     expect(geometry.scrollWidth).toBe(geometry.viewport);
     expect(geometry.controlsTallEnough).toBe(true);
     expect(geometry.offenders, JSON.stringify({ enlargedText, offenders: geometry.offenders })).toEqual([]);
+    if (enlargedText) expect(geometry.summaryRowsStacked).toBe(true);
   }
 });
 
@@ -472,7 +480,7 @@ test("refund requires confirmation and becomes a truthful pending status", async
         id: "70000000-0000-4000-8000-000000000001",
         purchase_id: "60000000-0000-4000-8000-000000000001",
         status: "requested",
-        requested_at: "2026-08-05T09:00:00Z",
+        created_at: "2026-08-05T09:00:00Z",
       }),
     });
   });

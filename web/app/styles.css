@@ -2346,6 +2346,11 @@ a:focus-visible {
 @media (max-width: 760px) {
   .lifetime-offer { grid-template-columns: 1fr; }
   .billing-panel { grid-template-columns: minmax(0, 1fr); }
+  .billing-purchase-summary > div {
+    align-items: start;
+    gap: 4px;
+    grid-template-columns: minmax(0, 1fr);
+  }
   .lifetime-offer { border-radius: 22px; padding: 28px 20px; }
 }
 
