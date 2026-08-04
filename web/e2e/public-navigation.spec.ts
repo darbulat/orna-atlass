@@ -605,6 +605,7 @@ test("about uses a light dismissible mobile menu", async ({ page }) => {
   await page.mouse.click(20, 400);
   await expect(menuDetails).not.toHaveAttribute("open", "");
   await expect(visiblePanels).toHaveCount(0);
+  await expect(menuLinks).toHaveCount(0);
 });
 
 test("legal pages show one dismissible light mobile menu and remain contained", async ({ page }) => {
@@ -645,14 +646,17 @@ test("legal pages show one dismissible light mobile menu and remain contained", 
     await page.mouse.click(20, 400);
     await expect(menuDetails).not.toHaveAttribute("open", "");
     await expect(visiblePanels).toHaveCount(0);
+    await expect(menuLinks).toHaveCount(0);
     await menu.click();
     await page.keyboard.press("Escape");
     await expect(menuDetails).not.toHaveAttribute("open", "");
+    await expect(menuLinks).toHaveCount(0);
     await menu.click();
     const profile = menuDetails.getByRole("link", { name: "Profile" });
     await profile.focus();
     await page.mouse.wheel(0, 300);
     await expect(menuDetails).not.toHaveAttribute("open", "");
+    await expect(menuLinks).toHaveCount(0);
     await expect(menu).toBeFocused();
   }
 });
