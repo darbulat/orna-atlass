@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AnalyticsLink } from "./analytics-link";
 
@@ -32,14 +32,19 @@ function HeaderLinks({ active }: Pick<SiteHeaderProps, "active">) {
 
 export function SiteHeader({ className = "", active }: SiteHeaderProps) {
   const mobileMenuRef = useRef<HTMLDetailsElement>(null);
+  const [isEnhanced, setIsEnhanced] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const closeMenu = useCallback((restoreFocus = false) => {
+    const menu = mobileMenuRef.current;
+    const wasOpen = Boolean(menu?.open);
+    setIsMobileMenuOpen(false);
+    if (menu) menu.open = false;
+    if (restoreFocus && wasOpen) menu?.querySelector("summary")?.focus();
+  }, []);
 
   useEffect(() => {
-    const closeMenu = (restoreFocus = false) => {
-      const menu = mobileMenuRef.current;
-      if (!menu?.open) return;
-      menu.removeAttribute("open");
-      if (restoreFocus) menu.querySelector("summary")?.focus();
-    };
+    setIsEnhanced(true);
     const handlePointerDown = (event: PointerEvent) => {
       const menu = mobileMenuRef.current;
       if (menu?.open && !menu.contains(event.target as Node)) closeMenu();
@@ -60,7 +65,7 @@ export function SiteHeader({ className = "", active }: SiteHeaderProps) {
       document.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("scroll", handleScroll);
     };
-  }, []);
+  }, [closeMenu]);
 
   return (
     <nav className={["site-nav", className].filter(Boolean).join(" ")} aria-label="Primary navigation">
@@ -68,7 +73,11 @@ export function SiteHeader({ className = "", active }: SiteHeaderProps) {
       <div className="site-menu-links site-menu-links-desktop">
         <HeaderLinks active={active} />
       </div>
-      <details className="site-menu site-menu-mobile" ref={mobileMenuRef}>
+      <details
+        className="site-menu site-menu-mobile"
+        onToggle={(event) => setIsMobileMenuOpen(event.currentTarget.open)}
+        ref={mobileMenuRef}
+      >
         <summary aria-label="Menu">
           <span className="site-menu-icon" aria-hidden="true">
             <span />
@@ -76,16 +85,16 @@ export function SiteHeader({ className = "", active }: SiteHeaderProps) {
             <span />
           </span>
         </summary>
-        <div
-          className="site-menu-links"
-          onClick={(event) => {
-            if (event.target instanceof Element && event.target.closest("a")) {
-              mobileMenuRef.current?.removeAttribute("open");
-            }
-          }}
-        >
-          <HeaderLinks active={active} />
-        </div>
+        {(!isEnhanced || isMobileMenuOpen) && (
+          <div
+            className="site-menu-links"
+            onClick={(event) => {
+              if (event.target instanceof Element && event.target.closest("a")) closeMenu();
+            }}
+          >
+            <HeaderLinks active={active} />
+          </div>
+        )}
       </details>
     </nav>
   );
