@@ -3053,7 +3053,8 @@ a:focus-visible {
 @media (max-width: 700px) {
   .site-footer { align-items: start; flex-direction: column; padding-block: 36px; }
   .site-footer nav { gap: 20px; }
-  .legal-nav > div { gap: 18px; }
+  .legal-nav > .site-menu-links-desktop { display: none; }
+  .about-nav .site-menu-links,
   .legal-nav .site-menu-links {
     background: #f4f0e4;
     border-color: rgba(23,35,29,.22);

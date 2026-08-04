@@ -588,17 +588,40 @@ test("public legal pages disclose the operator and are linked from the home page
   await expect(page.getByText("Other IT services", { exact: true })).toBeVisible();
 });
 
-test("legal pages use a dismissible light mobile menu and remain contained", async ({ page }) => {
+test("about uses a light dismissible mobile menu", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/about");
+  const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+  const menu = navigation.locator("summary[aria-label='Menu']");
+  const menuDetails = navigation.locator(".site-menu-mobile");
+  const menuLinks = menuDetails.locator(".site-menu-links");
+  const visiblePanels = navigation.locator(".site-menu-links:visible");
+
+  await expect(visiblePanels).toHaveCount(0);
+  await menu.click();
+  await expect(visiblePanels).toHaveCount(1);
+  await expect(menuLinks).toHaveCSS("background-color", "rgb(244, 240, 228)");
+  await expect(menuLinks).toHaveCSS("color", "rgb(23, 35, 29)");
+  await page.mouse.click(20, 400);
+  await expect(menuDetails).not.toHaveAttribute("open", "");
+  await expect(visiblePanels).toHaveCount(0);
+});
+
+test("legal pages show one dismissible light mobile menu and remain contained", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
 
-  for (const path of ["/privacy", "/terms", "/refunds"]) {
+  for (const path of ["/terms", "/refunds", "/support", "/privacy"]) {
     await page.goto(path);
-    const menu = page.locator(".legal-nav summary[aria-label='Menu']");
-    const menuDetails = page.locator(".legal-nav .site-menu-mobile");
+    const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+    const menu = navigation.locator("summary[aria-label='Menu']");
+    const menuDetails = navigation.locator(".site-menu-mobile");
     const menuLinks = menuDetails.locator(".site-menu-links");
+    const visiblePanels = navigation.locator(".site-menu-links:visible");
     await expect(menuDetails).not.toHaveAttribute("open", "");
+    await expect(visiblePanels).toHaveCount(0);
     await menu.click();
     await expect(menuDetails).toHaveAttribute("open", "");
+    await expect(visiblePanels).toHaveCount(1);
     await expect(menuLinks).toHaveCSS("background-color", "rgb(244, 240, 228)");
     await expect(menuLinks).toHaveCSS("color", "rgb(23, 35, 29)");
 
@@ -609,7 +632,7 @@ test("legal pages use a dismissible light mobile menu and remain contained", asy
     expect(metrics.scrollWidth).toBe(metrics.viewport);
 
     const navigationLinks = page.locator(
-      ".legal-nav > .site-wordmark, .legal-nav .site-menu-mobile a, .site-footer nav a",
+      ".site-nav > .site-wordmark, .site-nav .site-menu-mobile a, .site-footer nav a",
     );
     for (const link of await navigationLinks.all()) {
       const box = await link.boundingBox();
@@ -621,6 +644,7 @@ test("legal pages use a dismissible light mobile menu and remain contained", asy
 
     await page.mouse.click(20, 400);
     await expect(menuDetails).not.toHaveAttribute("open", "");
+    await expect(visiblePanels).toHaveCount(0);
     await menu.click();
     await page.keyboard.press("Escape");
     await expect(menuDetails).not.toHaveAttribute("open", "");
