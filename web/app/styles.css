@@ -208,6 +208,18 @@ p { color: #c8d8d1; font-size: 1.2rem; line-height: 1.7; }
     text-transform: uppercase;
   }
   .site-menu > summary::-webkit-details-marker { display: none; }
+  .site-menu-icon {
+    display: grid;
+    gap: 5px;
+    width: 24px;
+  }
+  .site-menu-icon > span {
+    background: currentColor;
+    border-radius: 999px;
+    display: block;
+    height: 2px;
+    width: 100%;
+  }
   .site-menu:not([open]) > .site-menu-links { display: none; }
   .site-menu-links {
     align-items: stretch;
@@ -2512,6 +2524,7 @@ a:focus-visible {
 @media (max-width: 560px) {
   .account-page { padding: 28px 16px 48px; }
   .account-page .site-nav { padding-bottom: 12px; }
+  .account-page .site-nav:has(.site-menu[open]) { margin-bottom: 152px; }
   .account-hero { gap: 20px; padding: 62px 0 30px; }
   .account-hero h1 { font-size: clamp(3.2rem, 18vw, 4.4rem); }
   .account-hero > p { font-size: 1rem; }
@@ -3039,6 +3052,11 @@ a:focus-visible {
   .site-footer { align-items: start; flex-direction: column; padding-block: 36px; }
   .site-footer nav { gap: 20px; }
   .legal-nav > div { gap: 18px; }
+  .legal-nav .site-menu-links {
+    background: #f4f0e4;
+    border-color: rgba(23,35,29,.22);
+    color: #17231d;
+  }
   .legal-document { margin-left: 0; }
   .legal-company-details > div { grid-template-columns: 1fr; }
 }
