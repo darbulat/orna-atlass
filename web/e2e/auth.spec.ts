@@ -78,6 +78,40 @@ test("auth screen keeps the reference layout usable on a narrow phone", async ({
 });
 
 
+test("signed-out Profile header aligns its menu to the right edge", async ({ page }) => {
+  for (const width of [390, 700, 701]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/membership");
+    await expect(page.getByRole("heading", {
+      level: 1,
+      name: "Sign in or create your account",
+    })).toBeVisible();
+
+    const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+    const metrics = await navigation.evaluate((element) => {
+      const page = element.closest<HTMLElement>(".auth-page");
+      const box = element.getBoundingClientRect();
+      const pageStyle = page ? getComputedStyle(page) : null;
+      return {
+        navigationRight: box.right,
+        expectedRight: window.innerWidth - Number.parseFloat(pageStyle?.paddingRight ?? "0"),
+      };
+    });
+
+    expect(metrics.navigationRight).toBeCloseTo(metrics.expectedRight, 1);
+    if (width <= 700) {
+      const triggerBox = await navigation.locator("summary[aria-label='Menu']").boundingBox();
+      expect(triggerBox).not.toBeNull();
+      expect(triggerBox!.x + triggerBox!.width).toBeCloseTo(metrics.expectedRight, 1);
+    } else {
+      const profileBox = await navigation.getByRole("link", { name: "Profile" }).boundingBox();
+      expect(profileBox).not.toBeNull();
+      expect(profileBox!.x + profileBox!.width).toBeCloseTo(metrics.expectedRight, 1);
+    }
+  }
+});
+
+
 test("signed-in account is a responsive dashboard with clear access and next actions", async ({ page }) => {
   await page.route("**/api/v1/users/me", async (route) => {
     await route.fulfill({

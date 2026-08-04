@@ -2703,6 +2703,7 @@ a:focus-visible {
   padding: clamp(5.5rem, 10vw, 8rem) 1.25rem 3rem;
   position: relative;
 }
+.auth-page .site-nav { width: 100%; }
 .auth-wordmark {
   align-items: center;
   display: inline-flex;
