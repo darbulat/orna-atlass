@@ -6,6 +6,8 @@ type PaidAccountFixture = {
   currency?: "KZT" | "USD";
   isEntitled?: boolean | null;
   merchantReference?: string;
+  offerAmountMinor?: number;
+  offerCurrency?: "KZT" | "USD";
   paidAt?: string | null;
   status?: "paid" | "refund_requested";
 };
@@ -15,6 +17,8 @@ async function mockPaidAccount(page: Page, fixture: PaidAccountFixture = {}) {
   const currency = fixture.currency ?? "USD";
   const isEntitled = fixture.isEntitled === undefined ? true : fixture.isEntitled;
   const merchantReference = fixture.merchantReference ?? `orna-${"c".repeat(31)}`;
+  const offerAmountMinor = fixture.offerAmountMinor ?? amountMinor;
+  const offerCurrency = fixture.offerCurrency ?? currency;
   const paidAt = fixture.paidAt === undefined ? "2026-08-04T09:00:00Z" : fixture.paidAt;
   const status = fixture.status ?? "paid";
 
@@ -51,8 +55,8 @@ async function mockPaidAccount(page: Page, fixture: PaidAccountFixture = {}) {
         product_code: "lifetime_member",
         name: "Lifetime Member Access",
         description: "Permanent access to available members-only field recordings.",
-        amount_minor: amountMinor,
-        currency,
+        amount_minor: offerAmountMinor,
+        currency: offerCurrency,
         is_recurring: false,
         checkout_available: true,
         refund_summary: "Full refund requests are accepted within 14 calendar days.",
@@ -373,8 +377,8 @@ test("paid billing presents an active-access purchase summary with localized fac
         product_code: "lifetime_member",
         name: "Lifetime Member Access",
         description: "Permanent access to available members-only field recordings.",
-        amount_minor: 1000,
-        currency: "USD",
+        amount_minor: 200,
+        currency: "KZT",
         is_recurring: false,
         checkout_available: true,
         refund_summary: "Full refund requests are accepted within 14 calendar days.",
@@ -433,6 +437,23 @@ test("paid billing presents an active-access purchase summary with localized fac
   await expect(page.getByRole("heading", { name: "One payment. No renewal." })).toHaveCount(0);
   await expect(page.getByText(/By continuing/)).toHaveCount(0);
   await expect(page.getByText(/Payment was processed by Bereke Bank/)).toBeVisible();
+});
+
+
+test("paid test-mode disclosure follows the immutable purchase snapshot", async ({ page }) => {
+  await mockPaidAccount(page, {
+    amountMinor: 200,
+    currency: "KZT",
+    offerAmountMinor: 1000,
+    offerCurrency: "USD",
+  });
+
+  await page.goto("/membership");
+
+  await expect(page.getByRole("group", { name: "Purchase summary" })
+    .getByText("KZT 2.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("Test payment mode", { exact: true })).toBeVisible();
+  await expect(page.getByText(/does not indicate production payment readiness/)).toBeVisible();
 });
 
 

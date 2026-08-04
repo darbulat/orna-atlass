@@ -134,7 +134,9 @@ export function MembershipBillingPanel({
   const purchase = purchases?.find((item) => item.status === "paid" || item.status === "refund_requested") ?? null;
   const paid = purchase?.status === "paid" ? purchase : null;
   const isRefundRequested = purchase?.status === "refund_requested";
-  const isTestMode = offer?.currency === "KZT" && offer.amount_minor === 200;
+  const isTestMode = purchase
+    ? purchase.currency === "KZT" && purchase.amount_minor === 200
+    : offer?.currency === "KZT" && offer.amount_minor === 200;
   const paidDate = purchase?.paid_at ? formatBillingDate(purchase.paid_at) : null;
   const refundWindowDeadline = purchase?.paid_at ? refundDeadline(purchase.paid_at) : null;
 
