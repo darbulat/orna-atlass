@@ -1,4 +1,84 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+
+type PaidAccountFixture = {
+  amountMinor?: number;
+  currency?: "KZT" | "USD";
+  isEntitled?: boolean | null;
+  merchantReference?: string;
+  paidAt?: string | null;
+  status?: "paid" | "refund_requested";
+};
+
+async function mockPaidAccount(page: Page, fixture: PaidAccountFixture = {}) {
+  const amountMinor = fixture.amountMinor ?? 1000;
+  const currency = fixture.currency ?? "USD";
+  const isEntitled = fixture.isEntitled === undefined ? true : fixture.isEntitled;
+  const merchantReference = fixture.merchantReference ?? `orna-${"c".repeat(31)}`;
+  const paidAt = fixture.paidAt === undefined ? "2026-08-04T09:00:00Z" : fixture.paidAt;
+  const status = fixture.status ?? "paid";
+
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        plan: isEntitled ? "lifetime_member" : "none",
+        status: isEntitled ? "active" : "inactive",
+        is_entitled: isEntitled,
+      }),
+    });
+  });
+  await page.route("**/api/v1/billing/offer", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        product_code: "lifetime_member",
+        name: "Lifetime Member Access",
+        description: "Permanent access to available members-only field recordings.",
+        amount_minor: amountMinor,
+        currency,
+        is_recurring: false,
+        checkout_available: true,
+        refund_summary: "Full refund requests are accepted within 14 calendar days.",
+      }),
+    });
+  });
+  await page.route("**/api/v1/billing/purchases/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: "60000000-0000-4000-8000-000000000001",
+        merchant_reference: merchantReference,
+        product_code: "lifetime_member",
+        amount_minor: amountMinor,
+        currency,
+        status,
+        paid_at: paidAt,
+        refunded_at: null,
+        created_at: "2026-08-04T08:59:00Z",
+      }]),
+    });
+  });
+
+  return { merchantReference };
+}
 
 
 test("auth screen presents email and all configured social entry points", async ({ page }) => {
@@ -146,6 +226,9 @@ test("signed-in account is a responsive dashboard with clear access and next act
   await expect(page.getByText("Lifetime access uses one payment at the displayed checkout price.")).toBeVisible();
   await expect(page.getByText("No automatic renewal.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "One payment. No renewal." })).toBeVisible();
+  await expect(page.getByText("Test payment mode", { exact: true })).toBeVisible();
+  await expect(page.getByText(/does not indicate production payment readiness/)).toBeVisible();
+  await expect(page.getByText("Test checkout price", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Checkout unavailable" })).toBeDisabled();
 
   await page.setViewportSize({ width: 320, height: 700 });
@@ -168,6 +251,299 @@ test("signed-in account is a responsive dashboard with clear access and next act
   expect(geometry.dashboardRight).toBeLessThanOrEqual(320);
   expect(geometry.controlsFit).toBe(true);
   expect(geometry.controlsTallEnough).toBe(true);
+});
+
+
+test("paid billing stays inside narrow viewports with a maximum-length order reference", async ({ page }) => {
+  const merchantReference = `orna-${"a".repeat(75)}`;
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "lifetime_member", status: "active", is_entitled: true }),
+    });
+  });
+  await page.route("**/api/v1/billing/purchases/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: "60000000-0000-4000-8000-000000000001",
+        merchant_reference: merchantReference,
+        product_code: "lifetime_member",
+        amount_minor: 200,
+        currency: "KZT",
+        status: "paid",
+        paid_at: "2026-08-04T09:00:00Z",
+        refunded_at: null,
+        created_at: "2026-08-04T08:59:00Z",
+      }]),
+    });
+  });
+
+  for (const { width, enlargedText } of [
+    { width: 320, enlargedText: false },
+    { width: 390, enlargedText: false },
+    { width: 390, enlargedText: true },
+  ]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/membership");
+    if (enlargedText) await page.addStyleTag({ content: "html { font-size: 200%; }" });
+    await expect(page.getByRole("button", { name: "Request full refund" })).toBeVisible();
+
+    const geometry = await page.locator(".billing-panel").evaluate((panel) => {
+      const viewport = document.documentElement.clientWidth;
+      const visibleElements = [panel, ...Array.from(panel.querySelectorAll<HTMLElement>("*"))]
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          return element.getClientRects().length > 0 && style.display !== "none" && style.visibility !== "hidden";
+        });
+      const visibleBoxes = visibleElements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return { tag: element.tagName, className: element.className, left: box.left, right: box.right };
+      });
+      const controls = visibleElements
+        .filter((element) => element.matches("a, button"))
+        .map((element) => element.getBoundingClientRect());
+      return {
+        viewport,
+        scrollWidth: document.documentElement.scrollWidth,
+        controlsTallEnough: controls.every((box) => box.height >= 44),
+        offenders: visibleBoxes.filter((box) => box.left < 0 || box.right > viewport),
+      };
+    });
+
+    expect(geometry.scrollWidth).toBe(geometry.viewport);
+    expect(geometry.controlsTallEnough).toBe(true);
+    expect(geometry.offenders, JSON.stringify({ enlargedText, offenders: geometry.offenders })).toEqual([]);
+  }
+});
+
+
+test("paid billing presents an active-access purchase summary with localized facts", async ({ page }) => {
+  const merchantReference = `orna-${"b".repeat(31)}`;
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => window.localStorage.setItem("copied-order-reference", value),
+      },
+    });
+  });
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "lifetime_member", status: "active", is_entitled: true }),
+    });
+  });
+  await page.route("**/api/v1/billing/offer", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        product_code: "lifetime_member",
+        name: "Lifetime Member Access",
+        description: "Permanent access to available members-only field recordings.",
+        amount_minor: 1000,
+        currency: "USD",
+        is_recurring: false,
+        checkout_available: true,
+        refund_summary: "Full refund requests are accepted within 14 calendar days.",
+      }),
+    });
+  });
+  await page.route("**/api/v1/billing/purchases/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: "60000000-0000-4000-8000-000000000001",
+        merchant_reference: merchantReference,
+        product_code: "lifetime_member",
+        amount_minor: 1000,
+        currency: "USD",
+        status: "paid",
+        paid_at: "2026-08-04T09:00:00Z",
+        refunded_at: null,
+        created_at: "2026-08-04T08:59:00Z",
+      }]),
+    });
+  });
+
+  await page.goto("/membership");
+
+  await expect(page.getByRole("heading", { name: "Lifetime access is active" })).toBeVisible();
+  const summary = page.getByRole("group", { name: "Purchase summary" });
+  await expect(summary.getByText("USD 10.00", { exact: true })).toBeVisible();
+  await expect(summary.getByText(/Aug.*4.*2026|4.*Aug.*2026/)).toBeVisible();
+  await expect(summary.getByText("Bereke Bank", { exact: true })).toBeVisible();
+  await expect(summary.getByText("orna-bbbbbbb…bbbbbb", { exact: true })).toBeVisible();
+  await expect(summary.getByText(merchantReference, { exact: true })).not.toBeVisible();
+  const copyOrder = summary.getByRole("button", { name: "Copy order ID" });
+  const descriptionId = await copyOrder.getAttribute("aria-describedby");
+  expect(descriptionId).toBeTruthy();
+  const fullReferenceDescription = page.locator(`#${descriptionId}`);
+  await expect(fullReferenceDescription).toHaveText(`Full order ID ${merchantReference}`);
+  await expect(fullReferenceDescription).toHaveClass("visually-hidden");
+  const descriptionBox = await fullReferenceDescription.boundingBox();
+  expect(descriptionBox?.width).toBeLessThanOrEqual(1);
+  expect(descriptionBox?.height).toBeLessThanOrEqual(1);
+  await copyOrder.click();
+  await expect(page.getByRole("status")).toHaveText("Order ID copied.");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("copied-order-reference")))
+    .toBe(merchantReference);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async () => { throw new Error("denied"); } },
+    });
+  });
+  await summary.getByRole("button", { name: "Copy order ID" }).click();
+  await expect(page.getByRole("status")).toHaveText("Unable to copy the order ID.");
+  await expect(page.getByText("Test payment mode", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "One payment. No renewal." })).toHaveCount(0);
+  await expect(page.getByText(/By continuing/)).toHaveCount(0);
+  await expect(page.getByText(/Payment was processed by Bereke Bank/)).toBeVisible();
+});
+
+
+test("refund requires confirmation and becomes a truthful pending status", async ({ page }) => {
+  await mockPaidAccount(page);
+  let refundRequests = 0;
+  let releaseRefund: (() => void) | undefined;
+  const refundReleased = new Promise<void>((resolve) => { releaseRefund = resolve; });
+  await page.route("**/api/v1/billing/purchases/*/refund-requests", async (route) => {
+    refundRequests += 1;
+    await refundReleased;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "70000000-0000-4000-8000-000000000001",
+        purchase_id: "60000000-0000-4000-8000-000000000001",
+        status: "requested",
+        requested_at: "2026-08-05T09:00:00Z",
+      }),
+    });
+  });
+
+  await page.goto("/membership");
+  const trigger = page.getByRole("button", { name: "Request full refund" });
+  await expect(trigger).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(trigger).toHaveCSS("border-top-width", "1px");
+  await expect(page.getByText(/Full refunds can be requested until.*Aug.*18.*2026|Full refunds can be requested until.*18.*Aug.*2026/)).toBeVisible();
+
+  await trigger.click();
+  expect(refundRequests).toBe(0);
+  const confirmation = page.getByRole("group", { name: "Confirm full refund" });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toBeFocused();
+  await expect(confirmation).toContainText("Your payment will be refunded in full");
+  await expect(confirmation).toContainText("purchase-backed access will end after Bereke Bank confirms the refund");
+
+  await confirmation.getByRole("button", { name: "Keep membership" }).click();
+  expect(refundRequests).toBe(0);
+  await expect(confirmation).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  const confirm = confirmation.locator(".billing-refund-confirm");
+  await expect(confirm).toHaveAccessibleName("Confirm full refund");
+  await confirm.click();
+  await expect(confirm).toBeDisabled();
+  expect(refundRequests).toBe(1);
+  await confirm.click({ force: true });
+  expect(refundRequests).toBe(1);
+  releaseRefund?.();
+
+  await expect(page.getByText("Refund requested", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Bereke Bank confirmation is pending/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Request full refund" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Purchase summary" })).toBeVisible();
+});
+
+
+test("a server-confirmed refund request keeps purchase facts without another mutation action", async ({ page }) => {
+  await mockPaidAccount(page, { isEntitled: false, status: "refund_requested" });
+
+  await page.goto("/membership");
+
+  await expect(page.getByRole("heading", { name: "Purchase confirmed" })).toBeVisible();
+  await expect(page.getByText("Membership access is not currently active.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Lifetime access is active" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Purchase summary" })).toBeVisible();
+  await expect(page.getByText("Refund requested", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Bereke Bank confirmation is pending/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Request full refund" })).toHaveCount(0);
+});
+
+
+test("an invalid paid timestamp falls back without breaking the paid summary", async ({ page }) => {
+  await mockPaidAccount(page, { paidAt: "not-a-date" });
+
+  await page.goto("/membership");
+
+  const summary = page.getByRole("group", { name: "Purchase summary" });
+  await expect(summary.getByText("Confirmed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Full refunds can be requested within 14 calendar days of payment."))
+    .toBeVisible();
+  await expect(page.locator(".billing-purchase-card")).toBeVisible();
+});
+
+
+test("a rejected refund keeps the paid summary and allows a deliberate retry", async ({ page }) => {
+  await mockPaidAccount(page);
+  let refundRequests = 0;
+  await page.route("**/api/v1/billing/purchases/*/refund-requests", async (route) => {
+    refundRequests += 1;
+    await route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "The self-service refund window has closed." }),
+    });
+  });
+
+  await page.goto("/membership");
+  await page.getByRole("button", { name: "Request full refund" }).click();
+  const confirmation = page.getByRole("group", { name: "Confirm full refund" });
+  await confirmation.locator(".billing-refund-confirm").click();
+
+  await expect(page.locator(".billing-purchase-card [role='alert']"))
+    .toContainText("The self-service refund window has closed.");
+  await expect(page.getByRole("group", { name: "Purchase summary" })).toBeVisible();
+  await expect(page.getByText("Refund requested", { exact: true })).toHaveCount(0);
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation.locator(".billing-refund-confirm")).toBeEnabled();
+  expect(refundRequests).toBe(1);
 });
 
 
