@@ -2521,10 +2521,12 @@ a:focus-visible {
   .account-dashboard { grid-template-columns: 1fr; }
   .account-soundmark { margin-bottom: 50px; }
 }
+@media (max-width: 700px) {
+  .account-page .site-nav:has(.site-menu[open]) { margin-bottom: 152px; }
+}
 @media (max-width: 560px) {
   .account-page { padding: 28px 16px 48px; }
   .account-page .site-nav { padding-bottom: 12px; }
-  .account-page .site-nav:has(.site-menu[open]) { margin-bottom: 152px; }
   .account-hero { gap: 20px; padding: 62px 0 30px; }
   .account-hero h1 { font-size: clamp(3.2rem, 18vw, 4.4rem); }
   .account-hero > p { font-size: 1rem; }

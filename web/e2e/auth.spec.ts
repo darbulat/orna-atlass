@@ -509,8 +509,8 @@ test("mobile account header uses a Profile link and a three-line menu icon", asy
   await expect(navigation.getByRole("link", { name: "Profile", exact: true })).toBeVisible();
 });
 
-test("open mobile account menu does not overlap the account heading", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test("open account menu does not overlap the heading at the mobile-menu breakpoint", async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 844 });
   await page.route("**/api/v1/users/me", async (route) => {
     await route.fulfill({
       status: 200,

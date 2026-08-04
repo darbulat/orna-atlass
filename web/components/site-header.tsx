@@ -47,7 +47,10 @@ export function SiteHeader({ className = "", active }: SiteHeaderProps) {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeMenu(true);
     };
-    const handleScroll = () => closeMenu();
+    const handleScroll = () => {
+      const menu = mobileMenuRef.current;
+      closeMenu(Boolean(menu?.contains(document.activeElement)));
+    };
 
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);

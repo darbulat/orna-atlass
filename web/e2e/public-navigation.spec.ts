@@ -625,8 +625,11 @@ test("legal pages use a dismissible light mobile menu and remain contained", asy
     await page.keyboard.press("Escape");
     await expect(menuDetails).not.toHaveAttribute("open", "");
     await menu.click();
+    const profile = menuDetails.getByRole("link", { name: "Profile" });
+    await profile.focus();
     await page.mouse.wheel(0, 300);
     await expect(menuDetails).not.toHaveAttribute("open", "");
+    await expect(menu).toBeFocused();
   }
 });
 
