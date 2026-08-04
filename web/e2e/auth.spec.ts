@@ -509,8 +509,7 @@ test("mobile account header uses a Profile link and a three-line menu icon", asy
   await expect(navigation.getByRole("link", { name: "Profile", exact: true })).toBeVisible();
 });
 
-test("open account menu does not overlap the heading at the mobile-menu breakpoint", async ({ page }) => {
-  await page.setViewportSize({ width: 700, height: 844 });
+test("open account menu does not move or overlap the heading across the mobile breakpoint", async ({ page }) => {
   await page.route("**/api/v1/users/me", async (route) => {
     await route.fulfill({
       status: 200,
@@ -533,24 +532,35 @@ test("open account menu does not overlap the heading at the mobile-menu breakpoi
     });
   });
 
-  await page.goto("/membership");
-  await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
-  await expect(page.getByText("early_access", { exact: true })).toBeVisible();
-  const navigation = page.getByRole("navigation", { name: "Primary navigation" });
-  const menuDetails = navigation.locator(".site-menu-mobile");
-  const menuLinks = menuDetails.locator(".site-menu-links");
-  await expect(menuDetails).not.toHaveAttribute("open", "");
-  await menuDetails.locator("summary[aria-label='Menu']").click();
-  await expect(menuDetails).toHaveAttribute("open", "");
-  await expect(menuLinks).toBeVisible();
+  for (const width of [390, 700]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/membership");
+    const heading = page.getByRole("heading", { level: 1, name: "Your account" });
+    const eyebrow = page.locator(".account-hero .eyebrow");
+    await expect(heading).toBeVisible();
+    await expect(eyebrow).toBeVisible();
+    await expect(page.getByText("early_access", { exact: true })).toBeVisible();
+    const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+    const menuDetails = navigation.locator(".site-menu-mobile");
+    const menuLinks = menuDetails.locator(".site-menu-links");
+    await expect(menuDetails).not.toHaveAttribute("open", "");
+    const closedHeadingBox = await heading.boundingBox();
+    await menuDetails.locator("summary[aria-label='Menu']").click();
+    await expect(menuDetails).toHaveAttribute("open", "");
+    await expect(menuLinks).toBeVisible();
 
-  const [menuBox, headingBox] = await Promise.all([
-    menuLinks.boundingBox(),
-    page.getByRole("heading", { level: 1, name: "Your account" }).boundingBox(),
-  ]);
-  expect(menuBox).not.toBeNull();
-  expect(headingBox).not.toBeNull();
-  expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(headingBox!.y);
+    const [menuBox, openEyebrowBox, openHeadingBox] = await Promise.all([
+      menuLinks.boundingBox(),
+      eyebrow.boundingBox(),
+      heading.boundingBox(),
+    ]);
+    expect(menuBox).not.toBeNull();
+    expect(openEyebrowBox).not.toBeNull();
+    expect(closedHeadingBox).not.toBeNull();
+    expect(openHeadingBox).not.toBeNull();
+    expect(openHeadingBox!.y).toBeCloseTo(closedHeadingBox!.y, 1);
+    expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(openEyebrowBox!.y);
+  }
 });
 
 
