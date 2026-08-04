@@ -1,9 +1,9 @@
 # Spec: Responsive post-purchase profile billing UX
 
-- Status: accepted
+- Status: implemented
 - Owner: frontend
 - Last updated: 2026-08-04
-- Related issue/PR: direct user request following a mobile profile-page visual audit
+- Related issue/PR: [#78](https://github.com/darbulat/orna-atlass/pull/78)
 - Related ADRs: `../docs/adr/0011-bereke-hosted-checkout.md`
 
 ## Problem and outcome
