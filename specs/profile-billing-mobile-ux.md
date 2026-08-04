@@ -56,8 +56,10 @@ secondary action.
   long user-visible values must wrap or use a deliberately shortened display form.
 - Replace the paid-state sales treatment with a compact purchase summary whose primary outcome is
   active lifetime access.
-- Show the immutable purchase amount/currency, unambiguous localized payment date, Bereke Bank as
-  payment processor, and a shortened merchant reference with a keyboard-accessible copy action.
+- Show the immutable purchase amount/currency, unambiguous localized payment date, and a shortened
+  merchant reference with a keyboard-accessible copy action. Keep post-purchase and refund-status
+  copy provider-neutral; name Bereke Bank only at the external checkout handoff and in legal or
+  support information where identifying the processor is relevant.
 - Keep the full merchant reference available to copy and to assistive technology without exposing it
   as an unbroken layout constraint.
 - Remove redundant sales copy from the paid state. Preserve no-renewal and digital-purchase copy in
@@ -101,12 +103,12 @@ The component has three explicit presentation modes:
 
 1. **Pre-checkout:** offer price, one-payment/no-renewal disclosure, digital-product disclosure,
    verification/availability state and the secure-checkout action.
-2. **Paid:** active lifetime-access heading plus a compact purchase summary for amount, paid date,
-   processor and shortened/copyable order reference. Refund policy and the secondary refund action
-   belong below the summary.
-3. **Refund requested:** purchase facts remain visible, the mutation action is absent, and a status
-   message states that provider confirmation is pending. Access remains derived from the membership
-   API; the frontend must not revoke or promise revocation by itself.
+2. **Paid:** active lifetime-access heading plus a compact purchase summary for amount, paid date and
+   shortened/copyable order reference. Refund policy and the secondary refund action belong below the
+   summary; internal processor details do not.
+3. **Refund requested:** purchase facts remain visible, the mutation action is absent, and a
+   provider-neutral status message states that refund confirmation is pending. Access remains derived
+   from the membership API; the frontend must not revoke or promise revocation by itself.
 
 The refund interaction is a local two-step disclosure, not an immediate mutation. The first action
 reveals a clearly titled confirmation region with `Keep membership` and `Confirm full refund`
@@ -171,8 +173,8 @@ introducing a contract field.
    wrap or abbreviate without overlap and every control remains reachable with a practical minimum
    44 px target height.
 3. Given a confirmed paid purchase, when the billing panel renders, then it leads with active lifetime
-   access and shows amount/currency, an unambiguous localized paid date, Bereke Bank and a shortened
-   order reference instead of checkout-oriented sales copy.
+   access and shows amount/currency, an unambiguous localized paid date and a shortened order reference
+   instead of checkout-oriented sales copy or the internal payment-processor name.
 4. Given the shortened order reference, when a keyboard or pointer user activates Copy, then the full
    reference is sent to the clipboard and success is announced without exposing it in logs or
    analytics; clipboard failure is announced without changing purchase state.
@@ -188,11 +190,11 @@ introducing a contract field.
    one UI request is made while busy; success removes the action and shows `Refund requested`, while
    failure keeps the paid summary and announces the server error.
 10. Given a purchase already has `refund_requested` status, when the page loads or refreshes, then the
-    refund action is absent, pending provider confirmation is stated, and membership/access text
-    continues to come from the membership response.
-11. Given a paid purchase, when legal disclosure renders, then it describes completed payment and the
-    Refund Policy rather than saying `By continuing`; given pre-checkout state, agreement language is
-    retained.
+    refund action is absent, pending refund confirmation is stated without naming the processor, and
+    membership/access text continues to come from the membership response.
+11. Given a paid purchase, when legal disclosure renders, then it links the Refund Policy without
+    repeating the processor name or saying `By continuing`; given pre-checkout state, agreement
+    language and one explicit hosted-checkout processor disclosure are retained.
 12. Given existing unpaid, entitled-without-purchase and checkout-unavailable fixtures, when the
     component changes, then their truthful actions and fail-closed status remain unchanged.
 

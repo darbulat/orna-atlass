@@ -197,7 +197,7 @@ export function MembershipBillingPanel({
         purchase.id === paid.id ? { ...purchase, status: "refund_requested" } : purchase
       )) ?? null);
       setRefundConfirming(false);
-      setMessage("Your full refund request was recorded. We will update the status after Bereke Bank confirms it.");
+      setMessage("Your refund request was received. We'll update the status when the refund is confirmed.");
     } catch (error) {
       setMessage(apiErrorMessage(error, "Unable to request a refund."));
     } finally {
@@ -236,7 +236,6 @@ export function MembershipBillingPanel({
             <dl className="billing-purchase-summary" role="group" aria-label="Purchase summary">
               <div><dt>Amount</dt><dd>{formatBillingAmount(purchase.amount_minor, purchase.currency)}</dd></div>
               <div><dt>Paid</dt><dd>{paidDate ?? "Confirmed"}</dd></div>
-              <div><dt>Processor</dt><dd>Bereke Bank</dd></div>
               <div>
                 <dt>Order ID</dt>
                 <dd>
@@ -265,7 +264,7 @@ export function MembershipBillingPanel({
             {isRefundRequested ? (
               <div className="billing-refund-status">
                 <strong>Refund requested</strong>
-                <p>Bereke Bank confirmation is pending. Your current access remains visible above.</p>
+                <p>Refund confirmation is pending. Your current access status remains visible above.</p>
               </div>
             ) : (
               <>
@@ -284,8 +283,8 @@ export function MembershipBillingPanel({
                   >
                     <h3 id="billing-refund-confirmation-heading">Confirm full refund</h3>
                     <p>
-                      Your payment will be refunded in full. Your purchase-backed access will end
-                      after Bereke Bank confirms the refund.
+                      Your payment will be refunded in full to the original payment method. Your
+                      purchase-backed access will end after the refund is confirmed.
                     </p>
                     <div>
                       <button type="button" disabled={busy} onClick={cancelRefundConfirmation}>
@@ -315,8 +314,7 @@ export function MembershipBillingPanel({
               </>
             )}
             <p className="billing-disclosure">
-              Payment was processed by Bereke Bank. Refunds are subject to the {" "}
-              <Link href="/refunds">Refund Policy</Link>.
+              Refunds are subject to the <Link href="/refunds">Refund Policy</Link>.
             </p>
           </>
         ) : (
@@ -345,8 +343,8 @@ export function MembershipBillingPanel({
             )}
             {latest ? <p><b>Latest payment:</b> {latest.status.replaceAll("_", " ")}</p> : null}
             <p className="billing-disclosure">
-              Payment is processed on Bereke Bank’s hosted checkout. By continuing, you agree to the
-              {" "}<Link href="/terms">Terms</Link> and <Link href="/refunds">Refund Policy</Link>.
+              Payment is completed securely on Bereke Bank’s checkout. By continuing, you agree to
+              the <Link href="/terms">Terms</Link> and <Link href="/refunds">Refund Policy</Link>.
             </p>
           </>
         )}
