@@ -155,6 +155,13 @@ test("mobile global player can be minimized, restored, and dismissed", async ({ 
 
   await page.goto("/sessions/first-session");
   await page.getByRole("button", { name: "Play session" }).click();
+  await page.evaluate(() => {
+    const state = window as typeof window & {
+      __lastAudio?: object;
+      __testedPlayerAudio?: object;
+    };
+    state.__testedPlayerAudio = state.__lastAudio;
+  });
   await page.getByRole("link", { name: "Back to atlas" }).click();
 
   const player = page.getByRole("complementary", { name: "Global audio player" });
@@ -165,20 +172,20 @@ test("mobile global player can be minimized, restored, and dismissed", async ({ 
   expect(minimizedBox!.width).toBeLessThanOrEqual(56);
   expect(minimizedBox!.height).toBeLessThanOrEqual(56);
   await expect.poll(() => page.evaluate(() => (
-    window as typeof window & { __lastAudio?: { paused: boolean } }
-  ).__lastAudio?.paused)).toBe(false);
+    window as typeof window & { __testedPlayerAudio?: { paused: boolean } }
+  ).__testedPlayerAudio?.paused)).toBe(false);
 
   await player.getByRole("button", { name: "Restore player" }).click();
   await expect(player.getByRole("button", { name: "Pause playback" })).toBeVisible();
 
   await player.getByRole("button", { name: "Minimize player" }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as typeof window & {
-    __lastAudio?: { onerror: ((event: Event) => void) | null };
-  }).__lastAudio?.onerror === "function")).toBe(true);
+    __testedPlayerAudio?: { onerror: ((event: Event) => void) | null };
+  }).__testedPlayerAudio?.onerror === "function")).toBe(true);
   await page.evaluate(() => {
     const audio = (window as typeof window & {
-      __lastAudio?: { onerror: ((event: Event) => void) | null };
-    }).__lastAudio;
+      __testedPlayerAudio?: { onerror: ((event: Event) => void) | null };
+    }).__testedPlayerAudio;
     audio?.onerror?.(new Event("error"));
   });
   await expect(player.getByRole("alert")).toHaveText("The audio stream could not be played.");
@@ -187,7 +194,9 @@ test("mobile global player can be minimized, restored, and dismissed", async ({ 
   await player.getByRole("button", { name: "Stop and close player" }).click();
   await expect(player).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => {
-    const audio = (window as typeof window & { __lastAudio?: { paused: boolean; src: string } }).__lastAudio;
+    const audio = (window as typeof window & {
+      __testedPlayerAudio?: { paused: boolean; src: string };
+    }).__testedPlayerAudio;
     return audio ? { paused: audio.paused, src: audio.src } : null;
   })).toEqual({ paused: true, src: "" });
 });
