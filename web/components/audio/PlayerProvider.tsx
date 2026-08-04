@@ -611,19 +611,31 @@ function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
   const pathname = usePathname();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const minimizeButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreButtonRef = useRef<HTMLButtonElement>(null);
+  const pendingFocusRef = useRef<"minimize" | "restore" | null>(null);
 
   useEffect(() => {
+    if (!currentSession || error) {
+      setIsMinimized(false);
+      return;
+    }
     if (pathname === "/membership") {
       setIsExpanded(false);
       setIsMinimized(true);
     }
-  }, [pathname]);
+  }, [currentSession, error, pathname]);
 
   useEffect(() => {
-    if (error) {
-      setIsMinimized(false);
+    const pendingFocus = pendingFocusRef.current;
+    if (pendingFocus === "restore" && isMinimized) {
+      restoreButtonRef.current?.focus();
+      pendingFocusRef.current = null;
+    } else if (pendingFocus === "minimize" && !isMinimized) {
+      minimizeButtonRef.current?.focus();
+      pendingFocusRef.current = null;
     }
-  }, [error]);
+  }, [isMinimized]);
 
   const isSessionRoute = pathname?.startsWith("/sessions/");
 
@@ -638,9 +650,13 @@ function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
       <aside className="global-player is-minimized" aria-label="Global audio player">
         <button
           className="global-player-restore"
+          ref={restoreButtonRef}
           type="button"
           aria-label="Restore player"
-          onClick={() => setIsMinimized(false)}
+          onClick={() => {
+            pendingFocusRef.current = "minimize";
+            setIsMinimized(false);
+          }}
         >
           <span aria-hidden="true">♫</span>
         </button>
@@ -670,9 +686,11 @@ function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
       </button>
       <button
         className="global-player-icon-action"
+        ref={minimizeButtonRef}
         type="button"
         aria-label="Minimize player"
         onClick={() => {
+          pendingFocusRef.current = "restore";
           setIsExpanded(false);
           setIsMinimized(true);
         }}

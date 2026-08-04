@@ -150,7 +150,15 @@ test("mobile global player can be minimized, restored, and dismissed", async ({ 
   await page.setViewportSize({ width: 390, height: 844 });
   await installFakeAudio(page);
   await page.route("**/playback-grants", async (route) => {
-    await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(grant(firstSessionId, 1)) });
+    await route.fulfill({
+      status: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({
+        ...grant(firstSessionId, 1),
+        expires_at: new Date(Date.now() + 600_000).toISOString(),
+        refresh_after_seconds: 600,
+      }),
+    });
   });
 
   await page.goto("/sessions/first-session");
@@ -166,7 +174,7 @@ test("mobile global player can be minimized, restored, and dismissed", async ({ 
 
   const player = page.getByRole("complementary", { name: "Global audio player" });
   await player.getByRole("button", { name: "Minimize player" }).click();
-  await expect(player.getByRole("button", { name: "Restore player" })).toBeVisible();
+  await expect(player.getByRole("button", { name: "Restore player" })).toBeFocused();
   const minimizedBox = await player.boundingBox();
   expect(minimizedBox).not.toBeNull();
   expect(minimizedBox!.width).toBeLessThanOrEqual(56);
@@ -176,6 +184,7 @@ test("mobile global player can be minimized, restored, and dismissed", async ({ 
   ).__testedPlayerAudio?.paused)).toBe(false);
 
   await player.getByRole("button", { name: "Restore player" }).click();
+  await expect(player.getByRole("button", { name: "Minimize player" })).toBeFocused();
   await expect(player.getByRole("button", { name: "Pause playback" })).toBeVisible();
 
   await player.getByRole("button", { name: "Minimize player" }).click();
@@ -191,6 +200,11 @@ test("mobile global player can be minimized, restored, and dismissed", async ({ 
   await expect(player.getByRole("alert")).toHaveText("The audio stream could not be played.");
   await expect(player.getByRole("button", { name: "Restore player" })).toHaveCount(0);
 
+  await page.locator("summary[aria-label='Menu']").click();
+  await page.getByRole("link", { name: "Profile" }).click();
+  await expect(player.getByRole("alert")).toHaveText("The audio stream could not be played.");
+  await expect(player.getByRole("button", { name: "Restore player" })).toHaveCount(0);
+
   await player.getByRole("button", { name: "Stop and close player" }).click();
   await expect(player).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => {
@@ -199,6 +213,27 @@ test("mobile global player can be minimized, restored, and dismissed", async ({ 
     }).__testedPlayerAudio;
     return audio ? { paused: audio.paused, src: audio.src } : null;
   })).toEqual({ paused: true, src: "" });
+});
+
+test("visiting membership before playback does not pre-minimize a later session", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 844 });
+  await installFakeAudio(page);
+  await page.route("**/playback-grants", async (route) => {
+    await route.fulfill({ status: 200, headers: corsHeaders, body: JSON.stringify(grant(firstSessionId, 1)) });
+  });
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "Profile" }).click();
+  await page.getByRole("link", { name: "Collections", exact: true }).click();
+  await page.getByRole("link", { name: "Wetland Dawn" }).click();
+  await page.getByRole("link", { name: "First Session" }).click();
+  await page.getByRole("button", { name: "Play session" }).click();
+  await page.getByRole("button", { name: "Hide player" }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const player = page.getByRole("complementary", { name: "Global audio player" });
+  await expect(player.getByRole("button", { name: "Pause playback" })).toBeVisible();
+  await expect(player.getByRole("button", { name: "Restore player" })).toHaveCount(0);
 });
 
 test("membership flow minimizes persistent playback automatically", async ({ page }) => {

@@ -69,7 +69,7 @@ export function playerReducer(state: PlayerState, action: PlayerAction): PlayerS
         : state;
     case "refresh_started":
       return isCurrentSession(state, action.sessionId)
-        ? { ...state, playbackState: "refreshing_grant", error: null }
+        ? { ...state, playbackState: "refreshing_grant" }
         : state;
     case "grant_refreshed":
       return isCurrentSession(state, action.sessionId)
