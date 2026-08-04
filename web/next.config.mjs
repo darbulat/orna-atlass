@@ -1,14 +1,26 @@
 import path from "node:path";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
 
+const noStoreHeaders = [{ key: "Cache-Control", value: "no-store" }];
+const interactiveStaticRoutes = [
+  "/about",
+  "/library",
+  "/membership",
+  "/privacy",
+  "/refunds",
+  "/support",
+  "/terms",
+];
+
 /** @type {import('next').NextConfig} */
 const baseConfig = {
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   async headers() {
     return [
+      ...interactiveStaticRoutes.map((source) => ({ source, headers: noStoreHeaders })),
       {
         source: "/admin/:path*",
-        headers: [{ key: "Cache-Control", value: "no-store" }],
+        headers: noStoreHeaders,
       },
     ];
   },
