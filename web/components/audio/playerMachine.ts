@@ -22,6 +22,7 @@ export type PlayerState = {
 
 export type PlayerAction =
   | { type: "account_boundary" }
+  | { type: "stopped" }
   | { type: "request_grant"; session: SessionDetail }
   | { type: "grant_ready"; sessionId: string; grant: PlaybackGrant }
   | { type: "refresh_started"; sessionId: string }
@@ -51,6 +52,7 @@ function isCurrentSession(state: PlayerState, sessionId: string): boolean {
 export function playerReducer(state: PlayerState, action: PlayerAction): PlayerState {
   switch (action.type) {
     case "account_boundary":
+    case "stopped":
       return initialPlayerState;
     case "request_grant":
       return {

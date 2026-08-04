@@ -31,6 +31,7 @@ type PlayerContextValue = {
   pause: (placement?: PlayerAnalyticsPlacement) => void;
   resume: (placement?: PlayerAnalyticsPlacement) => Promise<boolean>;
   seek: (seconds: number) => void;
+  stop: () => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -487,6 +488,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const stop = useCallback(() => {
+    const activeSession = currentSessionRef.current;
+    const audio = audioRef.current;
+    if (activeSession && audio) {
+      writeListeningProgress(activeSession.id, audio.currentTime, false, true);
+    }
+
+    grantRequestRef.current += 1;
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
+    disposePlayerResources({
+      audio,
+      abortController: grantAbortRef.current,
+      refreshTimerId: refreshTimerRef.current,
+      clearTimer: window.clearTimeout,
+    });
+    audioRef.current = null;
+    grantAbortRef.current = null;
+    refreshTimerRef.current = null;
+    currentSessionRef.current = null;
+    engagementRef.current = {
+      sessionId: null,
+      previousMediaTime: 0,
+      listenedSeconds: 0,
+      emitted: new Set<number>(),
+    };
+    dispatch({ type: "stopped" });
+    window.dispatchEvent(new CustomEvent("orna:analytics", {
+      detail: { name: "session_close", placement: "global_player" },
+    }));
+  }, [writeListeningProgress]);
+
   useEffect(() => {
     const history = historyRef.current;
     const handleAccountBoundary = () => {
@@ -539,8 +572,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ ...player, play, pause, resume, seek }),
-    [pause, play, player, resume, seek],
+    () => ({ ...player, play, pause, resume, seek, stop }),
+    [pause, play, player, resume, seek, stop],
   );
 
   return (
@@ -574,9 +607,23 @@ export function useGlobalPlayerSuppression(isSuppressed: boolean) {
 }
 
 function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
-  const { currentSession, playbackState, grant, error, pause, resume } = usePlayer();
+  const { currentSession, playbackState, grant, error, pause, resume, stop } = usePlayer();
   const pathname = usePathname();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+
+  useEffect(() => {
+    if (pathname === "/membership") {
+      setIsExpanded(false);
+      setIsMinimized(true);
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    if (error) {
+      setIsMinimized(false);
+    }
+  }, [error]);
 
   const isSessionRoute = pathname?.startsWith("/sessions/");
 
@@ -585,6 +632,21 @@ function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
   }
 
   const isPlaying = playbackState === "playing";
+
+  if (isMinimized) {
+    return (
+      <aside className="global-player is-minimized" aria-label="Global audio player">
+        <button
+          className="global-player-restore"
+          type="button"
+          aria-label="Restore player"
+          onClick={() => setIsMinimized(false)}
+        >
+          <span aria-hidden="true">♫</span>
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside className={`global-player${isExpanded ? " is-expanded" : ""}`} aria-label="Global audio player">
@@ -605,6 +667,29 @@ function GlobalPlayer({ isSuppressed }: { isSuppressed: boolean }) {
         onClick={isPlaying ? () => pause("global_player") : () => void resume("global_player")}
       >
         <span aria-hidden="true">{isPlaying ? "Ⅱ" : "▶"}</span>
+      </button>
+      <button
+        className="global-player-icon-action"
+        type="button"
+        aria-label="Minimize player"
+        onClick={() => {
+          setIsExpanded(false);
+          setIsMinimized(true);
+        }}
+      >
+        <span aria-hidden="true">—</span>
+      </button>
+      <button
+        className="global-player-icon-action global-player-close"
+        type="button"
+        aria-label="Stop and close player"
+        onClick={() => {
+          setIsExpanded(false);
+          setIsMinimized(false);
+          stop();
+        }}
+      >
+        <span aria-hidden="true">×</span>
       </button>
       {isExpanded ? (
         <div className="global-player-details">

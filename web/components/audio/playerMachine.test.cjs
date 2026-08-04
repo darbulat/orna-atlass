@@ -59,6 +59,14 @@ test("an account boundary discards the current grant and session", () => {
   assert.deepEqual(playerReducer(state, { type: "account_boundary" }), initialPlayerState);
 });
 
+test("stopping playback discards the current grant and session", () => {
+  let state = playerReducer(initialPlayerState, { type: "request_grant", session: firstSession });
+  state = playerReducer(state, { type: "grant_ready", sessionId: firstSession.id, grant: firstGrant });
+  state = playerReducer(state, { type: "playing" });
+
+  assert.deepEqual(playerReducer(state, { type: "stopped" }), initialPlayerState);
+});
+
 test("grant refresh preserves progress and records whether playback resumed", () => {
   let state = playerReducer(initialPlayerState, { type: "request_grant", session: firstSession });
   state = playerReducer(state, { type: "grant_ready", sessionId: firstSession.id, grant: firstGrant });
