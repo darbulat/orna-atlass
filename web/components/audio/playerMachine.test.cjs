@@ -59,6 +59,14 @@ test("an account boundary discards the current grant and session", () => {
   assert.deepEqual(playerReducer(state, { type: "account_boundary" }), initialPlayerState);
 });
 
+test("stopping playback discards the current grant and session", () => {
+  let state = playerReducer(initialPlayerState, { type: "request_grant", session: firstSession });
+  state = playerReducer(state, { type: "grant_ready", sessionId: firstSession.id, grant: firstGrant });
+  state = playerReducer(state, { type: "playing" });
+
+  assert.deepEqual(playerReducer(state, { type: "stopped" }), initialPlayerState);
+});
+
 test("grant refresh preserves progress and records whether playback resumed", () => {
   let state = playerReducer(initialPlayerState, { type: "request_grant", session: firstSession });
   state = playerReducer(state, { type: "grant_ready", sessionId: firstSession.id, grant: firstGrant });
@@ -75,6 +83,25 @@ test("grant refresh preserves progress and records whether playback resumed", ()
   assert.equal(state.playbackState, "playing");
   assert.equal(state.currentTimeSeconds, 37);
   assert.equal(state.grant?.stream_url, "/refreshed.mp3");
+});
+
+test("grant refresh keeps a playback error until recovery succeeds", () => {
+  let state = playerReducer(initialPlayerState, { type: "request_grant", session: firstSession });
+  state = playerReducer(state, { type: "grant_ready", sessionId: firstSession.id, grant: firstGrant });
+  state = playerReducer(state, { type: "failed", sessionId: firstSession.id, message: "stream failed" });
+
+  state = playerReducer(state, { type: "refresh_started", sessionId: firstSession.id });
+  assert.equal(state.playbackState, "refreshing_grant");
+  assert.equal(state.error, "stream failed");
+
+  state = playerReducer(state, {
+    type: "grant_refreshed",
+    sessionId: firstSession.id,
+    grant: { ...firstGrant, stream_url: "/recovered.mp3" },
+    resumed: true,
+  });
+  assert.equal(state.playbackState, "playing");
+  assert.equal(state.error, null);
 });
 
 test("seeking from ended moves to paused and stale errors are ignored", () => {
