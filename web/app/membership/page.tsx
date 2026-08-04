@@ -117,7 +117,7 @@ function MembershipInformation({ onCreateAccount }: { onCreateAccount?: () => vo
           <p><strong>One payment.</strong> The current test price is shown in the checkout panel below.</p>
           <ul>
             <li>Permanent access to available members-only recordings</li>
-            <li>Secure hosted checkout through Bereke Bank</li>
+            <li>Secure hosted checkout</li>
             <li>Digital access with no physical delivery</li>
           </ul>
         </article>

@@ -233,6 +233,9 @@ test("signed-in account is a responsive dashboard with clear access and next act
   await expect(page.getByText("Test payment mode", { exact: true })).toBeVisible();
   await expect(page.getByText(/does not indicate production payment readiness/)).toBeVisible();
   await expect(page.getByText("Test checkout price", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".billing-panel .billing-disclosure"))
+    .toContainText("Payment is completed securely on Bereke Bank’s checkout.");
+  await expect(page.getByText(/Bereke Bank/)).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Checkout unavailable" })).toBeDisabled();
 
   await page.setViewportSize({ width: 320, height: 700 });
@@ -417,7 +420,8 @@ test("paid billing presents an active-access purchase summary with localized fac
   const summary = page.getByRole("group", { name: "Purchase summary" });
   await expect(summary.getByText("USD 10.00", { exact: true })).toBeVisible();
   await expect(summary.getByText(/Aug.*4.*2026|4.*Aug.*2026/)).toBeVisible();
-  await expect(summary.getByText("Bereke Bank", { exact: true })).toBeVisible();
+  await expect(summary.getByText("Processor", { exact: true })).toHaveCount(0);
+  await expect(summary.getByText("Bereke Bank", { exact: true })).toHaveCount(0);
   await expect(summary.getByText("orna-bbbbbbb…bbbbbb", { exact: true })).toBeVisible();
   await expect(summary.getByText(merchantReference, { exact: true })).not.toBeVisible();
   const copyOrder = summary.getByRole("button", { name: "Copy order ID" });
@@ -444,7 +448,8 @@ test("paid billing presents an active-access purchase summary with localized fac
   await expect(page.getByText("Test payment mode", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "One payment. No renewal." })).toHaveCount(0);
   await expect(page.getByText(/By continuing/)).toHaveCount(0);
-  await expect(page.getByText(/Payment was processed by Bereke Bank/)).toBeVisible();
+  await expect(page.getByText("Refunds are subject to the Refund Policy.", { exact: true })).toBeVisible();
+  await expect(page.locator(".billing-panel").getByText(/Bereke Bank/)).toHaveCount(0);
 });
 
 
@@ -496,8 +501,8 @@ test("refund requires confirmation and becomes a truthful pending status", async
   const confirmation = page.getByRole("group", { name: "Confirm full refund" });
   await expect(confirmation).toBeVisible();
   await expect(confirmation).toBeFocused();
-  await expect(confirmation).toContainText("Your payment will be refunded in full");
-  await expect(confirmation).toContainText("purchase-backed access will end after Bereke Bank confirms the refund");
+  await expect(confirmation).toContainText("Your payment will be refunded in full to the original payment method");
+  await expect(confirmation).toContainText("purchase-backed access will end after the refund is confirmed");
 
   await confirmation.getByRole("button", { name: "Keep membership" }).click();
   expect(refundRequests).toBe(0);
@@ -515,7 +520,11 @@ test("refund requires confirmation and becomes a truthful pending status", async
   releaseRefund?.();
 
   await expect(page.getByText("Refund requested", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Bereke Bank confirmation is pending/)).toBeVisible();
+  await expect(page.getByText("Refund confirmation is pending. Your current access status remains visible above.", { exact: true }))
+    .toBeVisible();
+  await expect(page.locator(".billing-panel p[role='alert']")).toHaveText(
+    "Your refund request was received. We'll update the status when the refund is confirmed.",
+  );
   await expect(page.getByRole("button", { name: "Request full refund" })).toHaveCount(0);
   await expect(page.getByRole("group", { name: "Purchase summary" })).toBeVisible();
 });
@@ -531,7 +540,8 @@ test("a server-confirmed refund request keeps purchase facts without another mut
   await expect(page.getByRole("heading", { name: "Lifetime access is active" })).toHaveCount(0);
   await expect(page.getByRole("group", { name: "Purchase summary" })).toBeVisible();
   await expect(page.getByText("Refund requested", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Bereke Bank confirmation is pending/)).toBeVisible();
+  await expect(page.getByText("Refund confirmation is pending. Your current access status remains visible above.", { exact: true }))
+    .toBeVisible();
   await expect(page.getByRole("button", { name: "Request full refund" })).toHaveCount(0);
 });
 
