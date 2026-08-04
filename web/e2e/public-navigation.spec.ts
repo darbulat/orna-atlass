@@ -329,7 +329,7 @@ test("mobile home navigation leaves the inline player controls clickable", async
   await expect(page.getByRole("region", { name: "Session player" })).toHaveCount(0);
 });
 
-test("home globe header omits duplicate search and routes account access through Subscribe", async ({ page }) => {
+test("home globe header omits duplicate search and routes account access through Profile", async ({ page }) => {
   await page.goto("/");
 
   const navigation = page.getByRole("navigation", { name: "Primary navigation" });
@@ -340,7 +340,7 @@ test("home globe header omits duplicate search and routes account access through
   await expect(navigation.getByRole("link", { name: /search/i })).toHaveCount(0);
   await expect(page.getByRole("contentinfo")).toHaveCount(1);
   await expect(navigation.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(0);
-  await expect(navigation.getByRole("link", { name: "Subscribe", exact: true })).toHaveAttribute(
+  await expect(navigation.getByRole("link", { name: "Profile", exact: true })).toHaveAttribute(
     "href",
     "/membership?mode=register",
   );
@@ -379,7 +379,7 @@ test("home globe header is one compact row with navigation inside a mobile menu"
 
   const navigation = page.getByRole("navigation", { name: "Primary navigation" });
   const wordmark = navigation.getByRole("link", { name: "ORNA Atlas" });
-  const menu = navigation.getByText("Menu", { exact: true });
+  const menu = navigation.locator("summary[aria-label='Menu']");
   await expect(wordmark).toBeVisible();
   await expect(menu).toBeVisible();
   const [wordmarkBox, menuBox, closedNavigationBox] = await Promise.all([
@@ -392,7 +392,7 @@ test("home globe header is one compact row with navigation inside a mobile menu"
   expect(closedNavigationBox).not.toBeNull();
   expect(Math.abs(wordmarkBox!.y - menuBox!.y)).toBeLessThanOrEqual(2);
   expect(closedNavigationBox!.height).toBeLessThanOrEqual(60);
-  await expect(navigation.getByRole("link", { name: "Subscribe" })).not.toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Profile" })).not.toBeVisible();
 
   await menu.click();
   const menuLinks = navigation.getByRole("link").filter({ hasNotText: "ORNA Atlas" });
@@ -423,13 +423,13 @@ test.describe("mobile header without JavaScript", () => {
     await page.goto("/about");
 
     const navigation = page.getByRole("navigation", { name: "Primary navigation" });
-    const menu = navigation.getByText("Menu", { exact: true });
-    const subscribe = navigation.getByRole("link", { name: "Subscribe" });
+    const menu = navigation.locator("summary[aria-label='Menu']");
+    const profile = navigation.getByRole("link", { name: "Profile" });
     await expect(menu).toBeVisible();
-    await expect(subscribe).not.toBeVisible();
+    await expect(profile).not.toBeVisible();
 
     await menu.click();
-    await expect(subscribe).toBeVisible();
+    await expect(profile).toBeVisible();
     await expect(navigation.getByRole("link")).toHaveCount(4);
   });
 });
@@ -588,16 +588,20 @@ test("public legal pages disclose the operator and are linked from the home page
   await expect(page.getByText("Other IT services", { exact: true })).toBeVisible();
 });
 
-test("legal pages remain contained and navigable on a narrow phone", async ({ page }) => {
+test("legal pages use a dismissible light mobile menu and remain contained", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
 
-  for (const path of ["/privacy", "/terms"]) {
+  for (const path of ["/privacy", "/terms", "/refunds"]) {
     await page.goto(path);
-    const menu = page.getByText("Menu", { exact: true });
-    const menuDetails = menu.locator("..");
+    const menu = page.locator(".legal-nav summary[aria-label='Menu']");
+    const menuDetails = page.locator(".legal-nav .site-menu-mobile");
+    const menuLinks = menuDetails.locator(".site-menu-links");
     await expect(menuDetails).not.toHaveAttribute("open", "");
     await menu.click();
     await expect(menuDetails).toHaveAttribute("open", "");
+    await expect(menuLinks).toHaveCSS("background-color", "rgb(244, 240, 228)");
+    await expect(menuLinks).toHaveCSS("color", "rgb(23, 35, 29)");
+
     const metrics = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,
@@ -614,6 +618,18 @@ test("legal pages remain contained and navigable on a narrow phone", async ({ pa
       expect(box!.x + box!.width).toBeLessThanOrEqual(320);
       expect(box!.height).toBeGreaterThanOrEqual(44);
     }
+
+    await page.mouse.click(20, 400);
+    await expect(menuDetails).not.toHaveAttribute("open", "");
+    await menu.click();
+    await page.keyboard.press("Escape");
+    await expect(menuDetails).not.toHaveAttribute("open", "");
+    await menu.click();
+    const profile = menuDetails.getByRole("link", { name: "Profile" });
+    await profile.focus();
+    await page.mouse.wheel(0, 300);
+    await expect(menuDetails).not.toHaveAttribute("open", "");
+    await expect(menu).toBeFocused();
   }
 });
 
@@ -641,7 +657,7 @@ test("home and manifesto share editorial display typography", async ({ page }) =
 test("about mobile calls to action provide 44px touch targets", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/about");
-  const menu = page.getByText("Menu", { exact: true });
+  const menu = page.locator("summary[aria-label='Menu']");
   const menuDetails = menu.locator("..");
   await expect(menuDetails).not.toHaveAttribute("open", "");
   await menu.click();
@@ -1601,7 +1617,7 @@ test("password sign-in invalidates an old-account mutation before the login requ
   accountBoundaries = await page.evaluate(() => (
     (window as typeof window & { __accountBoundaries?: number }).__accountBoundaries ?? 0
   ));
-  await page.getByRole("link", { name: "Subscribe" }).click();
+  await page.getByRole("link", { name: "Profile" }).click();
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByLabel("Password account email").fill("other-member@example.com");
   const passwordInput = page.getByLabel("Password", { exact: true });
@@ -1811,7 +1827,7 @@ test("password sign-in aborts a hung older refresh before installing the new acc
   const boundariesBeforeLogin = await page.evaluate(() => (
     (window as typeof window & { __accountBoundaries?: number }).__accountBoundaries ?? 0
   ));
-  await page.getByRole("link", { name: "Subscribe" }).click();
+  await page.getByRole("link", { name: "Profile" }).click();
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByLabel("Password account email").fill("other-member@example.com");
   const passwordInput = page.getByLabel("Password", { exact: true });
@@ -2774,7 +2790,7 @@ test("homepage discovery links reach collections and the subscription entry poin
   await expect(page.getByRole("heading", { name: "Collections", level: 1 })).toBeVisible();
   await page.goto("/");
   await page.waitForLoadState("networkidle");
-  await expect(page.getByRole("link", { name: "Subscribe" })).toHaveAttribute("href", "/membership?mode=register");
+  await expect(page.getByRole("link", { name: "Profile" })).toHaveAttribute("href", "/membership?mode=register");
   await page.goto("/membership?mode=register");
   await expect(page).toHaveURL(/\/membership\?mode=register/);
   await expect(page.getByRole("link", { name: "Refund Policy" })).toHaveAttribute("href", "/refunds");

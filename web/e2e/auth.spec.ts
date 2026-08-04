@@ -472,6 +472,87 @@ test("OAuth success is only announced after the authenticated account is confirm
   await expect(page).toHaveURL(/\/membership$/);
 });
 
+test("mobile account header uses a Profile link and a three-line menu icon", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "early_access", status: "active", is_entitled: true }),
+    });
+  });
+
+  await page.goto("/membership");
+  await expect(page.getByText("early_access", { exact: true })).toBeVisible();
+  const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+  const menu = navigation.locator("summary[aria-label='Menu']");
+
+  await expect(navigation.getByRole("link", { name: "Profile", exact: true })).not.toBeVisible();
+  await expect(navigation.getByText("Menu", { exact: true })).toHaveCount(0);
+  await expect(menu.locator(".site-menu-icon > span")).toHaveCount(3);
+
+  await menu.click();
+  await expect(navigation.getByRole("link", { name: "Profile", exact: true })).toBeVisible();
+});
+
+test("open account menu does not overlap the heading at the mobile-menu breakpoint", async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 844 });
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "50000000-0000-4000-8000-000000000001",
+        email: "member@example.com",
+        role: "member",
+        is_active: true,
+        email_verified: true,
+        created_at: "2026-07-19T00:00:00Z",
+      }),
+    });
+  });
+  await page.route("**/api/v1/memberships/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ plan: "early_access", status: "active", is_entitled: true }),
+    });
+  });
+
+  await page.goto("/membership");
+  await expect(page.getByRole("heading", { level: 1, name: "Your account" })).toBeVisible();
+  await expect(page.getByText("early_access", { exact: true })).toBeVisible();
+  const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+  const menuDetails = navigation.locator(".site-menu-mobile");
+  const menuLinks = menuDetails.locator(".site-menu-links");
+  await expect(menuDetails).not.toHaveAttribute("open", "");
+  await menuDetails.locator("summary[aria-label='Menu']").click();
+  await expect(menuDetails).toHaveAttribute("open", "");
+  await expect(menuLinks).toBeVisible();
+
+  const [menuBox, headingBox] = await Promise.all([
+    menuLinks.boundingBox(),
+    page.getByRole("heading", { level: 1, name: "Your account" }).boundingBox(),
+  ]);
+  expect(menuBox).not.toBeNull();
+  expect(headingBox).not.toBeNull();
+  expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(headingBox!.y);
+});
+
 
 test("magic-link signup and login outcomes are announced after account confirmation", async ({ page }) => {
   await page.route("**/api/v1/users/me", async (route) => {
@@ -1089,7 +1170,7 @@ test("a dual-key callback fragment is rejected without choosing two owners", asy
 
 test("browser history restores a bare membership URL to its default mode", async ({ page }) => {
   await page.goto("/membership");
-  await page.getByRole("link", { name: "Subscribe" }).click();
+  await page.getByRole("link", { name: "Profile" }).click();
   await expect(page).toHaveURL(/\/membership\?mode=register$/);
   await expect(page.getByRole("heading", { name: "Create your free ORNA account" })).toBeVisible();
   await page.goBack();
