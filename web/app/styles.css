@@ -2228,22 +2228,129 @@ a:focus-visible {
   grid-template-columns: minmax(0, 1fr) minmax(300px, .8fr);
   margin: 18px auto 0;
   max-width: 1180px;
+  min-width: 0;
   padding: clamp(26px, 4vw, 46px);
   position: relative;
   width: 100%;
   z-index: 1;
 }
+.billing-panel > * { min-width: 0; }
 .billing-panel h2 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(2rem, 4vw, 3.8rem); font-weight: 400; margin: 12px 0; }
 .billing-panel > div > p { color: #557067; line-height: 1.6; }
-.billing-purchase-card { border: 1px solid rgba(19,35,28,.18); border-radius: 20px; display: grid; gap: 12px; padding: 24px; }
+.billing-purchase-card {
+  border: 1px solid rgba(19,35,28,.18);
+  border-radius: 20px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  padding: 24px;
+}
+.billing-purchase-card > * { min-width: 0; }
 .billing-purchase-card > strong { font-family: Georgia, "Times New Roman", serif; font-size: 2.2rem; font-weight: 400; }
 .billing-purchase-card > span { color: #557067; font-size: .85rem; }
 .billing-purchase-card button { background: #153e31; border: 0; border-radius: 999px; color: #f3f7f4; cursor: pointer; min-height: 48px; padding: 12px 18px; }
 .billing-purchase-card button:disabled { cursor: not-allowed; opacity: .55; }
+.billing-purchase-card p,
+.billing-purchase-card dl { margin: 0; }
+.billing-test-mode {
+  background: #fff3c7;
+  border: 1px solid #d5b85e;
+  border-radius: 14px;
+  color: #5a4812;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+}
+.billing-test-mode strong { font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; }
+.billing-test-mode span { font-size: .78rem; line-height: 1.45; }
+.billing-purchase-summary {
+  border-bottom: 1px solid rgba(19,35,28,.14);
+  border-top: 1px solid rgba(19,35,28,.14);
+  display: grid;
+}
+.billing-purchase-summary > div {
+  align-items: center;
+  border-top: 1px solid rgba(19,35,28,.1);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(5.5rem, .36fr) minmax(0, 1fr);
+  min-width: 0;
+  padding: 12px 0;
+}
+.billing-purchase-summary > div:first-child { border-top: 0; }
+.billing-purchase-summary dt {
+  color: #698078;
+  font-size: .68rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.billing-purchase-summary dd {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.billing-order-reference { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; }
+.billing-purchase-card .billing-copy-order {
+  background: transparent;
+  border: 1px solid rgba(19,35,28,.24);
+  color: #253c32;
+  min-height: 44px;
+  padding: 8px 14px;
+}
+.billing-purchase-card .billing-copy-order:hover,
+.billing-purchase-card .billing-refund-trigger:hover,
+.billing-refund-confirmation > div > button:first-child:hover { background: rgba(19,35,28,.07); }
+.billing-copy-status { color: #315f4e; font-size: .82rem; }
+.billing-refund-window { color: #557067; font-size: .82rem; line-height: 1.5; }
+.billing-purchase-card .billing-refund-trigger {
+  background: transparent;
+  border: 1px solid rgba(113,45,48,.38);
+  color: #713033;
+  justify-self: start;
+}
+.billing-refund-confirmation {
+  background: #fff9f4;
+  border: 1px solid rgba(113,45,48,.28);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  outline: none;
+  padding: 18px;
+}
+.billing-refund-confirmation:focus { box-shadow: 0 0 0 3px rgba(113,45,48,.18); }
+.billing-refund-confirmation h3 { font-family: Georgia, "Times New Roman", serif; font-size: 1.35rem; font-weight: 400; margin: 0; }
+.billing-refund-confirmation p { color: #5f4a42; line-height: 1.5; }
+.billing-refund-confirmation > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.billing-purchase-card .billing-refund-confirmation > div > button:first-child {
+  background: transparent;
+  border: 1px solid rgba(19,35,28,.24);
+  color: #253c32;
+}
+.billing-purchase-card .billing-refund-confirm { background: #713033; }
+.billing-refund-status {
+  background: #e4f0e9;
+  border-radius: 14px;
+  color: #214e3d;
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+}
+.billing-refund-status p { color: #41695a; font-size: .82rem; line-height: 1.5; }
 .billing-disclosure { font-size: .78rem; }
 .billing-disclosure a { align-items: center; display: inline-flex; min-height: 44px; }
 @media (max-width: 760px) {
-  .lifetime-offer, .billing-panel { grid-template-columns: 1fr; }
+  .lifetime-offer { grid-template-columns: 1fr; }
+  .billing-panel { grid-template-columns: minmax(0, 1fr); }
+  .billing-purchase-summary > div {
+    align-items: start;
+    gap: 4px;
+    grid-template-columns: minmax(0, 1fr);
+  }
   .lifetime-offer { border-radius: 22px; padding: 28px 20px; }
 }
 

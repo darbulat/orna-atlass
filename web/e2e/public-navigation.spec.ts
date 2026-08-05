@@ -1232,9 +1232,11 @@ test("free signup from a locked recording stays on the membership explanation", 
   await page.getByRole("tab", { name: "Night" }).click();
   const lockedPoint = page.locator(".location-card", { hasText: "Members Cove" });
   await expect(lockedPoint).toContainText("🔒");
-  await lockedPoint.click();
-  const signupLink = page.getByRole("dialog", { name: /Members-only soundscape/i })
-    .getByRole("link", { name: "Create a free account" });
+  await expect(lockedPoint).toHaveClass(/selected/);
+  await page.getByRole("button", { name: "Unlock full session" }).click();
+  const dialog = page.getByRole("dialog", { name: /Members-only soundscape/i });
+  await expect(dialog).toBeVisible();
+  const signupLink = dialog.getByRole("link", { name: "Create a free account" });
   await expect(signupLink).toHaveAttribute("href", "/membership?mode=register");
   await page.goto("/membership?mode=register");
   await expect(page).toHaveURL(/\/membership\?mode=register$/);

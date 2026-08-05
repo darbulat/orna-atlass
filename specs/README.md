@@ -43,5 +43,7 @@ decision.
 - [`database-configured-lifetime-membership-access.md`](database-configured-lifetime-membership-access.md)
   — accepted replacement contract for database-configured lifetime pricing, immutable purchase
   snapshots, provenance-safe refunds and complete eligible member-catalog access.
+- [`profile-billing-mobile-ux.md`](profile-billing-mobile-ux.md) — implemented responsive paid-purchase
+  summary, localized payment facts, explicit test-mode treatment and confirmed secondary refund flow.
 
 `TEMPLATE.md` is scaffolding and does not describe an implemented or accepted feature.

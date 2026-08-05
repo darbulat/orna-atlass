@@ -167,6 +167,10 @@ class RecordingSegment(Base):
             "processing_status IN ('pending','processing','ready','failed')",
             name="ck_recording_segments_processing_status",
         ),
+        CheckConstraint(
+            "processing_attempt_count >= 0",
+            name="ck_recording_segments_processing_attempt_count",
+        ),
         CheckConstraint("start_offset_ms IS NULL OR start_offset_ms >= 0", name="ck_recording_segments_offset"),
         CheckConstraint("duration_ms IS NULL OR duration_ms > 0", name="ck_recording_segments_duration"),
         UniqueConstraint("session_id", "sequence_number", name="uq_recording_segments_sequence"),
