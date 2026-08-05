@@ -19,6 +19,7 @@ async function adminProbeState(request: APIRequestContext) {
   return await response.json() as {
     access_revoked: boolean;
     refresh_pending: boolean;
+    identity_held: boolean;
     request_counts: Record<string, number>;
   };
 }
@@ -140,6 +141,33 @@ test("revoked admin access clears every privileged projection on focus revalidat
   await expect(page.getByText(/59\.555555|24\.555555/)).toHaveCount(0);
 });
 
+test("an older successful identity response cannot restore revoked admin access", async ({ page, request }) => {
+  await useAdminCookie(page);
+  await page.goto("/admin");
+  await expect(page.getByText("Hidden Nesting Site", { exact: true })).toBeVisible();
+
+  const hold = await request.post("http://127.0.0.1:4010/__e2e/admin-state?hold_next_identity=true");
+  expect(hold.status()).toBe(204);
+  await expect.poll(async () => {
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    return (await adminProbeState(request)).identity_held;
+  }).toBe(true);
+
+  const revoke = await request.post("http://127.0.0.1:4010/__e2e/admin-state?revoked=true");
+  expect(revoke.status()).toBe(204);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("heading", { name: "Доступ администратора отозван" })).toBeVisible();
+
+  const release = await request.post(
+    "http://127.0.0.1:4010/__e2e/admin-state?revoked=true&release_identity=true",
+  );
+  expect(release.status()).toBe(204);
+  await expect.poll(async () => (await adminProbeState(request)).identity_held).toBe(false);
+
+  await expect(page.getByRole("heading", { name: "Доступ администратора отозван" })).toBeVisible();
+  await expect(page.getByText("Hidden Nesting Site", { exact: true })).toHaveCount(0);
+});
+
 test("an expired admin access cookie refreshes once without clearing privileged content", async ({ page, request }) => {
   await useAdminCookie(page);
   await page.goto("/admin");
@@ -232,8 +260,13 @@ test("location mutation reports success and a stale If-Match without replay", as
   expect(page.url()).not.toContain(adminLocationId);
   expect(page.url()).not.toContain("operation_log");
 
-  const configured = await request.post("http://127.0.0.1:4010/__e2e/admin-mutation?mode=stale");
-  expect(configured.status()).toBe(204);
+  let persisted = await request.get("http://127.0.0.1:4010/api/v1/admin/locations?limit=1&offset=0", {
+    headers: { Cookie: "orna_access=admin-e2e" },
+  });
+  expect(persisted.status()).toBe(200);
+  let [persistedLocation] = await persisted.json();
+  expect(persistedLocation.name).toBe("Renamed location");
+  expect(persistedLocation.revision).toBe('W/"location-r2"');
 
   form = locationUpdateForm(page);
   await form.getByLabel("ID", { exact: true }).fill(adminLocationId);
@@ -245,6 +278,14 @@ test("location mutation reports success and a stale If-Match without replay", as
   );
   const state = await adminProbeState(request);
   expect(state.request_counts[`PATCH /api/v1/admin/locations/${adminLocationId}`]).toBe(2);
+
+  persisted = await request.get("http://127.0.0.1:4010/api/v1/admin/locations?limit=1&offset=0", {
+    headers: { Cookie: "orna_access=admin-e2e" },
+  });
+  expect(persisted.status()).toBe(200);
+  [persistedLocation] = await persisted.json();
+  expect(persistedLocation.name).toBe("Renamed location");
+  expect(persistedLocation.revision).toBe('W/"location-r2"');
 });
 
 test("editorial create/update/archive and ordered collection workflows are deterministic", async ({ page }) => {

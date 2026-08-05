@@ -1,5 +1,6 @@
 import asyncio
 import os
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -94,5 +95,72 @@ async def test_concurrent_admin_demotion_leaves_one_active_admin() -> None:
                 )
             )
             await cleanup.execute(delete(User).where(User.id.in_([*user_ids, actor_user_id])))
+            await cleanup.commit()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_audit_failure_rolls_back_role_mutation_in_postgres(monkeypatch) -> None:
+    engine = create_async_engine(os.environ["DATABASE_URL"])
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    target_user_id = uuid4()
+    actor_user_id = uuid4()
+
+    try:
+        async with AsyncSession(engine) as setup:
+            setup.add_all(
+                [
+                    User(
+                        id=target_user_id,
+                        email=f"audit-target-{target_user_id}@example.test",
+                        password_hash="hashed",
+                        role="member",
+                        is_active=True,
+                    ),
+                    User(
+                        id=actor_user_id,
+                        email=f"audit-actor-{actor_user_id}@example.test",
+                        password_hash="hashed",
+                        role="admin",
+                        is_active=True,
+                    ),
+                ]
+            )
+            await setup.commit()
+
+        monkeypatch.setattr(
+            service,
+            "add_audit_event",
+            AsyncMock(side_effect=RuntimeError("audit unavailable")),
+        )
+        async with session_factory() as session:
+            with pytest.raises(RuntimeError, match="audit unavailable"):
+                await service.update_role(
+                    session,
+                    target_user_id,
+                    UserRoleUpdate(role="editor"),
+                    actor_user_id=actor_user_id,
+                )
+
+        async with AsyncSession(engine) as verify:
+            role = await verify.scalar(select(User.role).where(User.id == target_user_id))
+            audit_count = await verify.scalar(
+                select(func.count())
+                .where(
+                    AuditEvent.event_type == "user.role_updated",
+                    AuditEvent.subject_id == str(target_user_id),
+                )
+                .select_from(AuditEvent)
+            )
+            assert role == "member"
+            assert audit_count == 0
+    finally:
+        async with AsyncSession(engine) as cleanup:
+            await cleanup.execute(
+                delete(AuditEvent).where(AuditEvent.subject_id == str(target_user_id))
+            )
+            await cleanup.execute(
+                delete(User).where(User.id.in_([target_user_id, actor_user_id]))
+            )
             await cleanup.commit()
         await engine.dispose()

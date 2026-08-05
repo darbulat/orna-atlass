@@ -164,6 +164,30 @@ test("privileged parsers accept generated-contract payloads", () => {
   assert.equal(admin.parseCollectionRows([collectionFixture])[0].id, collectionFixture.id);
   assert.equal(admin.parseAdminUserRows([userFixture])[0].membership_status, "inactive");
   assert.equal(admin.parseAuditRows([auditFixture])[0].id, auditFixture.id);
+
+  const generatedMinimalSession = {
+    id: sessionFixture.id,
+    location_id: sessionFixture.location_id,
+    slug: sessionFixture.slug,
+    title: sessionFixture.title,
+    recorded_at: sessionFixture.recorded_at,
+    metadata: {},
+    created_at: now,
+    updated_at: now,
+    revision: sessionFixture.revision,
+    media_assets: [{
+      id: "30000000-0000-4000-8000-000000000001",
+      session_id: sessionFixture.id,
+      kind: "audio",
+      mime_type: "audio/mpeg",
+      duration_seconds: null,
+      size_bytes: null,
+      checksum: null,
+      metadata: {},
+      created_at: now,
+    }],
+  };
+  assert.equal(admin.parseSessionRows([generatedMinimalSession])[0].id, sessionFixture.id);
 });
 
 test("every generated required privileged field fails closed when missing", () => {
@@ -175,7 +199,6 @@ test("every generated required privileged field fails closed when missing", () =
     ]],
     [admin.parseSessionRows, sessionFixture, [
       "location_id", "slug", "title", "recorded_at", "metadata", "id",
-      "publication_status", "processing_status", "access_level", "is_featured",
       "created_at", "updated_at", "revision",
     ]],
     [admin.parseCollectionRows, collectionFixture, [
@@ -210,6 +233,30 @@ test("every generated required privileged field fails closed when missing", () =
     const malformed = { ...userFixture, membership: { ...userFixture.membership } };
     delete malformed.membership[field];
     assert.throws(() => admin.parseAdminUserRows([malformed]), undefined, `membership.${field} must be required at runtime`);
+  }
+
+  const mediaAsset = {
+    id: "30000000-0000-4000-8000-000000000001",
+    session_id: sessionFixture.id,
+    kind: "audio",
+    mime_type: "audio/mpeg",
+    duration_seconds: null,
+    size_bytes: null,
+    checksum: null,
+    metadata: {},
+    created_at: now,
+  };
+  for (const field of [
+    "id", "session_id", "kind", "mime_type", "duration_seconds", "size_bytes",
+    "checksum", "metadata", "created_at",
+  ]) {
+    const malformedAsset = { ...mediaAsset };
+    delete malformedAsset[field];
+    assert.throws(
+      () => admin.parseSessionRows([{ ...sessionFixture, media_assets: [malformedAsset] }]),
+      undefined,
+      `media_assets[].${field} must be required at runtime`,
+    );
   }
 });
 

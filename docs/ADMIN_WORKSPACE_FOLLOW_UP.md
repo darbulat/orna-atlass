@@ -21,7 +21,7 @@ Source of truth: [`../specs/admin-workspace-v1.md`](../specs/admin-workspace-v1.
 ### Backend and audit contracts
 
 - Executable acceptance tests cover the exact location, session, collection, media, role and membership audit event names, subjects, actor provenance and allowlisted metadata.
-- A failure-atomicity canary proves that an audit insert failure prevents the service-owned transaction from committing.
+- A unit canary asserts that an audit-boundary failure prevents the service-owned commit; a disposable-PostgreSQL canary injects that failure after the role update flush and verifies from a fresh session that neither the role mutation nor a success audit event persisted.
 - Collection link-only stale writes and last-admin role changes retain their PostgreSQL concurrency canaries.
 - Every `/api/v1/admin/**` outcome, including validation/auth errors and empty `204` responses, receives `Cache-Control: no-store` at the application boundary.
 

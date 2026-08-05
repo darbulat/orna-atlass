@@ -1596,6 +1596,64 @@ async def test_segments_role_and_membership_audit_contracts(monkeypatch) -> None
     }
 
 
+def test_unhandled_admin_error_is_not_cacheable() -> None:
+    @app.get("/api/v1/admin/_test-unhandled-error", include_in_schema=False)
+    async def raise_unhandled_admin_error() -> None:
+        raise RuntimeError("admin test failure")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/admin/_test-unhandled-error")
+
+    assert response.status_code == 500
+    assert response.headers.get("cache-control") == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_membership_audit_reports_every_effectively_overwritten_field(monkeypatch) -> None:
+    db = AsyncMock()
+    user_id = uuid4()
+    current = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        plan="premium",
+        expires_at=datetime.now(UTC) + timedelta(days=30),
+        updated_at=datetime.now(UTC),
+    )
+    persisted = SimpleNamespace(id=current.id)
+    audit = AsyncMock()
+    monkeypatch.setattr(
+        memberships_service,
+        "require_user_for_update",
+        AsyncMock(return_value=SimpleNamespace(id=user_id, updated_at=datetime.now(UTC))),
+    )
+    monkeypatch.setattr(
+        memberships_service.repository,
+        "get_for_user",
+        AsyncMock(return_value=current),
+    )
+    monkeypatch.setattr(
+        memberships_service.repository,
+        "upsert",
+        AsyncMock(return_value=persisted),
+    )
+    monkeypatch.setattr(memberships_service.repository, "revoke_grant", AsyncMock())
+    monkeypatch.setattr(memberships_service, "add_audit_event", audit)
+
+    await memberships_service.update_membership(
+        db,
+        user_id,
+        MembershipUpdate(status="cancelled"),
+        actor_user_id=uuid4(),
+    )
+
+    assert audit.await_args is not None
+    assert audit.await_args.kwargs["metadata"]["changed_fields"] == [
+        "expires_at",
+        "plan",
+        "status",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_audit_insert_failure_prevents_domain_commit(monkeypatch) -> None:
     row = _admin_location()

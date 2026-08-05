@@ -99,6 +99,11 @@ function requireNumber(value: unknown, field: string, minimum?: number, maximum?
   return value;
 }
 
+function requireNullableNumber(value: unknown, field: string, minimum?: number, maximum?: number): number | null {
+  if (value === null) return null;
+  return requireNumber(value, field, minimum, maximum);
+}
+
 function requireOptionalNullableNumber(value: unknown, field: string, minimum?: number, maximum?: number): void {
   if (value !== undefined && value !== null) requireNumber(value, field, minimum, maximum);
 }
@@ -161,10 +166,16 @@ export function parseSessionRows(payload: unknown): AdminSessionRow[] {
     requireUuid(item.location_id, "session.location_id");
     requireString(item.title, "session.title");
     requireString(item.slug, "session.slug");
-    requireEnum(item.publication_status, ["draft", "published", "archived"], "session.publication_status");
-    requireEnum(item.processing_status, ["pending", "processing", "ready", "failed"], "session.processing_status");
-    requireEnum(item.access_level, ["public", "members_only", "private"], "session.access_level");
-    requireBoolean(item.is_featured, "session.is_featured");
+    if (item.publication_status !== undefined) {
+      requireEnum(item.publication_status, ["draft", "published", "archived"], "session.publication_status");
+    }
+    if (item.processing_status !== undefined) {
+      requireEnum(item.processing_status, ["pending", "processing", "ready", "failed"], "session.processing_status");
+    }
+    if (item.access_level !== undefined) {
+      requireEnum(item.access_level, ["public", "members_only", "private"], "session.access_level");
+    }
+    if (item.is_featured !== undefined) requireBoolean(item.is_featured, "session.is_featured");
     requireRecord(item.metadata, "session.metadata");
     requireDateTime(item.recorded_at, "session.recorded_at");
     requireDateTime(item.created_at, "session.created_at");
@@ -173,7 +184,7 @@ export function parseSessionRows(payload: unknown): AdminSessionRow[] {
     requireOptionalNullableString(item.description, "session.description");
     requireOptionalNullableString(item.recorder, "session.recorder");
     requireOptionalNullableString(item.weather, "session.weather");
-    requireOptionalNullableNumber(item.duration_seconds, "session.duration_seconds");
+    requireOptionalNullableNumber(item.duration_seconds, "session.duration_seconds", 0);
     requireOptionalNullableNumber(item.featured_sort_order, "session.featured_sort_order");
     if (item.media_assets !== undefined) {
       if (!Array.isArray(item.media_assets)) throw new Error("Invalid privileged array: session.media_assets");
@@ -183,12 +194,26 @@ export function parseSessionRows(payload: unknown): AdminSessionRow[] {
         requireUuid(asset.session_id, `session.media_assets[${index}].session_id`);
         requireEnum(asset.kind, ["audio", "source_audio", "master_audio", "streaming_rendition", "audio_stream"], `session.media_assets[${index}].kind`);
         requireString(asset.mime_type, `session.media_assets[${index}].mime_type`);
-        requireEnum(asset.processing_status, ["pending", "uploaded", "processing", "ready", "failed"], `session.media_assets[${index}].processing_status`);
-        requireOptionalNullableNumber(asset.duration_seconds, `session.media_assets[${index}].duration_seconds`, 0);
-        requireOptionalNullableNumber(asset.size_bytes, `session.media_assets[${index}].size_bytes`, 0);
+        if (asset.processing_status !== undefined) {
+          requireEnum(asset.processing_status, ["pending", "uploaded", "processing", "ready", "failed"], `session.media_assets[${index}].processing_status`);
+        }
+        requireNullableNumber(asset.duration_seconds, `session.media_assets[${index}].duration_seconds`, 0);
+        requireNullableNumber(asset.size_bytes, `session.media_assets[${index}].size_bytes`, 0);
         requireNullableString(asset.checksum, `session.media_assets[${index}].checksum`);
-        requireNumber(asset.revision, `session.media_assets[${index}].revision`, 1);
-        requireBoolean(asset.is_active, `session.media_assets[${index}].is_active`);
+        if (asset.revision !== undefined) {
+          requireNumber(asset.revision, `session.media_assets[${index}].revision`, 1);
+        }
+        if (asset.is_active !== undefined) {
+          requireBoolean(asset.is_active, `session.media_assets[${index}].is_active`);
+        }
+        requireOptionalNullableString(asset.source_asset_id, `session.media_assets[${index}].source_asset_id`);
+        if (typeof asset.source_asset_id === "string") {
+          requireUuid(asset.source_asset_id, `session.media_assets[${index}].source_asset_id`);
+        }
+        requireOptionalNullableString(asset.archived_at, `session.media_assets[${index}].archived_at`);
+        if (typeof asset.archived_at === "string") {
+          requireDateTime(asset.archived_at, `session.media_assets[${index}].archived_at`);
+        }
         requireRecord(asset.metadata, `session.media_assets[${index}].metadata`);
         requireDateTime(asset.created_at, `session.media_assets[${index}].created_at`);
       });

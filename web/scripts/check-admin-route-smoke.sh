@@ -8,6 +8,13 @@ GATEWAY_HOST="${ADMIN_SMOKE_GATEWAY_HOST:-orna.land}"
 GATEWAY_HTTPS="${ADMIN_SMOKE_GATEWAY_HTTPS_URL:-https://${GATEWAY_HOST}/admin}"
 API_BASE_URL="${ADMIN_SMOKE_API_BASE_URL:-https://${GATEWAY_HOST}/api/v1}"
 
+for required_credential in ADMIN_SMOKE_MEMBER_COOKIE ADMIN_SMOKE_ADMIN_COOKIE; do
+  if [[ -z "${!required_credential:-}" ]]; then
+    echo "[FAIL] ${required_credential} is required for the production admin smoke." >&2
+    exit 2
+  fi
+done
+
 pass=true
 
 require_status_eq() {
@@ -191,21 +198,16 @@ write_cookie_config() {
 
 api_request "Anonymous admin identity deny" "401" "/admin/me" "" "anonymous_me"
 
-if [[ -n "${ADMIN_SMOKE_MEMBER_COOKIE:-}" ]]; then
-  member_config="${temp_root}/member.curl.conf"
-  write_cookie_config "${member_config}" "${ADMIN_SMOKE_MEMBER_COOKIE}"
-  api_request "Member admin identity deny" "403" "/admin/me" "${member_config}" "member_me"
-else
-  echo "[SKIP] Member denial probe: ADMIN_SMOKE_MEMBER_COOKIE is not set"
-fi
+member_config="${temp_root}/member.curl.conf"
+write_cookie_config "${member_config}" "${ADMIN_SMOKE_MEMBER_COOKIE}"
+api_request "Member admin identity deny" "403" "/admin/me" "${member_config}" "member_me"
 
-if [[ -n "${ADMIN_SMOKE_ADMIN_COOKIE:-}" ]]; then
-  admin_config="${temp_root}/admin.curl.conf"
-  write_cookie_config "${admin_config}" "${ADMIN_SMOKE_ADMIN_COOKIE}"
-  api_request "Admin identity read" "200" "/admin/me" "${admin_config}" "admin_me"
-  api_request "Admin location read" "200" "/admin/locations?limit=1&offset=0" "${admin_config}" "admin_locations"
-  api_request "Admin audit read" "200" "/admin/audit-events?limit=1&offset=0" "${admin_config}" "admin_audit"
-  python3 - "${temp_root}/admin_me_body.json" "${temp_root}/admin_locations_body.json" "${temp_root}/admin_audit_body.json" <<'PY'
+admin_config="${temp_root}/admin.curl.conf"
+write_cookie_config "${admin_config}" "${ADMIN_SMOKE_ADMIN_COOKIE}"
+api_request "Admin identity read" "200" "/admin/me" "${admin_config}" "admin_me"
+api_request "Admin location read" "200" "/admin/locations?limit=1&offset=0" "${admin_config}" "admin_locations"
+api_request "Admin audit read" "200" "/admin/audit-events?limit=1&offset=0" "${admin_config}" "admin_audit"
+python3 - "${temp_root}/admin_me_body.json" "${temp_root}/admin_locations_body.json" "${temp_root}/admin_audit_body.json" <<'PY'
 import json
 import sys
 
@@ -219,10 +221,7 @@ if not isinstance(locations, list):
 if not isinstance(audits, list):
     raise SystemExit("admin audit response shape is invalid")
 PY
-  echo "[OK] Authenticated admin response shapes are valid"
-else
-  echo "[SKIP] Authenticated admin probes: ADMIN_SMOKE_ADMIN_COOKIE is not set"
-fi
+echo "[OK] Authenticated admin response shapes are valid"
 
 if [[ "${pass}" == "true" ]]; then
   echo "[PASS] Смоук-чеки /admin пройдены."

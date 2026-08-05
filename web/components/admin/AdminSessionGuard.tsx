@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { apiUrl, refreshAccessCookie } from "../../lib/api/sessions";
 
@@ -12,8 +12,13 @@ type AdminSessionGuardProps = {
 
 export function AdminSessionGuard({ children }: AdminSessionGuardProps) {
   const [accessRevoked, setAccessRevoked] = useState(false);
+  const revalidationGeneration = useRef(0);
 
   const revalidate = useCallback(async () => {
+    const generation = ++revalidationGeneration.current;
+    const commitAccessState = (revoked: boolean) => {
+      if (generation === revalidationGeneration.current) setAccessRevoked(revoked);
+    };
     try {
       const requestIdentity = () => fetch(apiUrl("/api/v1/admin/me"), {
         cache: "no-store",
@@ -26,7 +31,7 @@ export function AdminSessionGuard({ children }: AdminSessionGuardProps) {
         response = await requestIdentity();
       }
       if (!response.ok) {
-        setAccessRevoked(true);
+        commitAccessState(true);
         return;
       }
       const payload: unknown = await response.json();
@@ -36,10 +41,10 @@ export function AdminSessionGuard({ children }: AdminSessionGuardProps) {
         && "is_admin" in payload
         && payload.role === "admin"
         && payload.is_admin === true;
-      setAccessRevoked(!authorized);
+      commitAccessState(!authorized);
     } catch {
       // Privileged data fails closed if current authorization cannot be proven.
-      setAccessRevoked(true);
+      commitAccessState(true);
     }
   }, []);
 
