@@ -22,7 +22,8 @@ export type AdminListState<T> =
   | { kind: "ok"; items: T[] };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const RFC3339_PATTERN = /^\d{4}-\d{2}-\d{2}[tT]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[zZ]|[+-]\d{2}:\d{2})$/;
+const RFC3339_PATTERN = /^(\d{4})-(\d{2})-(\d{2})[tT](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[zZ]|[+-](\d{2}):(\d{2}))$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -33,6 +34,12 @@ function requireString(value: unknown, field: string): string {
   return value;
 }
 
+function requireNonEmptyString(value: unknown, field: string): string {
+  const result = requireString(value, field);
+  if (result.length === 0) throw new Error(`Invalid privileged field: ${field}`);
+  return result;
+}
+
 function requireUuid(value: unknown, field: string): string {
   const result = requireString(value, field);
   if (!UUID_PATTERN.test(result)) throw new Error(`Invalid privileged UUID: ${field}`);
@@ -41,9 +48,26 @@ function requireUuid(value: unknown, field: string): string {
 
 function requireDateTime(value: unknown, field: string): string {
   const result = requireString(value, field);
-  if (!RFC3339_PATTERN.test(result) || Number.isNaN(Date.parse(result))) {
+  const match = RFC3339_PATTERN.exec(result);
+  if (!match || Number.isNaN(Date.parse(result))) {
     throw new Error(`Invalid privileged date-time: ${field}`);
   }
+  const [, year, month, day, hour, minute, second, offsetHour, offsetMinute] = match;
+  const daysInMonth = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
+  if (
+    Number(month) < 1 || Number(month) > 12
+    || Number(day) < 1 || Number(day) > daysInMonth
+    || Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59
+    || (offsetHour !== undefined && (Number(offsetHour) > 23 || Number(offsetMinute) > 59))
+  ) {
+    throw new Error(`Invalid privileged date-time: ${field}`);
+  }
+  return result;
+}
+
+function requireEmail(value: unknown, field: string): string {
+  const result = requireString(value, field);
+  if (!EMAIL_PATTERN.test(result)) throw new Error(`Invalid privileged email: ${field}`);
   return result;
 }
 
@@ -75,10 +99,8 @@ function requireNumber(value: unknown, field: string, minimum?: number, maximum?
   return value;
 }
 
-function requireOptionalNullableNumber(value: unknown, field: string): void {
-  if (value !== undefined && value !== null && (typeof value !== "number" || !Number.isFinite(value))) {
-    throw new Error(`Invalid privileged nullable number: ${field}`);
-  }
+function requireOptionalNullableNumber(value: unknown, field: string, minimum?: number, maximum?: number): void {
+  if (value !== undefined && value !== null) requireNumber(value, field, minimum, maximum);
 }
 
 function requireEnum<T extends string>(value: unknown, allowed: readonly T[], field: string): T {
@@ -101,11 +123,8 @@ function requireOptionalUuidArray(value: unknown, field: string): void {
 }
 
 function unwrapAdminListPayload(payload: unknown): unknown[] {
-  if (Array.isArray(payload)) return payload;
-  if (!isRecord(payload)) throw new Error("Invalid admin list payload");
-  if (Array.isArray(payload.items)) return payload.items;
-  if (Array.isArray(payload.data)) return payload.data;
-  throw new Error("Invalid admin list envelope");
+  if (!Array.isArray(payload)) throw new Error("Invalid admin list payload");
+  return payload;
 }
 
 export function parseLocationRows(payload: unknown): AdminLocationRow[] {
@@ -120,8 +139,8 @@ export function parseLocationRows(payload: unknown): AdminLocationRow[] {
     requireNullableString(item.habitat, "location.habitat");
     requireNumber(item.exact_latitude, "location.exact_latitude", -90, 90);
     requireNumber(item.exact_longitude, "location.exact_longitude", -180, 180);
-    requireOptionalNullableNumber(item.public_latitude, "location.public_latitude");
-    requireOptionalNullableNumber(item.public_longitude, "location.public_longitude");
+    requireOptionalNullableNumber(item.public_latitude, "location.public_latitude", -90, 90);
+    requireOptionalNullableNumber(item.public_longitude, "location.public_longitude", -180, 180);
     requireEnum(item.coordinate_visibility, ["exact_public", "approximate_public", "hidden_public"], "location.coordinate_visibility");
     requireEnum(item.sensitivity_level, ["none", "low", "medium", "high", "protected"], "location.sensitivity_level");
     requireString(item.timezone, "location.timezone");
@@ -130,7 +149,7 @@ export function parseLocationRows(payload: unknown): AdminLocationRow[] {
     if (typeof item.archived_at === "string") requireDateTime(item.archived_at, "location.archived_at");
     requireDateTime(item.created_at, "location.created_at");
     requireDateTime(item.updated_at, "location.updated_at");
-    requireString(item.revision, "location.revision");
+    requireNonEmptyString(item.revision, "location.revision");
     return item as unknown as AdminLocationRow;
   });
 }
@@ -150,14 +169,29 @@ export function parseSessionRows(payload: unknown): AdminSessionRow[] {
     requireDateTime(item.recorded_at, "session.recorded_at");
     requireDateTime(item.created_at, "session.created_at");
     requireDateTime(item.updated_at, "session.updated_at");
-    requireString(item.revision, "session.revision");
+    requireNonEmptyString(item.revision, "session.revision");
     requireOptionalNullableString(item.description, "session.description");
     requireOptionalNullableString(item.recorder, "session.recorder");
     requireOptionalNullableString(item.weather, "session.weather");
     requireOptionalNullableNumber(item.duration_seconds, "session.duration_seconds");
     requireOptionalNullableNumber(item.featured_sort_order, "session.featured_sort_order");
-    if (item.media_assets !== undefined && !Array.isArray(item.media_assets)) {
-      throw new Error("Invalid privileged array: session.media_assets");
+    if (item.media_assets !== undefined) {
+      if (!Array.isArray(item.media_assets)) throw new Error("Invalid privileged array: session.media_assets");
+      item.media_assets.forEach((value, index) => {
+        const asset = requireRecord(value, `session.media_assets[${index}]`);
+        requireUuid(asset.id, `session.media_assets[${index}].id`);
+        requireUuid(asset.session_id, `session.media_assets[${index}].session_id`);
+        requireEnum(asset.kind, ["audio", "source_audio", "master_audio", "streaming_rendition", "audio_stream"], `session.media_assets[${index}].kind`);
+        requireString(asset.mime_type, `session.media_assets[${index}].mime_type`);
+        requireEnum(asset.processing_status, ["pending", "uploaded", "processing", "ready", "failed"], `session.media_assets[${index}].processing_status`);
+        requireOptionalNullableNumber(asset.duration_seconds, `session.media_assets[${index}].duration_seconds`, 0);
+        requireOptionalNullableNumber(asset.size_bytes, `session.media_assets[${index}].size_bytes`, 0);
+        requireNullableString(asset.checksum, `session.media_assets[${index}].checksum`);
+        requireNumber(asset.revision, `session.media_assets[${index}].revision`, 1);
+        requireBoolean(asset.is_active, `session.media_assets[${index}].is_active`);
+        requireRecord(asset.metadata, `session.media_assets[${index}].metadata`);
+        requireDateTime(asset.created_at, `session.media_assets[${index}].created_at`);
+      });
     }
     return item as unknown as AdminSessionRow;
   });
@@ -177,7 +211,7 @@ export function parseCollectionRows(payload: unknown): AdminCollectionRow[] {
     requireOptionalUuidArray(item.session_ids, "collection.session_ids");
     requireDateTime(item.created_at, "collection.created_at");
     requireDateTime(item.updated_at, "collection.updated_at");
-    requireString(item.revision, "collection.revision");
+    requireNonEmptyString(item.revision, "collection.revision");
     return item as unknown as AdminCollectionRow;
   });
 }
@@ -188,13 +222,13 @@ export function parseAdminUserRows(payload: unknown): AdminUserRow[] {
     const user = requireRecord(item.user, "user aggregate.user");
     const membership = requireRecord(item.membership, "user aggregate.membership");
     requireUuid(user.id, "user.id");
-    requireString(user.email, "user.email");
+    requireEmail(user.email, "user.email");
     requireBoolean(user.email_verified, "user.email_verified");
     requireEnum(user.role, ["member", "editor", "admin"], "user.role");
     requireBoolean(user.is_active, "user.is_active");
     requireDateTime(user.created_at, "user.created_at");
     requireUuid(membership.user_id, "membership.user_id");
-    requireEnum(membership.status, ["inactive", "active", "cancelled", "expired"], "membership.status");
+    const membershipStatus = requireEnum(membership.status, ["inactive", "active", "cancelled", "expired"], "membership.status");
     requireString(membership.plan, "membership.plan");
     requireBoolean(membership.is_entitled, "membership.is_entitled");
     requireOptionalNullableString(membership.id, "membership.id");
@@ -203,27 +237,32 @@ export function parseAdminUserRows(payload: unknown): AdminUserRow[] {
     requireOptionalNullableString(membership.expires_at, "membership.expires_at");
     if (typeof membership.starts_at === "string") requireDateTime(membership.starts_at, "membership.starts_at");
     if (typeof membership.expires_at === "string") requireDateTime(membership.expires_at, "membership.expires_at");
-    requireString(item.revision, "user aggregate.revision");
+    requireNonEmptyString(item.revision, "user aggregate.revision");
     return {
       id: user.id as string,
       email: user.email as string,
       role: user.role as AdminUserRow["role"],
       is_active: user.is_active as boolean,
       created_at: user.created_at as string,
-      membership_status: membership.status as AdminUserRow["membership_status"],
+      membership_status: membershipStatus,
       revision: item.revision as string,
     };
   });
+}
+
+export function parseAdminUserResource(payload: unknown): AdminUserRow {
+  return parseAdminUserRows([payload])[0];
 }
 
 export function parseAuditRows(payload: unknown): AdminAuditRow[] {
   return unwrapAdminListPayload(payload).map((value) => {
     const item = requireRecord(value, "audit");
     requireUuid(item.id, "audit.id");
-    requireString(item.event_type, "audit.event_type");
-    requireString(item.subject_type, "audit.subject_type");
+    requireNonEmptyString(item.event_type, "audit.event_type");
+    requireNonEmptyString(item.subject_type, "audit.subject_type");
     requireNullableString(item.subject_id, "audit.subject_id");
     requireNullableString(item.actor_user_id, "audit.actor_user_id");
+    if (typeof item.actor_user_id === "string") requireUuid(item.actor_user_id, "audit.actor_user_id");
     requireNullableString(item.ip_address, "audit.ip_address");
     requireNullableString(item.user_agent, "audit.user_agent");
     requireRecord(item.metadata, "audit.metadata");

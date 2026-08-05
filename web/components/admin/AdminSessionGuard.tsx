@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
-import { apiUrl } from "../../lib/api/sessions";
+import { apiUrl, refreshAccessCookie } from "../../lib/api/sessions";
 
 const REVALIDATE_INTERVAL_MS = 30_000;
 
@@ -15,11 +15,16 @@ export function AdminSessionGuard({ children }: AdminSessionGuardProps) {
 
   const revalidate = useCallback(async () => {
     try {
-      const response = await fetch(apiUrl("/api/v1/admin/me"), {
+      const requestIdentity = () => fetch(apiUrl("/api/v1/admin/me"), {
         cache: "no-store",
-        credentials: "same-origin",
+        credentials: "include",
         headers: { Accept: "application/json" },
       });
+      let response = await requestIdentity();
+      if (response.status === 401) {
+        await refreshAccessCookie();
+        response = await requestIdentity();
+      }
       if (!response.ok) {
         setAccessRevoked(true);
         return;

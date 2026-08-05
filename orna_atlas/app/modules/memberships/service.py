@@ -101,7 +101,7 @@ async def update_membership(
         metadata=apply_actor_mode_metadata(
             {
                 "user_id": str(user_id),
-                "changed_fields": ["status", "plan"],
+                "changed_fields": sorted(data.model_fields_set),
                 "status": data.status,
                 "plan": data.plan,
             },

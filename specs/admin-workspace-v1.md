@@ -58,9 +58,9 @@ contract, deterministic Playwright success/error scenario и production-like smo
   - `orna_atlas/app/tests/test_sprint9_editorial.py`;
   - lifecycle/media/privacy tests named in the implementation plan.
 
-Current runtime fact: backend admin commands exist; frontend admin workspace and admin browse APIs do
-not. This spec describes proposed behavior and must not be reflected in `CURRENT_STATE.md` until
-implementation evidence passes.
+At drafting time the backend commands existed while the browse API and web workspace did not. The
+implemented runtime is now recorded in `CURRENT_STATE.md`; this draft remains the change-level
+acceptance context and does not supersede executable contracts or ADR-0012.
 
 ## Scope
 

@@ -67,10 +67,12 @@ def create_app() -> FastAPI:
         (f"{settings.api_prefix}/atlas/points", "get"),
     }
 
+    admin_path_prefix = f"{settings.api_prefix}/admin/"
+
     @app.middleware("http")
-    async def prevent_recovery_response_caching(request: Request, call_next):
+    async def prevent_sensitive_response_caching(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path in recovery_paths:
+        if request.url.path in recovery_paths or request.url.path.startswith(admin_path_prefix):
             response.headers["Cache-Control"] = "no-store"
         return response
 

@@ -16,6 +16,7 @@ import {
 import {
   buildAdminUrl,
   isRecord,
+  parseAdminUserResource,
   parseAdminUserRows,
   parseAuditRows,
   parseCollectionRows,
@@ -330,6 +331,20 @@ async function executeAdminMutation(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Внутренняя ошибка";
     return { ok: false, status: 0, message: errorMessage };
+  }
+}
+
+async function verifyAdminTargetEmail(userId: string, confirmationEmail: string): Promise<boolean> {
+  const cookieHeader = await buildAdminCookiesHeader();
+  try {
+    const response = await fetch(apiUrl(`/api/v1/admin/users/${encodeURIComponent(userId)}`), {
+      cache: "no-store",
+      headers: buildRequestHeaders(cookieHeader),
+    });
+    if (!response.ok) return false;
+    return parseAdminUserResource(await response.json()).email.toLowerCase() === confirmationEmail.toLowerCase();
+  } catch {
+    return false;
   }
 }
 
@@ -788,9 +803,9 @@ async function updateUserRoleAction(formData: FormData) {
   const userId = parseFormString(formData, "user_id", 80);
   const revision = parseFormString(formData, "revision", 160);
   const role = parseFormString(formData, "user_role", 80);
-  const confirmation = parseFormString(formData, "confirmation_user_id", 80);
-  if (!userId || !revision || !role || confirmation !== userId) {
-    redirect(buildOperationNoticeRedirect("Пользователи", "error", "Подтвердите изменение точным User ID.", formData));
+  const confirmationEmail = parseFormString(formData, "confirmation_email", 200);
+  if (!userId || !revision || !role || !confirmationEmail || !(await verifyAdminTargetEmail(userId, confirmationEmail))) {
+    redirect(buildOperationNoticeRedirect("Пользователи", "error", "Подтвердите изменение точным email целевого пользователя.", formData));
   }
   const result = await executeAdminMutation(
     `/api/v1/admin/users/${encodeURIComponent(userId)}/role`,
@@ -813,9 +828,9 @@ async function updateMembershipAction(formData: FormData) {
   const status = parseFormString(formData, "membership_status", 80);
   const plan = parseFormString(formData, "membership_plan", 80) || "member";
   const expiresAt = parseFormString(formData, "membership_expires_at", 60);
-  const confirmation = parseFormString(formData, "confirmation_user_id", 80);
-  if (!userId || !revision || !status || confirmation !== userId) {
-    redirect(buildOperationNoticeRedirect("Пользователи", "error", "Подтвердите изменение точным User ID.", formData));
+  const confirmationEmail = parseFormString(formData, "confirmation_email", 200);
+  if (!userId || !revision || !status || !confirmationEmail || !(await verifyAdminTargetEmail(userId, confirmationEmail))) {
+    redirect(buildOperationNoticeRedirect("Пользователи", "error", "Подтвердите изменение точным email целевого пользователя.", formData));
   }
   const payload: Record<string, unknown> = { status, plan };
   if (expiresAt) {
@@ -1087,7 +1102,18 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
           ) : null}
         </header>
 
-        <section className="admin-kpis">
+        <nav className="admin-quick-nav" aria-label="Быстрая навигация">
+          <a href="#overview">Обзор</a>
+          <a href="#filters">Фильтры</a>
+          <a href="#operations">Операции</a>
+          <a href="#locations">Локации</a>
+          <a href="#sessions">Сессии</a>
+          <a href="#collections">Коллекции</a>
+          <a href="#users">Пользователи</a>
+          <a href="#audit">Аудит</a>
+        </nav>
+
+        <section id="overview" className="admin-kpis" aria-label="Обзор">
           <article className="admin-kpi">
             <span className="admin-label">Локации</span>
             <strong>{countItems(locations)}</strong>
@@ -1115,7 +1141,10 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
           </article>
         </section>
 
-        <form className="admin-filters" action="/admin" method="get">
+        <details id="filters" className="admin-filter-panel admin-card" open>
+          <summary>Фильтры списков</summary>
+          <p className="admin-muted">Уточните выдачу по разделам или сверните панель, чтобы освободить рабочее пространство.</p>
+          <form className="admin-filters" action="/admin" method="get" aria-label="Фильтры">
           <label>
             <span>Включать архивные записи</span>
             <input
@@ -1218,12 +1247,13 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
             <button type="submit">Применить фильтры</button>
             <a href="/admin">Сброс</a>
           </div>
-        </form>
+          </form>
+        </details>
 
         <SensitiveOperationalSearch action={searchSensitiveOperationalDataAction} />
 
-        <section className="admin-card">
-          <h2>Операции администратора</h2>
+        <section id="operations" className="admin-card" aria-labelledby="operations-title">
+          <h2 id="operations-title">Операции администратора</h2>
 
           <div className="admin-action-grid">
             <article className="admin-action-card">
@@ -1544,7 +1574,7 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
                         <option value="member">member</option><option value="editor">editor</option><option value="admin">admin</option>
                       </select>
                     </label>
-                    <label><span>Подтверждение · повторите User ID</span><input name="confirmation_user_id" required maxLength={80} autoComplete="off" /></label>
+                    <label><span>Подтверждение · email целевого пользователя</span><input name="confirmation_email" type="email" required maxLength={200} autoComplete="off" /></label>
                     <button type="submit">Обновить роль</button>
                   </form>
 
@@ -1560,7 +1590,7 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
                     </label>
                     <label><span>Plan</span><input name="membership_plan" defaultValue="member" maxLength={80} /></label>
                     <label><span>Expires at</span><input name="membership_expires_at" type="text" placeholder="2026-12-31T23:59:59Z" /></label>
-                    <label><span>Подтверждение · повторите User ID</span><input name="confirmation_user_id" required maxLength={80} autoComplete="off" /></label>
+                    <label><span>Подтверждение · email целевого пользователя</span><input name="confirmation_email" type="email" required maxLength={200} autoComplete="off" /></label>
                     <button type="submit">Обновить membership</button>
                   </form>
                 </>

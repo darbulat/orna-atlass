@@ -11,6 +11,22 @@ const adminSessionId = "21000000-0000-4000-8000-000000000001";
 const adminCollectionId = "41000000-0000-4000-8000-000000000001";
 const adminUserId = "51000000-0000-4000-8000-000000000001";
 let nextAdminMutation = "ok";
+let adminAccessRevoked = false;
+let adminRefreshPending = false;
+const adminRequestCounts = new Map();
+
+function countAdminRequest(method, path) {
+  const key = `${method} ${path}`;
+  adminRequestCounts.set(key, (adminRequestCounts.get(key) ?? 0) + 1);
+}
+
+function adminStatePayload() {
+  return {
+    access_revoked: adminAccessRevoked,
+    refresh_pending: adminRefreshPending,
+    request_counts: Object.fromEntries(adminRequestCounts.entries()),
+  };
+}
 
 const adminLocation = {
   id: adminLocationId,
@@ -305,6 +321,20 @@ const server = createServer((request, response) => {
     send(response, 204, null);
     return;
   }
+  if (path === "/__e2e/admin-state" && request.method === "POST") {
+    adminAccessRevoked = url.searchParams.get("revoked") === "true";
+    adminRefreshPending = url.searchParams.get("unauthorized_once") === "true";
+    if (url.searchParams.get("reset") === "true") {
+      adminRequestCounts.clear();
+      nextAdminMutation = "ok";
+    }
+    send(response, 204, null);
+    return;
+  }
+  if (path === "/__e2e/admin-state" && request.method === "GET") {
+    send(response, 200, adminStatePayload());
+    return;
+  }
   const cookie = request.headers.cookie ?? "";
   const hasAdminCookie = cookie.includes("orna_access=admin-e2e")
     || cookie.includes("orna_access=malformed-admin-e2e")
@@ -312,8 +342,13 @@ const server = createServer((request, response) => {
     || cookie.includes("orna_access=stale-admin-e2e")
     || cookie.includes("orna_access=unavailable-admin-e2e");
   const hasMemberCookie = cookie.includes("orna_access=member-e2e");
+  if (path.startsWith("/api/v1/admin/")) countAdminRequest(request.method ?? "GET", path);
   if (request.method === "GET" && path === "/api/v1/admin/me") {
-    if (hasMemberCookie) {
+    if (adminRefreshPending) {
+      send(response, 401, { detail: "Access token expired" });
+      return;
+    }
+    if (hasMemberCookie || adminAccessRevoked) {
       send(response, 403, { detail: "Admin role required" });
       return;
     }
@@ -325,10 +360,11 @@ const server = createServer((request, response) => {
     return;
   }
   if (hasAdminCookie && request.method === "GET" && path === "/api/v1/admin/locations") {
+    const pageLimit = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50));
     const payload = cookie.includes("malformed-admin-e2e")
       ? [{ ...adminLocation, coordinate_visibility: "unknown_privileged_state" }]
       : cookie.includes("pagination-admin-e2e")
-        ? Array.from({ length: 50 }, (_, index) => ({
+        ? Array.from({ length: pageLimit }, (_, index) => ({
             ...adminLocation,
             id: `11000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
           }))
@@ -346,6 +382,10 @@ const server = createServer((request, response) => {
   }
   if (hasAdminCookie && request.method === "GET" && path === "/api/v1/admin/users") {
     send(response, 200, [adminUser], { "Cache-Control": "no-store" });
+    return;
+  }
+  if (hasAdminCookie && request.method === "GET" && path === `/api/v1/admin/users/${adminUserId}`) {
+    send(response, 200, adminUser, { ETag: adminUser.revision, "Cache-Control": "no-store" });
     return;
   }
   if (hasAdminCookie && request.method === "GET" && path === "/api/v1/admin/audit-events") {
@@ -388,6 +428,11 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.method === "POST" && path === "/api/v1/auth/refresh") {
+    if (adminRefreshPending) {
+      adminRefreshPending = false;
+      send(response, 200, { access_token: "refreshed-admin" });
+      return;
+    }
     if (["expired-until-refresh", "hidden-until-refresh"].includes(sessionDetailAuthState)) {
       sessionDetailRefreshCalls += 1;
       sessionDetailAuthState = "ok";
