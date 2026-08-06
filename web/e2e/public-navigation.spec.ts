@@ -405,14 +405,87 @@ test("home navigation leaves the inline player controls clickable", async ({ pag
   await expect(page.getByRole("region", { name: "Session player" })).toHaveCount(0);
 });
 
+test("opening the side player keeps the header menu and discovery panel unobscured", async ({ page }) => {
+  await page.setViewportSize({ width: 1365, height: 768 });
+  await page.goto("/");
+
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await atlas.getByRole("button", { name: "Listen", exact: true }).click();
+  const player = page.locator("#atlas-session-player");
+  await expect(player).toBeVisible();
+
+  const nav = page.locator(".home-nav");
+  const discoveryPanel = atlas.locator(".atlas-discovery-panel");
+  const menuLink = nav.getByRole("link", { name: "Collections" });
+  await expect(menuLink).toBeVisible();
+  await expect(discoveryPanel).toBeVisible();
+
+  const geometry = await page.evaluate(() => {
+    const bySelector = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`Missing ${selector}`);
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+    };
+    const side = bySelector("#atlas-session-player");
+    const discovery = bySelector(".atlas-discovery-panel");
+    const collections = bySelector(".home-nav a[href='/collections']");
+    const hitTest = (rect: ReturnType<typeof bySelector>) => {
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      return document.elementFromPoint(x, y)?.closest("a, button, aside, section, nav")?.outerHTML.slice(0, 80) ?? null;
+    };
+    return {
+      side,
+      discovery,
+      collections,
+      collectionHit: hitTest(collections),
+      viewportWidth: window.innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    };
+  });
+
+  expect(geometry.collections.right).toBeLessThanOrEqual(geometry.side.left - 8);
+  expect(geometry.discovery.right).toBeLessThanOrEqual(geometry.side.left - 8);
+  expect(geometry.collectionHit).toContain("/collections");
+  expect(geometry.scrollWidth).toBe(geometry.viewportWidth);
+});
+
 test("mobile home navigation leaves the inline player controls clickable", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   const atlas = page.getByRole("region", { name: "ORNA Atlas" });
   await atlas.getByRole("button", { name: "Listen", exact: true }).click();
   await expect(page.getByRole("region", { name: "Session player" })).toBeVisible();
+  const menu = page.locator("summary[aria-label='Menu']");
+  await expect(menu).toBeVisible();
+  const navBox = await page.locator(".home-nav").boundingBox();
+  expect(navBox).not.toBeNull();
+  expect(navBox!.width).toBeGreaterThanOrEqual(300);
+  await expect(page.locator(".home-nav")).toHaveCSS("right", "22px");
+  const menuBox = await menu.boundingBox();
+  expect(menuBox).not.toBeNull();
+  expect(menuBox!.width).toBeGreaterThanOrEqual(44);
+  expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(390);
+  await menu.click();
+  await expect(page.getByRole("link", { name: "Profile" })).toBeVisible();
   await page.getByRole("button", { name: "Hide player" }).click();
   await expect(page.getByRole("region", { name: "Session player" })).toHaveCount(0);
+});
+
+test("stacked player breakpoint does not reserve a desktop side-player gutter", async ({ page }) => {
+  await page.setViewportSize({ width: 710, height: 844 });
+  await page.goto("/");
+  const atlas = page.getByRole("region", { name: "ORNA Atlas" });
+  await atlas.getByRole("button", { name: "Listen", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Session player" })).toBeVisible();
+
+  const nav = page.locator(".home-nav");
+  const navBox = await nav.boundingBox();
+  expect(navBox).not.toBeNull();
+  expect(navBox!.width).toBeGreaterThanOrEqual(560);
+  await expect(nav).toHaveCSS("right", "64px");
+  await expect(nav.getByRole("link", { name: "Collections" })).toBeVisible();
 });
 
 test("home globe header omits duplicate search and routes account access through Profile", async ({ page }) => {
