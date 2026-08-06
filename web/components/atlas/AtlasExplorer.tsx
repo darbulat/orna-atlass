@@ -58,6 +58,12 @@ type CesiumGlobeProps = {
 };
 
 const worldImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
+const nightLightsImageryUrl = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi";
+const nightLightsLayerName = "VIIRS_CityLights_2012";
+const nightLightsLayerId = "nasa-viirs-city-lights-2012";
+const nightLightsProviderId = "nasa-gibs-wmts";
+const nightLightsDayAlpha = 0;
+const nightLightsNightAlpha = 0.82;
 const desktopLocationCardCount = 5;
 const mobileLocationCardCount = 2;
 const focusedLocationHeight = 750000;
@@ -268,6 +274,7 @@ function CesiumGlobe({
           ScreenSpaceEventType,
           TileMapServiceImageryProvider,
           Viewer,
+          WebMapTileServiceImageryProvider,
           buildModuleUrl,
         } = cesium;
         configureCesiumBaseUrl(cesium);
@@ -548,6 +555,27 @@ function CesiumGlobe({
         } catch {
           // Keep the local NaturalEarth globe interactive when World Imagery is unavailable.
         }
+        try {
+          const nightLightsProvider = new WebMapTileServiceImageryProvider({
+            url: nightLightsImageryUrl,
+            layer: nightLightsLayerName,
+            style: "default",
+            format: "image/jpeg",
+            tileMatrixSetID: "GoogleMapsCompatible_Level8",
+            maximumLevel: 8,
+            credit: "NASA GIBS / VIIRS City Lights 2012",
+          });
+          if (!isDisposed && viewer && !viewer.isDestroyed()) {
+            const nightLightsLayer = new ImageryLayer(nightLightsProvider);
+            nightLightsLayer.dayAlpha = nightLightsDayAlpha;
+            nightLightsLayer.nightAlpha = nightLightsNightAlpha;
+            nightLightsLayer.brightness = 1.15;
+            nightLightsLayer.contrast = 1.2;
+            viewer.imageryLayers.add(nightLightsLayer);
+          }
+        } catch {
+          // Daylight base imagery remains primary if the optional night-lights overlay fails.
+        }
       } catch {
         if (!isDisposed) {
           setIsWebglUnavailable(true);
@@ -730,6 +758,12 @@ function CesiumGlobe({
       data-inertia-spin="0.9"
       data-inertia-zoom="0.8"
       data-imagery-layer="world-imagery"
+      data-globe-lighting="enabled"
+      data-night-lights-day-alpha={nightLightsDayAlpha}
+      data-night-lights-layer={nightLightsLayerId}
+      data-night-lights-night-alpha={nightLightsNightAlpha}
+      data-night-lights-provider={nightLightsProviderId}
+      data-night-side-blending="cesium-sun-lighting"
       data-cinematic-intro-duration={cinematicIntroDurationSeconds}
       data-globe-emphasized-count={activeDawnSlugs.size}
       data-globe-point-count={points.filter(isPoint).length}

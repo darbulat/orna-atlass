@@ -80,6 +80,24 @@ test("atlas globe exposes a 10 km floor and requests the World Imagery layer", a
   await worldImageryRequest;
 });
 
+test("atlas globe activates night-side city lights imagery only on the dark side", async ({ page }) => {
+  const nightLightsRequest = page.waitForRequest((request) => (
+    request.url().includes("VIIRS_CityLights_2012")
+  ));
+
+  await page.goto("/atlas");
+
+  const globe = page.getByLabel("Interactive Cesium globe");
+  await expect(page.locator(".cesium-widget canvas")).toBeVisible();
+  await expect(globe).toHaveAttribute("data-night-lights-layer", "nasa-viirs-city-lights-2012");
+  await expect(globe).toHaveAttribute("data-night-lights-provider", "nasa-gibs-wmts");
+  await expect(globe).toHaveAttribute("data-night-lights-day-alpha", "0");
+  await expect(globe).toHaveAttribute("data-night-lights-night-alpha", "0.82");
+  await expect(globe).toHaveAttribute("data-night-side-blending", "cesium-sun-lighting");
+  await expect(globe).toHaveAttribute("data-globe-lighting", "enabled");
+  await nightLightsRequest;
+});
+
 test("atlas globe starts from a full-planet camera before the cinematic location focus", async ({ page, request }) => {
   test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
   const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=multiple-dawn`);
