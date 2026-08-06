@@ -11,6 +11,25 @@ const adminSessionId = "21000000-0000-4000-8000-000000000001";
 const adminCollectionId = "41000000-0000-4000-8000-000000000001";
 const adminUserId = "51000000-0000-4000-8000-000000000001";
 let nextAdminMutation = "ok";
+let adminAccessRevoked = false;
+let adminRefreshPending = false;
+let holdNextAdminIdentity = false;
+let heldAdminIdentityResponse = null;
+const adminRequestCounts = new Map();
+
+function countAdminRequest(method, path) {
+  const key = `${method} ${path}`;
+  adminRequestCounts.set(key, (adminRequestCounts.get(key) ?? 0) + 1);
+}
+
+function adminStatePayload() {
+  return {
+    access_revoked: adminAccessRevoked,
+    refresh_pending: adminRefreshPending,
+    identity_held: heldAdminIdentityResponse !== null,
+    request_counts: Object.fromEntries(adminRequestCounts.entries()),
+  };
+}
 
 const adminLocation = {
   id: adminLocationId,
@@ -33,6 +52,9 @@ const adminLocation = {
   updated_at: now,
   revision: 'W/"location-r1"',
 };
+const initialAdminLocationName = adminLocation.name;
+const initialAdminLocationUpdatedAt = adminLocation.updated_at;
+const initialAdminLocationRevision = adminLocation.revision;
 
 const adminSession = {
   id: adminSessionId,
@@ -305,6 +327,40 @@ const server = createServer((request, response) => {
     send(response, 204, null);
     return;
   }
+  if (path === "/__e2e/admin-state" && request.method === "POST") {
+    adminAccessRevoked = url.searchParams.get("revoked") === "true";
+    adminRefreshPending = url.searchParams.get("unauthorized_once") === "true";
+    if (url.searchParams.get("hold_next_identity") === "true") {
+      holdNextAdminIdentity = true;
+    }
+    if (url.searchParams.get("release_identity") === "true" && heldAdminIdentityResponse !== null) {
+      send(
+        heldAdminIdentityResponse,
+        200,
+        { id: adminUserId, role: "admin", is_admin: true, mode: "token" },
+        { "Cache-Control": "no-store" },
+      );
+      heldAdminIdentityResponse = null;
+    }
+    if (url.searchParams.get("reset") === "true") {
+      adminRequestCounts.clear();
+      nextAdminMutation = "ok";
+      adminLocation.name = initialAdminLocationName;
+      adminLocation.updated_at = initialAdminLocationUpdatedAt;
+      adminLocation.revision = initialAdminLocationRevision;
+      holdNextAdminIdentity = false;
+      if (heldAdminIdentityResponse !== null) {
+        heldAdminIdentityResponse.destroy();
+        heldAdminIdentityResponse = null;
+      }
+    }
+    send(response, 204, null);
+    return;
+  }
+  if (path === "/__e2e/admin-state" && request.method === "GET") {
+    send(response, 200, adminStatePayload());
+    return;
+  }
   const cookie = request.headers.cookie ?? "";
   const hasAdminCookie = cookie.includes("orna_access=admin-e2e")
     || cookie.includes("orna_access=malformed-admin-e2e")
@@ -312,8 +368,18 @@ const server = createServer((request, response) => {
     || cookie.includes("orna_access=stale-admin-e2e")
     || cookie.includes("orna_access=unavailable-admin-e2e");
   const hasMemberCookie = cookie.includes("orna_access=member-e2e");
+  if (path.startsWith("/api/v1/admin/")) countAdminRequest(request.method ?? "GET", path);
   if (request.method === "GET" && path === "/api/v1/admin/me") {
-    if (hasMemberCookie) {
+    if (holdNextAdminIdentity && hasAdminCookie) {
+      holdNextAdminIdentity = false;
+      heldAdminIdentityResponse = response;
+      return;
+    }
+    if (adminRefreshPending) {
+      send(response, 401, { detail: "Access token expired" });
+      return;
+    }
+    if (hasMemberCookie || adminAccessRevoked) {
       send(response, 403, { detail: "Admin role required" });
       return;
     }
@@ -325,10 +391,11 @@ const server = createServer((request, response) => {
     return;
   }
   if (hasAdminCookie && request.method === "GET" && path === "/api/v1/admin/locations") {
+    const pageLimit = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50));
     const payload = cookie.includes("malformed-admin-e2e")
       ? [{ ...adminLocation, coordinate_visibility: "unknown_privileged_state" }]
       : cookie.includes("pagination-admin-e2e")
-        ? Array.from({ length: 50 }, (_, index) => ({
+        ? Array.from({ length: pageLimit }, (_, index) => ({
             ...adminLocation,
             id: `11000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
           }))
@@ -348,8 +415,23 @@ const server = createServer((request, response) => {
     send(response, 200, [adminUser], { "Cache-Control": "no-store" });
     return;
   }
+  if (hasAdminCookie && request.method === "GET" && path === `/api/v1/admin/users/${adminUserId}`) {
+    send(response, 200, adminUser, { ETag: adminUser.revision, "Cache-Control": "no-store" });
+    return;
+  }
   if (hasAdminCookie && request.method === "GET" && path === "/api/v1/admin/audit-events") {
     send(response, 200, [adminAudit], { "Cache-Control": "no-store" });
+    return;
+  }
+  if (hasAdminCookie && request.method === "PATCH" && path === `/api/v1/admin/locations/${adminLocationId}`) {
+    if (request.headers["if-match"] !== adminLocation.revision) {
+      send(response, 412, { detail: "Resource changed" }, { "Cache-Control": "no-store" });
+      return;
+    }
+    adminLocation.name = "Renamed location";
+    adminLocation.updated_at = "2026-07-14T23:01:00Z";
+    adminLocation.revision = 'W/"location-r2"';
+    send(response, 200, adminLocation, { ETag: adminLocation.revision, "Cache-Control": "no-store" });
     return;
   }
   const isAdminMutation = hasAdminCookie
@@ -369,15 +451,7 @@ const server = createServer((request, response) => {
     send(response, request.method === "POST" ? 201 : 200, { status: "queued" }, { "Cache-Control": "no-store" });
     return;
   }
-  if (hasAdminCookie && request.method === "PATCH" && path === `/api/v1/admin/locations/${adminLocationId}`) {
-    if (nextAdminMutation === "stale") {
-      nextAdminMutation = "ok";
-      send(response, 412, { detail: "Resource changed" });
-      return;
-    }
-    send(response, 200, adminLocation, { ETag: adminLocation.revision, "Cache-Control": "no-store" });
-    return;
-  }
+
   if (path === "/mock-location-photo-v2.png") {
     response.writeHead(200, {
       "Access-Control-Allow-Origin": origin,
@@ -388,6 +462,11 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.method === "POST" && path === "/api/v1/auth/refresh") {
+    if (adminRefreshPending) {
+      adminRefreshPending = false;
+      send(response, 200, { access_token: "refreshed-admin" });
+      return;
+    }
     if (["expired-until-refresh", "hidden-until-refresh"].includes(sessionDetailAuthState)) {
       sessionDetailRefreshCalls += 1;
       sessionDetailAuthState = "ok";

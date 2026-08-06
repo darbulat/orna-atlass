@@ -16,12 +16,17 @@ from orna_atlas.app.modules.admin import service as admin_service
 from orna_atlas.app.modules.admin.context import build_admin_etag
 from orna_atlas.app.modules.collections import service as collections_service
 from orna_atlas.app.modules.collections.schemas import CollectionUpdate
+from orna_atlas.app.modules.collections.schemas import CollectionCreate
 from orna_atlas.app.modules.locations import service as locations_service
+from orna_atlas.app.modules.locations.schemas import LocationCreate, LocationUpdate
 from orna_atlas.app.modules.sessions import service as sessions_service
+from orna_atlas.app.modules.sessions.schemas import SessionCreate, SessionUpdate
 from orna_atlas.app.modules.users import service as users_service
+from orna_atlas.app.modules.memberships import service as memberships_service
+from orna_atlas.app.modules.memberships.schemas import MembershipUpdate
 from orna_atlas.app.modules.media import service as media_service
 from orna_atlas.app.modules.users.schemas import UserRoleUpdate
-from orna_atlas.app.modules.media.schemas import MediaAssetCreate
+from orna_atlas.app.modules.media.schemas import MediaAssetCreate, RecordingSegmentBatchCreate
 from orna_atlas.app.core.domain_types import MediaKind
 
 
@@ -1379,5 +1384,289 @@ def test_every_admin_operation_denies_non_admin_before_domain_work() -> None:
                     headers={"If-Match": '"deny"'},
                 )
                 assert response.status_code == 403, (method, raw_path, response.text)
+                assert response.headers.get("cache-control") == "no-store"
     finally:
         _clear_admin_overrides()
+
+
+def test_admin_errors_and_empty_successes_are_no_store(monkeypatch) -> None:
+    _clear_admin_overrides()
+    client = TestClient(app)
+    anonymous = client.get("/api/v1/admin/me")
+    assert anonymous.status_code == 401
+    assert anonymous.headers.get("cache-control") == "no-store"
+
+    _set_admin_overrides()
+    location_id = uuid4()
+    delete_location = AsyncMock(return_value=None)
+    monkeypatch.setattr(locations_service, "delete_location", delete_location)
+    try:
+        response = client.delete(
+            f"/api/v1/admin/locations/{location_id}",
+            headers={"If-Match": '"current"'},
+        )
+    finally:
+        _clear_admin_overrides()
+
+    assert response.status_code == 204
+    assert response.headers.get("cache-control") == "no-store"
+    delete_location.assert_awaited_once()
+
+
+def _assert_audit_contract(call_args, *, event_type: str, subject_type: str, subject_id: UUID) -> None:
+    payload = call_args.kwargs
+    assert payload["event_type"] == event_type
+    assert payload["subject_type"] == subject_type
+    assert payload["subject_id"] == str(subject_id)
+    assert payload["actor_user_id"] is not None
+    assert payload["ip_address"] == "192.0.2.20"
+    assert payload["user_agent"] == "admin-audit-test"
+    assert isinstance(payload["metadata"].get("changed_fields"), list)
+    assert "exact_latitude" not in payload["metadata"]
+    assert "exact_longitude" not in payload["metadata"]
+
+
+@pytest.mark.asyncio
+async def test_location_audit_acceptance_contracts_are_atomic(monkeypatch) -> None:
+    actor_id = uuid4()
+    row = _admin_location()
+    row.sessions = []
+    db = AsyncMock()
+    audit = AsyncMock()
+    monkeypatch.setattr(locations_service.repository, "get_location_by_slug_for_admin", AsyncMock(return_value=None))
+    monkeypatch.setattr(locations_service.repository, "create_location", AsyncMock(return_value=row))
+    monkeypatch.setattr(locations_service, "require_location_for_admin_for_update", AsyncMock(return_value=row))
+    monkeypatch.setattr(locations_service.repository, "update_location", AsyncMock(return_value=row))
+    monkeypatch.setattr(locations_service.repository, "archive_location", AsyncMock())
+    monkeypatch.setattr(locations_service.media_repository, "archive_assets", AsyncMock())
+    monkeypatch.setattr(locations_service.media_repository, "schedule_storage_cleanup", AsyncMock())
+    monkeypatch.setattr(locations_service, "invalidate_atlas_cache", AsyncMock())
+    monkeypatch.setattr(locations_service, "add_audit_event", audit)
+    context = dict(actor_user_id=actor_id, actor_mode="token", ip_address="192.0.2.20", user_agent="admin-audit-test")
+
+    await locations_service.create_location(
+        db,
+        LocationCreate(slug="audit-location", name="Audit location", exact_latitude=1, exact_longitude=2),
+        **context,
+    )
+    await locations_service.update_location(db, row.id, LocationUpdate(name="Updated"), **context)
+    await locations_service.delete_location(db, row.id, **context)
+
+    assert db.commit.await_count == 3
+    for call_args, event_type in zip(
+        audit.await_args_list,
+        ("location.created", "location.updated", "location.archived"),
+        strict=True,
+    ):
+        _assert_audit_contract(call_args, event_type=event_type, subject_type="location", subject_id=row.id)
+
+
+@pytest.mark.asyncio
+async def test_session_and_collection_audit_acceptance_contracts(monkeypatch) -> None:
+    actor_id = uuid4()
+    session_row = _admin_session()
+    collection_row = _admin_collection()
+    db = AsyncMock()
+    session_audit = AsyncMock()
+    collection_audit = AsyncMock()
+    context = dict(actor_user_id=actor_id, actor_mode="token", ip_address="192.0.2.20", user_agent="admin-audit-test")
+
+    monkeypatch.setattr(sessions_service, "require_location_for_admin", AsyncMock())
+    monkeypatch.setattr(sessions_service.repository, "get_session_by_slug_for_admin", AsyncMock(return_value=None))
+    monkeypatch.setattr(sessions_service.repository, "create_session", AsyncMock(return_value=session_row))
+    monkeypatch.setattr(sessions_service, "require_session_for_admin_for_update", AsyncMock(return_value=session_row))
+    monkeypatch.setattr(sessions_service.repository, "update_session", AsyncMock(return_value=session_row))
+    monkeypatch.setattr(sessions_service.repository, "archive_session", AsyncMock())
+    monkeypatch.setattr(sessions_service.media_repository, "archive_assets", AsyncMock())
+    monkeypatch.setattr(sessions_service.media_repository, "schedule_storage_cleanup", AsyncMock())
+    monkeypatch.setattr(sessions_service, "invalidate_atlas_cache", AsyncMock())
+    monkeypatch.setattr(sessions_service, "add_audit_event", session_audit)
+
+    await sessions_service.create_session(
+        db,
+        SessionCreate(location_id=session_row.location_id, slug="audit-session", title="Audit session", recorded_at=datetime.now(UTC)),
+        **context,
+    )
+    await sessions_service.update_session(db, session_row.id, SessionUpdate(title="Updated"), **context)
+    await sessions_service.delete_session(db, session_row.id, **context)
+
+    monkeypatch.setattr(collections_service.repository, "get_collection_by_slug_for_admin", AsyncMock(return_value=None))
+    monkeypatch.setattr(collections_service.repository, "validate_location_ids", AsyncMock())
+    monkeypatch.setattr(collections_service.repository, "validate_session_ids", AsyncMock())
+    monkeypatch.setattr(collections_service.repository, "create_collection", AsyncMock(return_value=collection_row))
+    monkeypatch.setattr(collections_service, "require_collection_for_update", AsyncMock(return_value=collection_row))
+    monkeypatch.setattr(collections_service.repository, "update_collection", AsyncMock(return_value=collection_row))
+    monkeypatch.setattr(collections_service, "add_audit_event", collection_audit)
+
+    await collections_service.create_collection(
+        db,
+        CollectionCreate(slug="audit-collection", title="Audit collection"),
+        **context,
+    )
+    await collections_service.update_collection(db, collection_row.id, CollectionUpdate(title="Updated"), **context)
+
+    for call_args, event_type in zip(
+        session_audit.await_args_list,
+        ("session.created", "session.updated", "session.archived"),
+        strict=True,
+    ):
+        _assert_audit_contract(call_args, event_type=event_type, subject_type="recording_session", subject_id=session_row.id)
+    for call_args, event_type in zip(
+        collection_audit.await_args_list,
+        ("collection.created", "collection.updated"),
+        strict=True,
+    ):
+        _assert_audit_contract(call_args, event_type=event_type, subject_type="collection", subject_id=collection_row.id)
+
+
+@pytest.mark.asyncio
+async def test_segments_role_and_membership_audit_contracts(monkeypatch) -> None:
+    actor_id = uuid4()
+    session_id = uuid4()
+    recording = SimpleNamespace(id=session_id, processing_status="pending")
+    asset = SimpleNamespace(id=uuid4())
+    segment = SimpleNamespace(id=uuid4())
+    job = SimpleNamespace(id=uuid4(), queue_job_id=None)
+    db = AsyncMock()
+    media_audit = AsyncMock()
+    context = dict(actor_user_id=actor_id, actor_mode="token", ip_address="192.0.2.20", user_agent="admin-audit-test")
+    storage = SimpleNamespace(is_configured=lambda: True, object_exists=lambda _key: True)
+    monkeypatch.setattr(media_service.sessions_service, "require_session_for_admin", AsyncMock(return_value=recording))
+    monkeypatch.setattr(media_service.repository, "list_recording_segments", AsyncMock(return_value=[]))
+    monkeypatch.setattr(media_service, "get_object_storage_client", lambda: storage)
+    monkeypatch.setattr(media_service.repository, "get_asset_by_storage_key", AsyncMock(return_value=None))
+    monkeypatch.setattr(media_service.repository, "create_media_asset", AsyncMock(return_value=asset))
+    monkeypatch.setattr(media_service.repository, "create_recording_segment", AsyncMock(return_value=segment))
+    monkeypatch.setattr(media_service.repository, "create_hls_processing_job", AsyncMock(return_value=job))
+    monkeypatch.setattr(media_service.asyncio, "to_thread", AsyncMock(side_effect=[True, "queue-1"]))
+    monkeypatch.setattr(media_service, "add_audit_event", media_audit)
+
+    await media_service.register_recording_segments(
+        db,
+        session_id,
+        RecordingSegmentBatchCreate(segments=[{"sequence_number": 1, "storage_key": "sessions/audit/source.wav"}]),
+        **context,
+    )
+    _assert_audit_contract(
+        media_audit.await_args,
+        event_type="media.segments_registered",
+        subject_type="recording_session",
+        subject_id=session_id,
+    )
+
+    user_id = uuid4()
+    user = SimpleNamespace(id=user_id, role="member", is_active=True, updated_at=datetime.now(UTC))
+    role_audit = AsyncMock()
+    monkeypatch.setattr(users_service.repository, "get_by_id_for_update", AsyncMock(return_value=user))
+    monkeypatch.setattr(users_service.memberships_repository, "get_for_user", AsyncMock(return_value=None))
+    monkeypatch.setattr(users_service.repository, "save", AsyncMock())
+    monkeypatch.setattr(users_service, "add_audit_event", role_audit)
+    await users_service.update_role(db, user_id, UserRoleUpdate(role="editor"), **context)
+    _assert_audit_contract(role_audit.await_args, event_type="user.role_updated", subject_type="user", subject_id=user_id)
+
+    membership = SimpleNamespace(id=uuid4(), updated_at=datetime.now(UTC))
+    membership_audit = AsyncMock()
+    monkeypatch.setattr(memberships_service, "require_user_for_update", AsyncMock(return_value=user))
+    monkeypatch.setattr(memberships_service.repository, "get_for_user", AsyncMock(return_value=membership))
+    monkeypatch.setattr(memberships_service.repository, "upsert", AsyncMock(return_value=membership))
+    monkeypatch.setattr(memberships_service.repository, "revoke_grant", AsyncMock())
+    monkeypatch.setattr(memberships_service, "add_audit_event", membership_audit)
+    await memberships_service.update_membership(
+        db,
+        user_id,
+        MembershipUpdate(
+            status="cancelled",
+            plan="member",
+            expires_at=datetime.now(UTC) + timedelta(days=1),
+        ),
+        **context,
+    )
+    _assert_audit_contract(
+        membership_audit.await_args,
+        event_type="membership.updated",
+        subject_type="membership",
+        subject_id=membership.id,
+    )
+    membership_audit_call = membership_audit.await_args
+    assert membership_audit_call is not None
+    assert set(membership_audit_call.kwargs["metadata"]["changed_fields"]) == {
+        "status",
+        "plan",
+        "expires_at",
+    }
+
+
+def test_unhandled_admin_error_is_not_cacheable() -> None:
+    @app.get("/api/v1/admin/_test-unhandled-error", include_in_schema=False)
+    async def raise_unhandled_admin_error() -> None:
+        raise RuntimeError("admin test failure")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/admin/_test-unhandled-error")
+
+    assert response.status_code == 500
+    assert response.headers.get("cache-control") == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_membership_audit_reports_every_effectively_overwritten_field(monkeypatch) -> None:
+    db = AsyncMock()
+    user_id = uuid4()
+    current = SimpleNamespace(
+        id=uuid4(),
+        status="active",
+        plan="premium",
+        expires_at=datetime.now(UTC) + timedelta(days=30),
+        updated_at=datetime.now(UTC),
+    )
+    persisted = SimpleNamespace(id=current.id)
+    audit = AsyncMock()
+    monkeypatch.setattr(
+        memberships_service,
+        "require_user_for_update",
+        AsyncMock(return_value=SimpleNamespace(id=user_id, updated_at=datetime.now(UTC))),
+    )
+    monkeypatch.setattr(
+        memberships_service.repository,
+        "get_for_user",
+        AsyncMock(return_value=current),
+    )
+    monkeypatch.setattr(
+        memberships_service.repository,
+        "upsert",
+        AsyncMock(return_value=persisted),
+    )
+    monkeypatch.setattr(memberships_service.repository, "revoke_grant", AsyncMock())
+    monkeypatch.setattr(memberships_service, "add_audit_event", audit)
+
+    await memberships_service.update_membership(
+        db,
+        user_id,
+        MembershipUpdate(status="cancelled"),
+        actor_user_id=uuid4(),
+    )
+
+    assert audit.await_args is not None
+    assert audit.await_args.kwargs["metadata"]["changed_fields"] == [
+        "expires_at",
+        "plan",
+        "status",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_audit_insert_failure_prevents_domain_commit(monkeypatch) -> None:
+    row = _admin_location()
+    db = AsyncMock()
+    monkeypatch.setattr(locations_service.repository, "get_location_by_slug_for_admin", AsyncMock(return_value=None))
+    monkeypatch.setattr(locations_service.repository, "create_location", AsyncMock(return_value=row))
+    monkeypatch.setattr(locations_service, "add_audit_event", AsyncMock(side_effect=RuntimeError("audit unavailable")))
+
+    with pytest.raises(RuntimeError, match="audit unavailable"):
+        await locations_service.create_location(
+            db,
+            LocationCreate(slug="atomicity", name="Atomicity", exact_latitude=1, exact_longitude=2),
+            actor_user_id=uuid4(),
+        )
+
+    db.commit.assert_not_awaited()

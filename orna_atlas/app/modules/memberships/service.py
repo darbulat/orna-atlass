@@ -72,6 +72,16 @@ async def update_membership(
                 ),
             ),
         )
+    effective_values = {
+        "status": data.status,
+        "plan": data.plan,
+        "expires_at": data.expires_at,
+    }
+    changed_fields = sorted(
+        field
+        for field, value in effective_values.items()
+        if current is None or getattr(current, field, object()) != value
+    )
     membership = await repository.upsert(session, user_id, data)
     if data.status == "active":
         source_type = await repository.membership_grant_source_type(
@@ -101,7 +111,7 @@ async def update_membership(
         metadata=apply_actor_mode_metadata(
             {
                 "user_id": str(user_id),
-                "changed_fields": ["status", "plan"],
+                "changed_fields": changed_fields,
                 "status": data.status,
                 "plan": data.plan,
             },

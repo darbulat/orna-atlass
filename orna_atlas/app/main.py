@@ -8,6 +8,8 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from orna_atlas.app.core.config import get_settings
 from orna_atlas.app.core.errors import register_error_handlers
@@ -43,6 +45,57 @@ class HealthResponse(BaseModel):
     redis: DependencyStatus
 
 
+class SensitiveResponseNoStoreMiddleware:
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        exact_paths: set[str],
+        admin_path_prefix: str,
+    ) -> None:
+        self.app = app
+        self.exact_paths = exact_paths
+        self.admin_path_prefix = admin_path_prefix
+        self.admin_root_path = admin_path_prefix.rstrip("/")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = scope.get("path", "")
+        if scope["type"] != "http" or not (
+            path in self.exact_paths
+            or path == self.admin_root_path
+            or path.startswith(self.admin_path_prefix)
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        async def send_no_store(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                MutableHeaders(scope=message)["Cache-Control"] = "no-store"
+            await send(message)
+
+        await self.app(scope, receive, send_no_store)
+
+
+class SensitiveResponseFastAPI(FastAPI):
+    def __init__(
+        self,
+        *,
+        sensitive_exact_paths: set[str],
+        admin_path_prefix: str,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.sensitive_exact_paths = sensitive_exact_paths
+        self.admin_path_prefix = admin_path_prefix
+
+    def build_middleware_stack(self) -> ASGIApp:
+        return SensitiveResponseNoStoreMiddleware(
+            super().build_middleware_stack(),
+            exact_paths=self.sensitive_exact_paths,
+            admin_path_prefix=self.admin_path_prefix,
+        )
+
+
 def create_app() -> FastAPI:
     configure_logging()
     settings = get_settings()
@@ -50,13 +103,18 @@ def create_app() -> FastAPI:
     # configuration or discovering malformed rotation material on the first request.
     if settings.auth_signing_algorithm == "RS256":
         public_jwks()
-    app = FastAPI(title=settings.app_name)
     recovery_paths = {
         f"{settings.api_prefix}/auth/email-verification/request",
         f"{settings.api_prefix}/auth/email-verification/confirm",
         f"{settings.api_prefix}/auth/password-reset/request",
         f"{settings.api_prefix}/auth/password-reset/confirm",
     }
+    admin_path_prefix = f"{settings.api_prefix}/admin/"
+    app = SensitiveResponseFastAPI(
+        title=settings.app_name,
+        sensitive_exact_paths=recovery_paths,
+        admin_path_prefix=admin_path_prefix,
+    )
     optional_auth_operations = {
         (f"{settings.api_prefix}/sessions", "get"),
         (f"{settings.api_prefix}/sessions/{{locator}}", "get"),
@@ -66,13 +124,6 @@ def create_app() -> FastAPI:
         (f"{settings.api_prefix}/search", "get"),
         (f"{settings.api_prefix}/atlas/points", "get"),
     }
-
-    @app.middleware("http")
-    async def prevent_recovery_response_caching(request: Request, call_next):
-        response = await call_next(request)
-        if request.url.path in recovery_paths:
-            response.headers["Cache-Control"] = "no-store"
-        return response
 
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(

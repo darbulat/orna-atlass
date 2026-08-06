@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const adminLocationId = "11000000-0000-4000-8000-000000000001";
 const adminSessionId = "21000000-0000-4000-8000-000000000001";
@@ -7,6 +7,22 @@ const adminCollectionId = "41000000-0000-4000-8000-000000000001";
 const adminRevision = 'W/"location-r1"';
 const sessionRevision = 'W/"session-r1"';
 const collectionRevision = 'W/"collection-r1"';
+
+test.beforeEach(async ({ request }) => {
+  const reset = await request.post("http://127.0.0.1:4010/__e2e/admin-state?reset=true&revoked=false");
+  expect(reset.status()).toBe(204);
+});
+
+async function adminProbeState(request: APIRequestContext) {
+  const response = await request.get("http://127.0.0.1:4010/__e2e/admin-state");
+  expect(response.status()).toBe(200);
+  return await response.json() as {
+    access_revoked: boolean;
+    refresh_pending: boolean;
+    identity_held: boolean;
+    request_counts: Record<string, number>;
+  };
+}
 
 async function useAdminCookie(page: Page, value = "admin-e2e") {
   await page.context().addCookies([
@@ -70,7 +86,102 @@ test("admin workspace renders protected projections without leaking hidden publi
   await expect(metadata.locator("pre")).not.toBeVisible();
   await metadata.locator("summary").click();
   await expect(metadata.locator("pre")).toContainText("changed_fields");
-  await expect(page.getByText("Мутации account-domain скрыты до явного включения production gate.")).toBeVisible();
+  await expect(page.getByText("Gate: включён.")).toBeVisible();
+});
+
+test("quick navigation keeps every admin workspace section reachable", async ({ page }) => {
+  await useAdminCookie(page);
+  await page.goto("/admin");
+
+  const navigation = page.getByRole("navigation", { name: "Быстрая навигация" });
+  await expect(navigation).toBeVisible();
+
+  const destinations = [
+    ["Обзор", "#overview"],
+    ["Фильтры", "#filters"],
+    ["Операции", "#operations"],
+    ["Локации", "#locations"],
+    ["Сессии", "#sessions"],
+    ["Коллекции", "#collections"],
+    ["Пользователи", "#users"],
+    ["Аудит", "#audit"],
+  ] as const;
+
+  for (const [name, href] of destinations) {
+    await expect(navigation.getByRole("link", { name, exact: true })).toHaveAttribute("href", href);
+  }
+
+  await navigation.getByRole("link", { name: "Операции", exact: true }).click();
+  await expect(page).toHaveURL(/#operations$/);
+  await expect(page.getByRole("heading", { level: 2, name: "Операции администратора" })).toBeVisible();
+
+  const filterPanel = page.locator("#filters");
+  await expect(filterPanel).toHaveAttribute("open", "");
+  await filterPanel.getByText("Фильтры списков", { exact: true }).click();
+  await expect(filterPanel).not.toHaveAttribute("open", "");
+  await expect(filterPanel.getByRole("button", { name: "Применить фильтры" })).not.toBeVisible();
+});
+
+test("revoked admin access clears every privileged projection on focus revalidation", async ({ page, request }) => {
+  await useAdminCookie(page);
+  await page.goto("/admin");
+  await expect(page.getByText("Hidden Nesting Site", { exact: true })).toBeVisible();
+
+  const revoke = await request.post("http://127.0.0.1:4010/__e2e/admin-state?revoked=true");
+  expect(revoke.status()).toBe(204);
+  await expect.poll(async () => {
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    const state = await adminProbeState(request);
+    return state.request_counts["GET /api/v1/admin/me"] ?? 0;
+  }).toBeGreaterThan(1);
+
+  await expect(page.getByRole("heading", { name: "Доступ администратора отозван" })).toBeVisible();
+  await expect(page.getByText("Hidden Nesting Site", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("target-admin@example.test", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/59\.555555|24\.555555/)).toHaveCount(0);
+});
+
+test("an older successful identity response cannot restore revoked admin access", async ({ page, request }) => {
+  await useAdminCookie(page);
+  await page.goto("/admin");
+  await expect(page.getByText("Hidden Nesting Site", { exact: true })).toBeVisible();
+
+  const hold = await request.post("http://127.0.0.1:4010/__e2e/admin-state?hold_next_identity=true");
+  expect(hold.status()).toBe(204);
+  await expect.poll(async () => {
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    return (await adminProbeState(request)).identity_held;
+  }).toBe(true);
+
+  const revoke = await request.post("http://127.0.0.1:4010/__e2e/admin-state?revoked=true");
+  expect(revoke.status()).toBe(204);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("heading", { name: "Доступ администратора отозван" })).toBeVisible();
+
+  const release = await request.post(
+    "http://127.0.0.1:4010/__e2e/admin-state?revoked=true&release_identity=true",
+  );
+  expect(release.status()).toBe(204);
+  await expect.poll(async () => (await adminProbeState(request)).identity_held).toBe(false);
+
+  await expect(page.getByRole("heading", { name: "Доступ администратора отозван" })).toBeVisible();
+  await expect(page.getByText("Hidden Nesting Site", { exact: true })).toHaveCount(0);
+});
+
+test("an expired admin access cookie refreshes once without clearing privileged content", async ({ page, request }) => {
+  await useAdminCookie(page);
+  await page.goto("/admin");
+  await expect(page.getByText("Hidden Nesting Site", { exact: true })).toBeVisible();
+  const expire = await request.post("http://127.0.0.1:4010/__e2e/admin-state?unauthorized_once=true");
+  expect(expire.status()).toBe(204);
+
+  await expect.poll(async () => {
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    return (await adminProbeState(request)).refresh_pending;
+  }).toBe(false);
+
+  await expect(page.getByText("Hidden Nesting Site", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Доступ администратора отозван" })).toHaveCount(0);
 });
 
 test("malformed privileged enum fails the location region closed", async ({ page }) => {
@@ -97,6 +208,45 @@ test("sensitive email search stays out of URL and browser history state", async 
   expect(await page.evaluate(() => JSON.stringify(history.state))).not.toContain("target-admin@example.test");
 });
 
+test("target-email confirmation blocks mismatched account mutations without a request", async ({ page, request }) => {
+  await useAdminCookie(page);
+  await page.goto("/admin");
+
+  let form = actionForm(page, "Пользователи и membership", "Изменить роль");
+  await form.getByLabel("User ID", { exact: true }).fill("51000000-0000-4000-8000-000000000001");
+  await form.getByLabel("Aggregate user/membership revision", { exact: true }).fill('W/"user-r1"');
+  await form.getByLabel("Подтверждение · email целевого пользователя", { exact: true }).fill("wrong@example.test");
+  await form.getByRole("button", { name: "Обновить роль" }).click();
+  await expect(page.locator(".admin-notice-error")).toContainText("Операция отклонена.");
+  let state = await adminProbeState(request);
+  expect(state.request_counts["PATCH /api/v1/admin/users/51000000-0000-4000-8000-000000000001/role"] ?? 0).toBe(0);
+
+  form = actionForm(page, "Пользователи и membership", "Изменить роль");
+  await form.getByLabel("User ID", { exact: true }).fill("51000000-0000-4000-8000-000000000001");
+  await form.getByLabel("Aggregate user/membership revision", { exact: true }).fill('W/"user-r1"');
+  await form.getByLabel("Подтверждение · email целевого пользователя", { exact: true }).fill("target-admin@example.test");
+  await form.getByRole("button", { name: "Обновить роль" }).click();
+  await expect(page.locator(".admin-notice-success")).toContainText("Операция выполнена.");
+  state = await adminProbeState(request);
+  expect(state.request_counts["PATCH /api/v1/admin/users/51000000-0000-4000-8000-000000000001/role"]).toBe(1);
+  expect(page.url()).not.toContain("target-admin");
+  expect(page.url()).not.toContain("51000000");
+});
+
+test("transient operational identifiers stay out of URL history notices and storage", async ({ page }) => {
+  await useAdminCookie(page);
+  await page.goto("/admin");
+  const search = page.locator(".admin-sensitive-search").filter({ hasText: "Transient operational ID filters" });
+  const locationId = "11000000-0000-4000-8000-000000000001";
+  await search.getByLabel("Location ID", { exact: true }).fill(locationId);
+  await search.getByRole("button", { name: "Выполнить transient-поиск" }).click();
+  await expect(search.getByText("Draft Admin Session", { exact: true })).toBeVisible();
+  const persisted = await page.evaluate(() => JSON.stringify({ history: history.state, local: localStorage, session: sessionStorage }));
+  expect(page.url()).not.toContain(locationId);
+  expect(persisted).not.toContain(locationId);
+  expect((await page.locator(".admin-notice").allTextContents()).join(" ")).not.toContain(locationId);
+});
+
 test("location mutation reports success and a stale If-Match without replay", async ({ page, request }) => {
   await useAdminCookie(page);
   await page.goto("/admin");
@@ -110,8 +260,13 @@ test("location mutation reports success and a stale If-Match without replay", as
   expect(page.url()).not.toContain(adminLocationId);
   expect(page.url()).not.toContain("operation_log");
 
-  const configured = await request.post("http://127.0.0.1:4010/__e2e/admin-mutation?mode=stale");
-  expect(configured.status()).toBe(204);
+  let persisted = await request.get("http://127.0.0.1:4010/api/v1/admin/locations?limit=1&offset=0", {
+    headers: { Cookie: "orna_access=admin-e2e" },
+  });
+  expect(persisted.status()).toBe(200);
+  let [persistedLocation] = await persisted.json();
+  expect(persistedLocation.name).toBe("Renamed location");
+  expect(persistedLocation.revision).toBe('W/"location-r2"');
 
   form = locationUpdateForm(page);
   await form.getByLabel("ID", { exact: true }).fill(adminLocationId);
@@ -121,6 +276,16 @@ test("location mutation reports success and a stale If-Match without replay", as
   await expect(page.locator(".admin-notice-error")).toContainText(
     "Запись была изменена другим администратором. Обновите список и используйте новую revision.",
   );
+  const state = await adminProbeState(request);
+  expect(state.request_counts[`PATCH /api/v1/admin/locations/${adminLocationId}`]).toBe(2);
+
+  persisted = await request.get("http://127.0.0.1:4010/api/v1/admin/locations?limit=1&offset=0", {
+    headers: { Cookie: "orna_access=admin-e2e" },
+  });
+  expect(persisted.status()).toBe(200);
+  [persistedLocation] = await persisted.json();
+  expect(persistedLocation.name).toBe("Renamed location");
+  expect(persistedLocation.revision).toBe('W/"location-r2"');
 });
 
 test("editorial create/update/archive and ordered collection workflows are deterministic", async ({ page }) => {
@@ -219,6 +384,9 @@ test("bounded filters and load-more preserve only non-sensitive query state", as
   await expect(page).toHaveURL(/collection_is_public=true/);
   await page.getByRole("link", { name: "Загрузить ещё локации" }).click();
   await expect(page).toHaveURL(/locations_limit=100/);
+  const ids = await page.locator("#locations .admin-resource-id code").evaluateAll((nodes) => nodes.map((node) => node.textContent));
+  expect(ids).toHaveLength(200);
+  expect(new Set(ids.filter((_, index) => index % 2 === 0)).size).toBe(100);
   expect(page.url()).not.toMatch(/user_email|audit_ip_address|audit_user_agent|operation_log/);
 });
 
@@ -247,9 +415,6 @@ test("admin workspace remains reachable at 320px with visible 44px controls", as
     const elements = Array.from(document.querySelectorAll<HTMLElement>(".admin-shell a, .admin-shell button, .admin-shell input, .admin-shell select, .admin-shell textarea"))
       .filter((element) => element.getClientRects().length > 0);
     const controls = elements.map((element) => element.getBoundingClientRect());
-    const actionable = elements
-      .filter((element) => element.matches("a, button"))
-      .map((element) => element.getBoundingClientRect());
     const viewport = document.documentElement.clientWidth;
     const shell = document.querySelector<HTMLElement>(".shell");
     const adminShell = document.querySelector<HTMLElement>(".admin-shell");
@@ -268,7 +433,7 @@ test("admin workspace remains reachable at 320px with visible 44px controls", as
       viewport,
       scrollWidth: document.documentElement.scrollWidth,
       controlsFit: controls.every((box) => box.left >= 0 && box.right <= document.documentElement.clientWidth),
-      actionableTallEnough: actionable.every((box) => box.height >= 44),
+      controlsTallEnough: controls.every((box) => box.height >= 44),
       offenders,
       boxes: {
         shell: shell ? { ...shell.getBoundingClientRect().toJSON(), widthStyle: getComputedStyle(shell).width } : null,
@@ -280,5 +445,5 @@ test("admin workspace remains reachable at 320px with visible 44px controls", as
 
   expect(geometry.scrollWidth, JSON.stringify({ offenders: geometry.offenders, boxes: geometry.boxes })).toBe(geometry.viewport);
   expect(geometry.controlsFit).toBe(true);
-  expect(geometry.actionableTallEnough).toBe(true);
+  expect(geometry.controlsTallEnough).toBe(true);
 });

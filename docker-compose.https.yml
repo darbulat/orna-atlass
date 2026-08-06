@@ -3,7 +3,9 @@ services:
     ports: !override []
 
   web:
-    ports: !override []
+    # Host-local fallback is an explicit release smoke path; it is never exposed publicly.
+    ports: !override
+      - "127.0.0.1:3000:3000"
     environment:
       # The HTTPS gateway proxies /api on the same origin. Never bake an HTTP host port
       # into browser bundles, because browsers block playback grants as mixed content.

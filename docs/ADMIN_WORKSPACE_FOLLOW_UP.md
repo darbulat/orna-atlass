@@ -1,6 +1,6 @@
 # Admin Workspace v1 follow-up
 
-Status: paused on 2026-07-30. The current implementation is intentionally merged as an incomplete internal capability; do not treat Admin Workspace v1 as release-complete until every gate below is closed.
+Status: implementation complete. Release approval still requires the frozen-candidate review, exact-head CI and production smoke described below; results belong in the PR/deployment handoff rather than in this durable checklist.
 
 Source of truth: [`../specs/admin-workspace-v1.md`](../specs/admin-workspace-v1.md).
 
@@ -16,49 +16,39 @@ Source of truth: [`../specs/admin-workspace-v1.md`](../specs/admin-workspace-v1.
 - Explicit target-email confirmation for account mutations.
 - Typed OpenAPI admin error responses and domain enum filters.
 
-## Required follow-up before release
+## Closed implementation requirements
 
 ### Backend and audit contracts
 
-- Add executable audit acceptance coverage for every required mutation event:
-  - `location.created`, `location.updated`, `location.archived`;
-  - `session.created`, `session.updated`, `session.archived`;
-  - `collection.created`, `collection.updated`;
-  - `media.segments_registered` and processing retry/archive events;
-  - `user.role_updated` and `membership.updated`.
-- Assert exact `event_type`, `subject_type`, `subject_id`, actor provenance and bounded structured metadata.
-- Add a failure-atomicity canary proving an audit insert failure prevents the domain transaction from committing.
-- Retain the collection link-only concurrency canary: after a successful ordered-link PATCH, reuse of the old ETag must fail with `412` before save/audit.
-- Run the disposable PostgreSQL integration suite for row/advisory-lock behavior.
+- Executable acceptance tests cover the exact location, session, collection, media, role and membership audit event names, subjects, actor provenance and allowlisted metadata.
+- A unit canary asserts that an audit-boundary failure prevents the service-owned commit; a disposable-PostgreSQL canary injects that failure after the role update flush and verifies from a fresh session that neither the role mutation nor a success audit event persisted.
+- Collection link-only stale writes and last-admin role changes retain their PostgreSQL concurrency canaries.
+- Every `/api/v1/admin/**` outcome, including validation/auth errors and empty `204` responses, receives `Cache-Control: no-store` at the application boundary.
 
 ### Frontend privacy and authorization
 
-- Add browser coverage proving revoked admin access clears privileged content on focus/visibility revalidation.
-- Add browser coverage for explicit target-email confirmation and verify a mismatched confirmation sends no mutation request.
-- Add browser coverage for transient sensitive filters and verify IDs, email, IP and User-Agent never enter URL/history/notices.
-- Verify strict DTO parsers fail closed for every privileged resource when any required field, nested object, enum, UUID, timestamp or revision is malformed.
-- Continue decomposing orchestration from `web/app/admin/page.tsx` into bounded `web/components/admin/**` components.
+- Browser coverage proves focus revalidation clears privileged content after role loss and performs at most one access-cookie refresh before failing closed.
+- Target-email confirmation is checked against the freshly loaded target user, and a mismatch sends no mutation request.
+- Sensitive e-mail, IDs, IP and User-Agent filters remain transient and are excluded from URL, history, notices and browser persistence.
+- Runtime parsers accept only the generated array contracts and validate required fields, nested resources, enums, UUIDs, bounded coordinates, RFC 3339 timestamps, e-mail and revisions before privileged rendering.
+- Admin interaction state is bounded in `web/components/admin/**`; the route remains the server-side workflow composition boundary.
 
 ### Concurrency, paging and request behavior
 
-- Exercise a real stale-write sequence: GET revision, successful mutation, second mutation with the old ETag, typed `412` response, no replay.
-- Cover load-more/cursor behavior with multiple pages, stable ordering and no duplicate rows.
-- Add network request counters for no-replay/idempotency acceptance scenarios.
+- The stateful browser mock exercises GET revision, one successful mutation, a second mutation with the old ETag, typed `412`, and no replay.
+- Multi-page list scenarios assert stable ordering, bounded filters and no duplicate rows.
+- Network request counters prove rejected confirmation and stale-write scenarios do not produce extra mutations.
 
 ### OpenAPI and generated contracts
 
-- Regenerate `web/openapi.json` and `web/lib/api/generated.ts` after every backend contract change.
-- Verify two consecutive generations are byte-identical.
-- Keep a mechanical matrix test over every admin operation for auth security, `401`/`403`, endpoint-specific success statuses, typed `412`/`428`, enum filters and pagination bounds.
+- Admin errors and enums remain represented in generated contracts; two consecutive generations are byte-identical.
+- A mechanical backend matrix checks every admin operation for authorization-before-domain-work, endpoint status behavior and no-store responses.
 
-### Production-like smoke and release blocker
+### Production-like smoke
 
-- Parameterize the read-only smoke script with API base URL plus admin/member credentials without placing credentials in source, arguments, URLs or logs.
-- Smoke anonymous denial, member denial, authenticated admin read, response shape and `Cache-Control: no-store`.
-- Fix nginx/gateway routing before release. Last verified state was:
-  - local `127.0.0.1:3000/admin`: `200`, `Cache-Control: no-store`;
-  - HTTP gateway `/admin`: HTTPS redirect;
-  - HTTPS gateway `/admin`: `404` — release blocker.
+- The read-only smoke script accepts route/API endpoints and credentials through environment variables only; it does not place credentials in source, arguments, URLs or logs.
+- It checks anonymous/member denial, authenticated admin identity/location/audit reads, response shape and `Cache-Control: no-store`.
+- The HTTPS Compose overlay exposes the direct frontend probe only on loopback (`127.0.0.1:3000`), while the nginx HTTP redirect and HTTPS `/admin` route remain the public ingress checks.
 
 ## Required completion gates
 
@@ -81,6 +71,6 @@ bash scripts/check-admin-route-smoke.sh
 
 Then perform a bounded independent review of the exact commit/digest, close all reproducible auth/privacy/integrity/lifecycle findings, obtain green exact-head CI, deploy that approved SHA and repeat production smoke.
 
-## Verification snapshot before pause
+## Verification baseline for release handoff
 
-Earlier pre-review candidates passed backend `419` tests, frontend `28` unit tests, one PostgreSQL concurrency integration test, admin-specific Playwright `10` scenarios, typecheck, lint and production build. Those results do **not** certify the current post-review worktree because subsequent fixes changed backend contracts and frontend behavior. A complete frozen-candidate rerun remains mandatory.
+The implementation candidate has executable coverage for backend audit/atomicity/no-store behavior, strict privileged parsers, refresh-once/revoke behavior, target confirmation, sensitive-filter privacy, stale writes, paging and mobile controls. The PR handoff must record the exact candidate hash plus the final results of all commands above, independent review, exact-head CI and both direct/frontend and nginx production smoke paths. Historical counts are not release evidence for a later commit.

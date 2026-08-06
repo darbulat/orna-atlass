@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TIMEOUT="8"
-LOCAL_URL="http://127.0.0.1:3000/admin"
-GATEWAY_HTTP="http://127.0.0.1/admin"
-GATEWAY_HTTPS="https://127.0.0.1/admin"
+TIMEOUT="${ADMIN_SMOKE_TIMEOUT:-8}"
+LOCAL_URL="${ADMIN_SMOKE_LOCAL_URL:-http://127.0.0.1:3000/admin}"
+GATEWAY_HTTP="${ADMIN_SMOKE_GATEWAY_HTTP_URL:-http://127.0.0.1/admin}"
+GATEWAY_HOST="${ADMIN_SMOKE_GATEWAY_HOST:-orna.land}"
+GATEWAY_HTTPS="${ADMIN_SMOKE_GATEWAY_HTTPS_URL:-https://${GATEWAY_HOST}/admin}"
+API_BASE_URL="${ADMIN_SMOKE_API_BASE_URL:-https://${GATEWAY_HOST}/api/v1}"
+
+for required_credential in ADMIN_SMOKE_MEMBER_COOKIE ADMIN_SMOKE_ADMIN_COOKIE; do
+  if [[ -z "${!required_credential:-}" ]]; then
+    echo "[FAIL] ${required_credential} is required for the production admin smoke." >&2
+    exit 2
+  fi
+done
 
 pass=true
 
@@ -126,8 +135,8 @@ if [[ -n "${location_value}" ]]; then
   echo "[INFO] Location: ${location_value}"
 fi
 
-# 4) HTTPS gateway smoke
-curl -sS -k -I -m "${TIMEOUT}" -H "Host: orna.land" "${GATEWAY_HTTPS}" -o "${temp_root}/https_headers.txt" >/dev/null || true
+# 4) HTTPS gateway smoke. Resolve the public hostname locally so certificate verification stays enabled.
+curl -sS -I -m "${TIMEOUT}" --resolve "${GATEWAY_HOST}:443:127.0.0.1" "${GATEWAY_HTTPS}" -o "${temp_root}/https_headers.txt" >/dev/null || true
 https_code="$(status_from_headers "${temp_root}/https_headers.txt")"
 if [[ -n "${https_code}" ]]; then
   if [[ "${https_code}" == "200" ]]; then
@@ -143,6 +152,76 @@ else
   echo "[FAIL] Не удалось прочитать статус HTTPS /admin."
   pass=false
 fi
+
+# 5) Read-only API auth and shape probes. Credential values are read only from environment and
+# written to mode-600 temporary curl config files, never command arguments, URLs, or output.
+api_request() {
+  local label="$1"
+  local expected="$2"
+  local path="$3"
+  local credential_config="${4:-}"
+  local prefix="$5"
+  local headers_file="${temp_root}/${prefix}_headers.txt"
+  local body_file="${temp_root}/${prefix}_body.json"
+  local url="${API_BASE_URL}${path}"
+  local code
+
+  if [[ -n "${credential_config}" ]]; then
+    if ! curl -sS -m "${TIMEOUT}" --resolve "${GATEWAY_HOST}:443:127.0.0.1" \
+      --config "${credential_config}" -D "${headers_file}" -o "${body_file}" "${url}"; then
+      echo "[FAIL] ${label}: API request failed"
+      pass=false
+      return
+    fi
+  else
+    if ! curl -sS -m "${TIMEOUT}" --resolve "${GATEWAY_HOST}:443:127.0.0.1" \
+      -D "${headers_file}" -o "${body_file}" "${url}"; then
+      echo "[FAIL] ${label}: API request failed"
+      pass=false
+      return
+    fi
+  fi
+  code="$(status_from_headers "${headers_file}")"
+  require_status_eq "${code}" "${expected}" "${label}"
+  if [[ "${expected}" == "200" ]] && ! grep -Eiq '^Cache-Control:.*no-store' "${headers_file}"; then
+    echo "[FAIL] ${label}: отсутствует Cache-Control: no-store"
+    pass=false
+  fi
+}
+
+write_cookie_config() {
+  local file="$1"
+  local value="$2"
+  umask 077
+  printf 'cookie = "orna_access=%s"\n' "${value}" >"${file}"
+}
+
+api_request "Anonymous admin identity deny" "401" "/admin/me" "" "anonymous_me"
+
+member_config="${temp_root}/member.curl.conf"
+write_cookie_config "${member_config}" "${ADMIN_SMOKE_MEMBER_COOKIE}"
+api_request "Member admin identity deny" "403" "/admin/me" "${member_config}" "member_me"
+
+admin_config="${temp_root}/admin.curl.conf"
+write_cookie_config "${admin_config}" "${ADMIN_SMOKE_ADMIN_COOKIE}"
+api_request "Admin identity read" "200" "/admin/me" "${admin_config}" "admin_me"
+api_request "Admin location read" "200" "/admin/locations?limit=1&offset=0" "${admin_config}" "admin_locations"
+api_request "Admin audit read" "200" "/admin/audit-events?limit=1&offset=0" "${admin_config}" "admin_audit"
+python3 - "${temp_root}/admin_me_body.json" "${temp_root}/admin_locations_body.json" "${temp_root}/admin_audit_body.json" <<'PY'
+import json
+import sys
+
+identity = json.load(open(sys.argv[1], encoding="utf-8"))
+locations = json.load(open(sys.argv[2], encoding="utf-8"))
+audits = json.load(open(sys.argv[3], encoding="utf-8"))
+if not isinstance(identity, dict) or identity.get("role") != "admin":
+    raise SystemExit("admin identity response shape is invalid")
+if not isinstance(locations, list):
+    raise SystemExit("admin locations response shape is invalid")
+if not isinstance(audits, list):
+    raise SystemExit("admin audit response shape is invalid")
+PY
+echo "[OK] Authenticated admin response shapes are valid"
 
 if [[ "${pass}" == "true" ]]; then
   echo "[PASS] Смоук-чеки /admin пройдены."
