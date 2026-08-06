@@ -361,20 +361,25 @@ function CesiumGlobe({
 
         viewer.scene.globe.enableLighting = true;
         if (viewer.scene.sun) {
-          viewer.scene.sun.show = true;
-          viewer.scene.sun.glowFactor = 0;
+          if (viewer.scene.sun.show !== true) {
+            viewer.scene.sun.show = true;
+          }
+          if (viewer.scene.sun.glowFactor !== 0) {
+            viewer.scene.sun.glowFactor = 0;
+          }
         }
+        viewer.scene.sunBloom = false;
         if (viewer.scene.moon) {
           viewer.scene.moon.show = false;
         }
-        host.parentElement?.setAttribute("data-sun-disc", viewer.scene.sun?.show === false ? "hidden" : "visible");
-        host.parentElement?.setAttribute("data-moon-disc", viewer.scene.moon?.show === false ? "hidden" : "visible");
-        viewer.scene.globe.showGroundAtmosphere = false;
         if (viewer.scene.skyAtmosphere) {
           viewer.scene.skyAtmosphere.show = true;
           viewer.scene.skyAtmosphere.brightnessShift = -1;
           viewer.scene.skyAtmosphere.saturationShift = -1;
         }
+        host.parentElement?.setAttribute("data-sun-disc", viewer.scene.sun?.show === false ? "hidden" : "visible");
+        host.parentElement?.setAttribute("data-moon-disc", viewer.scene.moon?.show === false ? "hidden" : "visible");
+        viewer.scene.globe.showGroundAtmosphere = false;
         host.parentElement?.setAttribute("data-ground-atmosphere", viewer.scene.globe.showGroundAtmosphere ? "visible" : "hidden");
         host.parentElement?.setAttribute("data-sky-atmosphere", viewer.scene.skyAtmosphere?.show === false ? "hidden" : "visible");
         host.parentElement?.setAttribute("data-atmospheric-solar-glow", "hidden");
@@ -467,21 +472,6 @@ function CesiumGlobe({
         };
         removeScenePreRenderListener = viewer.scene.preRender.addEventListener(() => {
           if (!viewer) return;
-          if (viewer.scene.sun) {
-            viewer.scene.sun.show = true;
-            viewer.scene.sun.glowFactor = 0;
-          }
-          if (viewer.scene.moon) {
-            viewer.scene.moon.show = false;
-          }
-          if (viewer.scene.skyAtmosphere) {
-            viewer.scene.skyAtmosphere.show = true;
-            viewer.scene.skyAtmosphere.brightnessShift = -1;
-            viewer.scene.skyAtmosphere.saturationShift = -1;
-          }
-          host.parentElement?.setAttribute("data-sun-disc", viewer.scene.sun?.show === false ? "hidden" : "visible");
-          host.parentElement?.setAttribute("data-moon-disc", viewer.scene.moon?.show === false ? "hidden" : "visible");
-          host.parentElement?.setAttribute("data-sky-atmosphere", viewer.scene.skyAtmosphere?.show === false ? "hidden" : "visible");
           lockCameraToGlobeCenter();
           syncCameraCenterError();
         });
