@@ -305,6 +305,14 @@ function CesiumGlobe({
         setIsWebglUnavailable(false);
 
         viewer.scene.globe.enableLighting = true;
+        if (viewer.scene.sun) {
+          viewer.scene.sun.show = false;
+        }
+        if (viewer.scene.moon) {
+          viewer.scene.moon.show = false;
+        }
+        host.parentElement?.setAttribute("data-sun-disc", viewer.scene.sun?.show === false ? "hidden" : "visible");
+        host.parentElement?.setAttribute("data-moon-disc", viewer.scene.moon?.show === false ? "hidden" : "visible");
         viewer.scene.globe.showGroundAtmosphere = true;
         if (viewer.scene.skyAtmosphere) {
           viewer.scene.skyAtmosphere.show = true;
