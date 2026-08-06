@@ -313,10 +313,13 @@ function CesiumGlobe({
         }
         host.parentElement?.setAttribute("data-sun-disc", viewer.scene.sun?.show === false ? "hidden" : "visible");
         host.parentElement?.setAttribute("data-moon-disc", viewer.scene.moon?.show === false ? "hidden" : "visible");
-        viewer.scene.globe.showGroundAtmosphere = true;
+        viewer.scene.globe.showGroundAtmosphere = false;
         if (viewer.scene.skyAtmosphere) {
-          viewer.scene.skyAtmosphere.show = true;
+          viewer.scene.skyAtmosphere.show = false;
         }
+        host.parentElement?.setAttribute("data-ground-atmosphere", viewer.scene.globe.showGroundAtmosphere ? "visible" : "hidden");
+        host.parentElement?.setAttribute("data-sky-atmosphere", viewer.scene.skyAtmosphere?.show === false ? "hidden" : "visible");
+        host.parentElement?.setAttribute("data-atmospheric-solar-glow", "hidden");
         viewer.scene.screenSpaceCameraController.enableTranslate = false;
         viewer.scene.screenSpaceCameraController.enableTilt = false;
         viewer.scene.screenSpaceCameraController.enableLook = false;
