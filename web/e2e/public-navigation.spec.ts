@@ -469,23 +469,55 @@ test("mobile home navigation leaves the inline player controls clickable", async
   expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(390);
   await menu.click();
   await expect(page.getByRole("link", { name: "Profile" })).toBeVisible();
+  await menu.click();
+  await expect(page.getByRole("link", { name: "Profile" })).toBeHidden();
   await page.getByRole("button", { name: "Hide player" }).click();
   await expect(page.getByRole("region", { name: "Session player" })).toHaveCount(0);
 });
 
-test("stacked player breakpoint does not reserve a desktop side-player gutter", async ({ page }) => {
+test("stacked player breakpoint uses compact menu and places discovery below player", async ({ page }) => {
   await page.setViewportSize({ width: 710, height: 844 });
   await page.goto("/");
   const atlas = page.getByRole("region", { name: "ORNA Atlas" });
   await atlas.getByRole("button", { name: "Listen", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Session player" })).toBeVisible();
+  const player = page.locator("#atlas-session-player");
+  await expect(player).toBeVisible();
 
   const nav = page.locator(".home-nav");
   const navBox = await nav.boundingBox();
   expect(navBox).not.toBeNull();
   expect(navBox!.width).toBeGreaterThanOrEqual(560);
   await expect(nav).toHaveCSS("right", "64px");
+  await expect(nav.locator(".site-menu-links-desktop")).toBeHidden();
+  const menu = nav.locator("summary[aria-label='Menu']");
+  await expect(menu).toBeVisible();
+  await menu.click();
   await expect(nav.getByRole("link", { name: "Collections" })).toBeVisible();
+
+  const geometry = await page.evaluate(() => {
+    const bySelector = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`Missing ${selector}`);
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom, height: rect.height };
+    };
+    return {
+      player: bySelector("#atlas-session-player"),
+      discovery: bySelector(".atlas-discovery-panel"),
+      playerBeforeDiscovery: (() => {
+        const playerElement = document.querySelector("#atlas-session-player");
+        const discoveryElement = document.querySelector(".atlas-discovery-panel");
+        if (!playerElement || !discoveryElement) return false;
+        return Boolean(playerElement.compareDocumentPosition(discoveryElement) & Node.DOCUMENT_POSITION_FOLLOWING);
+      })(),
+      scrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  expect(geometry.player.bottom).toBeLessThanOrEqual(geometry.discovery.top + 1);
+  expect(geometry.discovery.height).toBeGreaterThan(220);
+  expect(geometry.playerBeforeDiscovery).toBe(true);
+  expect(geometry.scrollWidth).toBe(geometry.viewportWidth);
 });
 
 test("home globe header omits duplicate search and routes account access through Profile", async ({ page }) => {
