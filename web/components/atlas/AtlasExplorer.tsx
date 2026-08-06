@@ -1552,122 +1552,6 @@ export function AtlasExplorer({
           ) : null}
         </div>
 
-        <div className="atlas-discovery-panel">
-          {dawnRefreshError ? (
-            <p className="atlas-data-warning" role="status">
-              {dawnRefreshError} Showing the last successful dawn update.
-            </p>
-          ) : null}
-          <p>Where would you like to listen?</p>
-          <div
-            className="time-tabs"
-            id="atlas-listening-time"
-            role="tablist"
-            aria-label="Listening time"
-            tabIndex={-1}
-          >
-            {listeningModes.map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                role="tab"
-                aria-selected={selectedMode === mode}
-                onClick={() => selectMode(mode)}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
-          <div className="location-carousel" aria-label="Featured locations">
-            <button
-              type="button"
-              className="carousel-arrow"
-              aria-label="Previous locations"
-              disabled={!canPageLocations || carouselStart === 0}
-              onClick={() => pageLocations(-1)}
-            >
-              ‹
-            </button>
-            {displayedLocations.length > 0 ? (
-              displayedLocations.map((location, index) => (
-                <button
-                  type="button"
-                  key={location.id}
-                  className={[
-                    "location-card",
-                    `location-card-${index % 5}`,
-                    location.photo_url ? "has-photo" : "",
-                    location.slug === selectedSlug ? "selected" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  onClick={() => {
-                    selectLocation(location);
-                    openLocationSession(location);
-                  }}
-                >
-                  <LocationCardPhoto
-                    name={location.name}
-                    photoUrl={location.photo_url}
-                    variant="atlas"
-                  />
-                  <span>{isLockedPoint(location, entitlementState) ? `🔒 ${location.name}` : location.name}</span>
-                  <small>{location.country_code ?? location.region ?? "Atlas site"}</small>
-                  <i aria-hidden="true" />
-                </button>
-              ))
-            ) : (
-              <p className="location-carousel-empty">No locations in this time window.</p>
-            )}
-            <button
-              type="button"
-              className="carousel-arrow"
-              aria-label="Next locations"
-              disabled={!canPageLocations || carouselStart === maxCarouselStart}
-              onClick={() => pageLocations(1)}
-            >
-              ›
-            </button>
-          </div>
-          <div className="atlas-search">
-            <label htmlFor="atlas-search">Search location</label>
-            <input
-              id="atlas-search"
-              type="search"
-              value={query}
-              placeholder="Search location"
-              onFocus={() => window.dispatchEvent(new CustomEvent("orna:analytics", {
-                detail: { name: "search_opened", placement: "location_search" },
-              }))}
-              onChange={(event) => {
-                const value = event.target.value;
-                setQuery(value);
-                if (value.trim().length === 2) {
-                  window.dispatchEvent(new CustomEvent("orna:analytics", {
-                    detail: { name: "location_search", placement: "location_search" },
-                  }));
-                }
-              }}
-            />
-            {query.trim().length >= 2 ? (
-              <div className="search-results" aria-live="polite">
-                {isSearching ? <p>Searching...</p> : null}
-                {searchError ? <p role="alert">{searchError}</p> : null}
-                {!isSearching && !searchError && searchResults.length === 0 ? <p>No public results found.</p> : null}
-                {searchResults.map((result) => (
-                  <button
-                    type="button"
-                    key={`${result.type}-${result.id}`}
-                    onClick={() => selectSearchResult(result)}
-                  >
-                    <strong>{result.title}</strong>
-                    <span>{[result.subtitle, result.habitat].filter(Boolean).join(" / ")}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
       </div>
 
       {isSidePanelOpen ? (
@@ -1708,6 +1592,122 @@ export function AtlasExplorer({
           )}
         </aside>
       ) : null}
+      <div className="atlas-discovery-panel">
+        {dawnRefreshError ? (
+          <p className="atlas-data-warning" role="status">
+            {dawnRefreshError} Showing the last successful dawn update.
+          </p>
+        ) : null}
+        <p>Where would you like to listen?</p>
+        <div
+          className="time-tabs"
+          id="atlas-listening-time"
+          role="tablist"
+          aria-label="Listening time"
+          tabIndex={-1}
+        >
+          {listeningModes.map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              role="tab"
+              aria-selected={selectedMode === mode}
+              onClick={() => selectMode(mode)}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+        <div className="location-carousel" aria-label="Featured locations">
+          <button
+            type="button"
+            className="carousel-arrow"
+            aria-label="Previous locations"
+            disabled={!canPageLocations || carouselStart === 0}
+            onClick={() => pageLocations(-1)}
+          >
+            ‹
+          </button>
+          {displayedLocations.length > 0 ? (
+            displayedLocations.map((location, index) => (
+              <button
+                type="button"
+                key={location.id}
+                className={[
+                  "location-card",
+                  `location-card-${index % 5}`,
+                  location.photo_url ? "has-photo" : "",
+                  location.slug === selectedSlug ? "selected" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => {
+                  selectLocation(location);
+                  openLocationSession(location);
+                }}
+              >
+                <LocationCardPhoto
+                  name={location.name}
+                  photoUrl={location.photo_url}
+                  variant="atlas"
+                />
+                <span>{isLockedPoint(location, entitlementState) ? `🔒 ${location.name}` : location.name}</span>
+                <small>{location.country_code ?? location.region ?? "Atlas site"}</small>
+                <i aria-hidden="true" />
+              </button>
+            ))
+          ) : (
+            <p className="location-carousel-empty">No locations in this time window.</p>
+          )}
+          <button
+            type="button"
+            className="carousel-arrow"
+            aria-label="Next locations"
+            disabled={!canPageLocations || carouselStart === maxCarouselStart}
+            onClick={() => pageLocations(1)}
+          >
+            ›
+          </button>
+        </div>
+        <div className="atlas-search">
+          <label htmlFor="atlas-search">Search location</label>
+          <input
+            id="atlas-search"
+            type="search"
+            value={query}
+            placeholder="Search location"
+            onFocus={() => window.dispatchEvent(new CustomEvent("orna:analytics", {
+              detail: { name: "search_opened", placement: "location_search" },
+            }))}
+            onChange={(event) => {
+              const value = event.target.value;
+              setQuery(value);
+              if (value.trim().length === 2) {
+                window.dispatchEvent(new CustomEvent("orna:analytics", {
+                  detail: { name: "location_search", placement: "location_search" },
+                }));
+              }
+            }}
+          />
+          {query.trim().length >= 2 ? (
+            <div className="search-results" aria-live="polite">
+              {isSearching ? <p>Searching...</p> : null}
+              {searchError ? <p role="alert">{searchError}</p> : null}
+              {!isSearching && !searchError && searchResults.length === 0 ? <p>No public results found.</p> : null}
+              {searchResults.map((result) => (
+                <button
+                  type="button"
+                  key={`${result.type}-${result.id}`}
+                  onClick={() => selectSearchResult(result)}
+                >
+                  <strong>{result.title}</strong>
+                  <span>{[result.subtitle, result.habitat].filter(Boolean).join(" / ")}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
       {isSoftPaywallOpen && selected?.latest_session ? (
         <div className="soft-paywall-backdrop" role="presentation" onMouseDown={dismissSoftPaywall}>
           <section
