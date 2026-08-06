@@ -405,7 +405,7 @@ test("home navigation leaves the inline player controls clickable", async ({ pag
   await expect(page.getByRole("region", { name: "Session player" })).toHaveCount(0);
 });
 
-test("opening the side player keeps the header menu and discovery panel unobscured", async ({ page }) => {
+test("opening the side player keeps header controls clear and places discovery full-width below player", async ({ page }) => {
   await page.setViewportSize({ width: 1365, height: 768 });
   await page.goto("/");
 
@@ -446,7 +446,10 @@ test("opening the side player keeps the header menu and discovery panel unobscur
   });
 
   expect(geometry.collections.right).toBeLessThanOrEqual(geometry.side.left - 8);
-  expect(geometry.discovery.right).toBeLessThanOrEqual(geometry.side.left - 8);
+  expect(geometry.discovery.top).toBeGreaterThanOrEqual(geometry.side.bottom - 1);
+  expect(geometry.discovery.left).toBe(0);
+  expect(geometry.discovery.right).toBeGreaterThanOrEqual(geometry.viewportWidth - 1);
+  expect(geometry.discovery.right).toBeLessThanOrEqual(geometry.viewportWidth + 1);
   expect(geometry.collectionHit).toContain("/collections");
   expect(geometry.scrollWidth).toBe(geometry.viewportWidth);
 });
