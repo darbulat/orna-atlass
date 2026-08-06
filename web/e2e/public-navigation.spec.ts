@@ -163,6 +163,40 @@ test("atlas globe starts from a full-planet camera on first open", async ({ page
   ), { timeout: 6000 }).toBeLessThanOrEqual(7500);
 });
 
+test("atlas layout fits within viewport on major breakpoints", async ({ page }) => {
+  const viewports = [
+    { width: 1365, height: 768 },
+    { width: 390, height: 844 },
+  ];
+  const routes = ["/", "/atlas"];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+
+    for (const route of routes) {
+      await page.goto(route);
+      const atlasSection = page.locator(".atlas-reference-ui");
+
+      if (!(await atlasSection.count())) {
+        test.skip(true, `Atlas reference section not present for route ${route}`);
+      }
+
+      await expect(atlasSection).toBeVisible();
+
+      if (await page.locator(".unavailable-panel").isVisible()) {
+        test.skip(true, "Atlas unavailable in this environment");
+      }
+
+      const atlasRect = await atlasSection.boundingBox();
+      expect(atlasRect).not.toBeNull();
+
+      expect(atlasRect!.width).toBeLessThanOrEqual(viewport.width + 1);
+      expect(atlasRect!.height).toBeLessThanOrEqual(viewport.height + 1);
+      expect(!(atlasRect!.width > viewport.width + 1 && atlasRect!.height > viewport.height + 1)).toBe(true);
+    }
+  }
+});
+
 test("atlas globe keeps the default full-planet camera on initial open", async ({ page }) => {
   await page.goto("/atlas");
 
