@@ -2,9 +2,9 @@
 
 > **For Hermes:** выполнять как вертикальные проверяемые срезы. Источник требований: `docs/CUSTOMER_TZ_ORNA_ATLAS_IDEAL_MVP_2026-08-05_RU.md`. Не расширять scope за пределы P0 без отдельного решения.
 
-**Goal:** привести первый экран Atlas к customer ТЗ: вид всей Земли, тонкий атмосферный лимб, несколько публичных точек на глобусе, кинематографичный стартовый перелёт и согласованный zoom/reset/resize.
+**Goal:** привести первый экран Atlas к customer ТЗ: вид всей Земли, тонкий атмосферный лимб, несколько публичных точек на глобусе, кинематографичный стартовый перелёт, согласованный zoom/reset/resize и отдельным follow-up-срезом — ночная сторона Земли со светящимися городами.
 
-**Architecture:** основной owner — frontend `web/components/atlas/AtlasExplorer.tsx` и близкие browser/unit tests. Публичные координаты брать только из уже разрешённых `AtlasPoint`/`AtlasCluster` DTO; скрытые/точные защищённые координаты не реконструировать. Night lights/day-night blending — отдельный product/data decision, не блокирующий первый вертикальный срез.
+**Architecture:** основной owner — frontend `web/components/atlas/AtlasExplorer.tsx` и близкие browser/unit tests. Публичные координаты брать только из уже разрешённых `AtlasPoint`/`AtlasCluster` DTO; скрытые/точные защищённые координаты не реконструировать. Night lights/day-night blending реализуется отдельной веткой после первого вертикального среза, через публичный NASA GIBS VIIRS city-lights слой и Cesium sun-lighting day/night alpha blending.
 
 **Tech Stack:** Next.js, React, Cesium runtime from `/cesium/Cesium.js`, Playwright e2e, existing `globeZoom` helpers.
 
@@ -30,8 +30,30 @@
 
 ### Product decision — separate task
 
-- Night-side city lights / NASA Black Marble / VIIRS blending by real-time terminator is explicitly **out of this branch scope** and will be delivered as a separate task.
-- Current branch must not fake night-side visuals or invent city-light data; it may only preserve the documented follow-up and avoid blocking the P0 camera/markers/intro slice on this larger imagery/data task.
+- Night-side city lights / NASA Black Marble / VIIRS blending by real-time terminator was explicitly **out of the first branch scope** and is now being delivered as follow-up branch `feat/atlas-night-lights`.
+- Do not fake night-side visuals or invent city-light data. Use an authoritative public imagery layer and let Cesium's globe lighting blend it onto the dark side.
+
+### Follow-up branch scope — night-side / city lights
+
+1. Add a public city-lights imagery source:
+   - provider: NASA GIBS WMTS;
+   - layer: `VIIRS_CityLights_2012`;
+   - maximum tile level: 8, to keep the overlay bounded for first-screen Atlas use.
+2. Add it as an optional Cesium overlay above the daylight base imagery.
+3. Use Cesium globe lighting as the terminator owner:
+   - `viewer.scene.globe.enableLighting = true`;
+   - night overlay `dayAlpha = 0`;
+   - night overlay `nightAlpha = 0.82`.
+4. Keep fail-closed/fallback behavior:
+   - if NASA GIBS is unavailable, daylight ArcGIS/NaturalEarth globe remains interactive;
+   - no invented local city-light data.
+5. Expose non-sensitive diagnostics for e2e:
+   - `data-night-lights-layer`;
+   - `data-night-lights-provider`;
+   - `data-night-lights-day-alpha`;
+   - `data-night-lights-night-alpha`;
+   - `data-night-side-blending`;
+   - `data-globe-lighting`.
 
 ---
 
@@ -251,11 +273,49 @@ cd web && npm run lint
 cd web && npm run build
 ```
 
-Next remaining slices:
+First-branch remaining slices after this checkpoint:
 
 1. Browser/visual smoke for atmosphere limb after full-planet camera correction.
 2. Run broader repository checks / final review before PR candidate.
 
-Separate follow-up task:
+Follow-up scope update:
 
-- Night-side city lights / real-time day-night blending is out of scope for this branch by product decision on 2026-08-06.
+- Night-side city lights / real-time day-night blending was initially deferred by product decision on 2026-08-06, then pulled back into active work as branch `feat/atlas-night-lights`.
+
+---
+
+## Follow-up progress checkpoint — 2026-08-06 night-side / city lights
+
+Branch: `feat/atlas-night-lights`.
+
+Implemented verified vertical slice:
+
+- Added NASA GIBS WMTS city-lights overlay in `web/components/atlas/AtlasExplorer.tsx`.
+- Source layer: `VIIRS_CityLights_2012`; this is real public imagery, not invented/faked city-light data.
+- Kept daylight base imagery and NaturalEarth fallback interactive if optional night-lights provider fails.
+- Reused Cesium globe lighting/terminator behavior:
+  - `enableLighting = true` remains active;
+  - overlay `dayAlpha = 0`;
+  - overlay `nightAlpha = 0.82`.
+- Exposed runtime diagnostics on the globe region:
+  - `data-night-lights-layer="nasa-viirs-city-lights-2012"`;
+  - `data-night-lights-provider="nasa-gibs-wmts"`;
+  - `data-night-lights-day-alpha="0"`;
+  - `data-night-lights-night-alpha="0.82"`;
+  - `data-night-side-blending="cesium-sun-lighting"`;
+  - `data-globe-lighting="enabled"`.
+- Added Playwright regression that first went RED without the layer and then GREEN after implementation:
+
+```bash
+cd web && npx playwright test e2e/public-navigation.spec.ts -g "night-side city lights" --project=chromium
+```
+
+Latest targeted verification:
+
+```bash
+cd web && npx playwright test e2e/public-navigation.spec.ts -g "night-side city lights|10 km floor|full-planet camera" --project=chromium
+cd web && npm run typecheck
+cd web && npm run lint
+```
+
+Status: passed.
