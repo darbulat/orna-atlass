@@ -50,6 +50,7 @@ type Props = {
 type CesiumGlobeProps = {
   points: Array<AtlasPoint | AtlasCluster>;
   selectedSlug: string | null;
+  selectedMode: ListeningMode;
   focusRequest: number;
   activeDawnSlugs: Set<string>;
   onSelectPoint: (point: AtlasPoint) => void;
@@ -60,11 +61,16 @@ const worldImageryUrl = "https://services.arcgisonline.com/ArcGIS/rest/services/
 const desktopLocationCardCount = 5;
 const mobileLocationCardCount = 2;
 const focusedLocationHeight = 750000;
+const fullPlanetCameraLongitude = 74;
+const fullPlanetCameraLatitude = 27;
+const fullPlanetCameraHeight = 16000000;
+const cinematicIntroDurationSeconds = 3;
 const minimumGlobeZoomDistance = 10000;
 const maximumGlobeZoomDistance = 52000000;
 const markerHeight = 4000;
 const selectedMarkerHeight = 6000;
 const markerDragThresholdPixels = 8;
+const atlasIntroSeenStorageKey = "orna:atlas:intro-seen";
 
 function useMobileViewport() {
   const [isMobile, setIsMobile] = useState(() => {
@@ -162,13 +168,38 @@ function configureCesiumBaseUrl({ buildModuleUrl }: CesiumModule) {
   urlBuilder.setBaseUrl?.("/cesium/");
 }
 
-function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSelectPoint, entitlementState }: CesiumGlobeProps) {
+function hasSeenAtlasIntro() {
+  try {
+    return window.sessionStorage.getItem(atlasIntroSeenStorageKey) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function markAtlasIntroSeen() {
+  try {
+    window.sessionStorage.setItem(atlasIntroSeenStorageKey, "true");
+  } catch {
+    // Restricted storage should not block the cinematic camera path.
+  }
+}
+
+function CesiumGlobe({
+  points,
+  selectedSlug,
+  selectedMode,
+  focusRequest,
+  activeDawnSlugs,
+  onSelectPoint,
+  entitlementState,
+}: CesiumGlobeProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<CesiumViewer | null>(null);
   const cesiumRef = useRef<CesiumModule | null>(null);
   const cancelWheelZoomRef = useRef<() => void>(() => undefined);
   const pointByEntityIdRef = useRef(new Map<string, AtlasPoint>());
   const selectedEntityIdRef = useRef<string | null>(null);
+  const initialFocusHandledRef = useRef(false);
   const onSelectRef = useRef(onSelectPoint);
   const [isWebglUnavailable, setIsWebglUnavailable] = useState(false);
   const [isViewerReady, setIsViewerReady] = useState(false);
@@ -283,7 +314,11 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
         viewer.scene.screenSpaceCameraController.maximumZoomDistance = maximumGlobeZoomDistance;
         viewer.camera.constrainedAxis = Cartesian3.UNIT_Z;
         viewer.camera.setView({
-          destination: Cartesian3.fromDegrees(74, 27, 16000000),
+          destination: Cartesian3.fromDegrees(
+            fullPlanetCameraLongitude,
+            fullPlanetCameraLatitude,
+            fullPlanetCameraHeight,
+          ),
         });
         const lockCameraToGlobeCenter = () => {
           if (!viewer || viewer.isDestroyed()) return;
@@ -621,18 +656,29 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
     const viewer = viewerRef.current;
     const cesium = cesiumRef.current;
     if (!isViewerReady || !viewer || viewer.isDestroyed() || !selectedSlug || !cesium) return;
-    const { Cartesian3 } = cesium;
+    const { Cartesian3, EasingFunction } = cesium;
 
     const selected = points.find((item) => isPoint(item) && item.slug === selectedSlug);
     if (!selected || !isPoint(selected)) return;
 
     const animationFrame = window.requestAnimationFrame(() => {
       if (viewer.isDestroyed()) return;
+      const shouldRunIntro = !initialFocusHandledRef.current
+        && !hasSeenAtlasIntro();
+      initialFocusHandledRef.current = true;
+      if (shouldRunIntro) {
+        markAtlasIntroSeen();
+        containerRef.current?.parentElement?.setAttribute(
+          "data-intro-start-height",
+          viewer.camera.positionCartographic.height.toString(),
+        );
+      }
       cancelWheelZoomRef.current();
       viewer.resize();
       viewer.camera.flyTo({
         destination: Cartesian3.fromDegrees(selected.longitude, selected.latitude, focusedLocationHeight),
-        duration: 0.85,
+        duration: shouldRunIntro ? cinematicIntroDurationSeconds : 0.85,
+        easingFunction: shouldRunIntro ? EasingFunction.QUADRATIC_IN_OUT : undefined,
       });
     });
 
@@ -665,7 +711,11 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
     if (!viewer || viewer.isDestroyed() || !cesium) return;
     cancelWheelZoomRef.current();
     viewer.camera.flyTo({
-      destination: cesium.Cartesian3.fromDegrees(74, 27, 16000000),
+      destination: cesium.Cartesian3.fromDegrees(
+        fullPlanetCameraLongitude,
+        fullPlanetCameraLatitude,
+        fullPlanetCameraHeight,
+      ),
       duration: 0.65,
     });
   }
@@ -676,11 +726,17 @@ function CesiumGlobe({ points, selectedSlug, focusRequest, activeDawnSlugs, onSe
       aria-label="Interactive Cesium globe"
       data-focus-request={focusRequest}
       data-focus-height={focusedLocationHeight}
+      data-full-planet-camera-height={fullPlanetCameraHeight}
       data-inertia-spin="0.9"
       data-inertia-zoom="0.8"
       data-imagery-layer="world-imagery"
+      data-cinematic-intro-duration={cinematicIntroDurationSeconds}
+      data-globe-emphasized-count={activeDawnSlugs.size}
+      data-globe-point-count={points.filter(isPoint).length}
+      data-globe-selected-mode={selectedMode}
       data-marker-drag-threshold={markerDragThresholdPixels}
       data-maximum-marker-height={selectedMarkerHeight}
+      data-maximum-zoom-distance={maximumGlobeZoomDistance}
       data-minimum-zoom-distance={minimumGlobeZoomDistance}
       data-pole-clamp="z-axis"
       data-touch-controls="centered"
@@ -799,6 +855,10 @@ export function AtlasExplorer({
   const locations = useMemo(
     () => filterLocationsByMode(allLocations, selectedMode, currentDawn.generated_at, dawnSlugsForMode(selectedMode)),
     [allLocations, currentDawn.generated_at, dawnSlugsForMode, selectedMode],
+  );
+  const emphasizedGlobeSlugs = useMemo(
+    () => new Set(locations.map((location) => location.slug)),
+    [locations],
   );
   const initialSelectedSlug = preferredInitialSlug && locations.some((location) => location.slug === preferredInitialSlug)
     ? preferredInitialSlug
@@ -1334,10 +1394,11 @@ export function AtlasExplorer({
         <div className="atlas-globe-panel">
           {view === "globe" ? (
             <CesiumGlobe
-              points={locations}
+              points={atlasPoints}
               selectedSlug={selectedSlug}
+              selectedMode={selectedMode}
               focusRequest={globeFocusRequest}
-              activeDawnSlugs={activeDawnSlugs}
+              activeDawnSlugs={emphasizedGlobeSlugs}
               entitlementState={entitlementState}
               onSelectPoint={(point) => {
                 selectLocation(point, { revealInCarousel: true });

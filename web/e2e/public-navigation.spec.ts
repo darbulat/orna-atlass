@@ -69,12 +69,42 @@ test("atlas globe exposes a 10 km floor and requests the World Imagery layer", a
 
   const globe = page.getByLabel("Interactive Cesium globe");
   await expect(globe).toHaveAttribute("data-minimum-zoom-distance", "10000");
+  await expect(globe).toHaveAttribute("data-maximum-zoom-distance", "52000000");
+  await expect(globe).toHaveAttribute("data-full-planet-camera-height", "16000000");
+  await expect(globe).toHaveAttribute("data-cinematic-intro-duration", "3");
   await expect(globe).toHaveAttribute("data-maximum-marker-height", "6000");
   const minimumZoomDistance = Number(await globe.getAttribute("data-minimum-zoom-distance"));
   const maximumMarkerHeight = Number(await globe.getAttribute("data-maximum-marker-height"));
   expect(maximumMarkerHeight).toBeLessThan(minimumZoomDistance);
   await expect(globe).toHaveAttribute("data-imagery-layer", "world-imagery");
   await worldImageryRequest;
+});
+
+test("atlas globe starts from a full-planet camera before the cinematic location focus", async ({ page, request }) => {
+  test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
+  const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=multiple-dawn`);
+  expect(control.ok()).toBeTruthy();
+
+  await page.addInitScript(() => {
+    window.sessionStorage.removeItem("orna:atlas:intro-seen");
+  });
+
+  await page.goto("/atlas");
+
+  const globe = page.getByLabel("Interactive Cesium globe");
+  await expect(page.locator(".cesium-widget canvas")).toBeVisible();
+  await expect(globe).toHaveAttribute("data-full-planet-camera-height", "16000000");
+  await expect(globe).toHaveAttribute("data-globe-point-count", "2");
+  await expect(globe).toHaveAttribute("data-globe-selected-mode", "Dawn");
+  await expect(globe).toHaveAttribute("data-globe-emphasized-count", "2");
+  await expect(globe).toHaveAttribute("data-intro-start-height", /.+/);
+  await expect.poll(async () => Math.abs(
+    Number(await globe.getAttribute("data-intro-start-height")) - 16000000,
+  )).toBeLessThanOrEqual(160000);
+
+  await expect.poll(async () => Math.abs(
+    Number(await globe.getAttribute("data-camera-height")) - 750000,
+  ), { timeout: 6000 }).toBeLessThanOrEqual(7500);
 });
 
 test("selected location opens at a visibly closer globe zoom", async ({ page }) => {
@@ -86,7 +116,7 @@ test("selected location opens at a visibly closer globe zoom", async ({ page }) 
   await expect(globe).toHaveAttribute("data-camera-height", /.+/);
   await expect.poll(async () => Math.abs(
     Number(await globe.getAttribute("data-camera-height")) - 750000,
-  )).toBeLessThanOrEqual(7500);
+  ), { timeout: 8000 }).toBeLessThanOrEqual(7500);
 });
 
 test("atlas location cards render API photos and retain a fallback without one", async ({ page, request }) => {
@@ -1387,6 +1417,33 @@ test("globe exposes accessible bounded zoom and reset controls", async ({ page, 
   await controls.getByRole("button", { name: "Zoom out" }).click();
   await controls.getByRole("button", { name: "Reset globe" }).click();
   await expect(page.locator(".cesium-widget canvas")).toBeVisible();
+  await expect.poll(async () => Math.abs(
+    Number(await stage.getAttribute("data-camera-height"))
+      - Number(await stage.getAttribute("data-full-planet-camera-height")),
+  )).toBeLessThanOrEqual(160000);
+});
+
+test("globe resize preserves the current camera instead of restoring the default", async ({ page }) => {
+  await page.goto("/atlas");
+
+  const stage = page.getByLabel("Interactive Cesium globe");
+  await expect(page.locator(".cesium-widget canvas")).toBeVisible();
+  await expect(stage).toHaveAttribute("data-camera-height", /.+/);
+  await expect.poll(async () => Math.abs(
+    Number(await stage.getAttribute("data-camera-height")) - 750000,
+  ), { timeout: 8000 }).toBeLessThanOrEqual(7500);
+  const heightBeforeResize = Number(await stage.getAttribute("data-camera-height"));
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".cesium-widget canvas")).toBeVisible();
+
+  await expect.poll(async () => Math.abs(
+    Number(await stage.getAttribute("data-camera-height")) - heightBeforeResize,
+  )).toBeLessThanOrEqual(7500);
+  await expect.poll(async () => Math.abs(
+    Number(await stage.getAttribute("data-camera-height"))
+      - Number(await stage.getAttribute("data-full-planet-camera-height")),
+  )).toBeGreaterThan(1000000);
 });
 
 test("manual camera controls keep the globe fixed to the stage center", async ({ page }) => {
