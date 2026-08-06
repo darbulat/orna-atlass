@@ -143,6 +143,61 @@ function useLocationCardCount() {
 
 type CesiumModule = typeof import("cesium");
 
+function computeSunDirection(cesium: CesiumModule): Cartesian3 | null {
+  const {
+    Cartesian3,
+    Matrix3,
+    Simon1994PlanetaryPositions,
+    Transforms,
+    JulianDate,
+  } = cesium;
+
+  const now = JulianDate.now();
+  const sunPositionInertial = new Cartesian3();
+  Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(now, sunPositionInertial);
+
+  const fixedMatrix = Transforms.computeIcrfToFixedMatrix(now, new Matrix3());
+  if (!fixedMatrix) {
+    return null;
+  }
+
+  const sunPosition = Matrix3.multiplyByVector(
+    fixedMatrix,
+    sunPositionInertial,
+    new Cartesian3(),
+  );
+  return Cartesian3.normalize(sunPosition, new Cartesian3());
+}
+
+function getSunFacingLatitudeLongitude(cesium: CesiumModule): { latitude: number; longitude: number } | null {
+  const { Cartographic, Math: CesiumMath } = cesium;
+  const sunDirection = computeSunDirection(cesium);
+  if (!sunDirection) {
+    return null;
+  }
+
+  const cartographic = Cartographic.fromCartesian(sunDirection);
+  return {
+    longitude: CesiumMath.toDegrees(cartographic.longitude),
+    latitude: CesiumMath.toDegrees(cartographic.latitude),
+  };
+}
+
+function isSunFacingLocation(cesium: CesiumModule, location: AtlasPoint): boolean | null {
+  const { Cartesian3 } = cesium;
+  const sunDirection = computeSunDirection(cesium);
+  if (!sunDirection) {
+    return null;
+  }
+
+  const { dot } = Cartesian3;
+  const locationDirection = Cartesian3.normalize(
+    Cartesian3.fromDegrees(location.longitude, location.latitude, 0),
+    new Cartesian3(),
+  );
+  return dot(locationDirection, sunDirection) >= 0;
+}
+
 let cesiumScriptPromise: Promise<CesiumModule> | undefined;
 
 function loadCesiumScript() {
@@ -334,10 +389,14 @@ function CesiumGlobe({
         viewer.scene.screenSpaceCameraController.minimumZoomDistance = minimumGlobeZoomDistance;
         viewer.scene.screenSpaceCameraController.maximumZoomDistance = maximumGlobeZoomDistance;
         viewer.camera.constrainedAxis = Cartesian3.UNIT_Z;
+        const sunFacingCamera = getSunFacingLatitudeLongitude(cesium) ?? {
+          longitude: fullPlanetCameraLongitude,
+          latitude: fullPlanetCameraLatitude,
+        };
         viewer.camera.setView({
           destination: Cartesian3.fromDegrees(
-            fullPlanetCameraLongitude,
-            fullPlanetCameraLatitude,
+            sunFacingCamera.longitude,
+            sunFacingCamera.latitude,
             fullPlanetCameraHeight,
           ),
         });
@@ -719,6 +778,11 @@ function CesiumGlobe({
     const selected = points.find((item) => isPoint(item) && item.slug === selectedSlug);
     if (!selected || !isPoint(selected)) return;
 
+    const shouldSkipAutoFocusBecauseTheSunIsHidden =
+      !focusRequest
+      && !initialFocusHandledRef.current
+      && isSunFacingLocation(cesium, selected) === false;
+
     const animationFrame = window.requestAnimationFrame(() => {
       if (viewer.isDestroyed()) return;
       const shouldRunIntro = !initialFocusHandledRef.current
@@ -733,6 +797,9 @@ function CesiumGlobe({
       }
       cancelWheelZoomRef.current();
       viewer.resize();
+      if (shouldSkipAutoFocusBecauseTheSunIsHidden) {
+        return;
+      }
       viewer.camera.flyTo({
         destination: Cartesian3.fromDegrees(selected.longitude, selected.latitude, focusedLocationHeight),
         duration: shouldRunIntro ? cinematicIntroDurationSeconds : 0.85,
@@ -767,11 +834,15 @@ function CesiumGlobe({
     const viewer = viewerRef.current;
     const cesium = cesiumRef.current;
     if (!viewer || viewer.isDestroyed() || !cesium) return;
+    const sunFacingCamera = getSunFacingLatitudeLongitude(cesium) ?? {
+      longitude: fullPlanetCameraLongitude,
+      latitude: fullPlanetCameraLatitude,
+    };
     cancelWheelZoomRef.current();
     viewer.camera.flyTo({
       destination: cesium.Cartesian3.fromDegrees(
-        fullPlanetCameraLongitude,
-        fullPlanetCameraLatitude,
+        sunFacingCamera.longitude,
+        sunFacingCamera.latitude,
         fullPlanetCameraHeight,
       ),
       duration: 0.65,

@@ -158,9 +158,38 @@ test("atlas globe starts from a full-planet camera before the cinematic location
     Number(await globe.getAttribute("data-intro-start-height")) - 16000000,
   )).toBeLessThanOrEqual(160000);
 
+  const selectedIsSunFacing = await page.evaluate(() => {
+    const cesium = (window as any).Cesium;
+    if (!cesium) return true;
+
+    const time = cesium.JulianDate.now();
+    const sunInertial = new cesium.Cartesian3();
+    cesium.Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(time, sunInertial);
+    const matrix = cesium.Transforms.computeIcrfToFixedMatrix(time, new cesium.Matrix3());
+    if (!matrix) return true;
+
+    const sun = cesium.Matrix3.multiplyByVector(matrix, sunInertial, new cesium.Cartesian3());
+    cesium.Cartesian3.normalize(sun, sun);
+
+    const coordinates = document.querySelector(".dawn-copy small.dawn-coordinates")?.textContent;
+    if (!coordinates) return true;
+
+    const [longitudeText, latitudeText] = coordinates.split(",");
+    const longitude = Number(longitudeText?.replace("°", "").trim());
+    const latitude = Number(latitudeText?.replace("°", "").trim());
+    const locationDirection = cesium.Cartesian3.normalize(
+      cesium.Cartesian3.fromDegrees(longitude, latitude, 0),
+      new cesium.Cartesian3(),
+    );
+
+    return cesium.Cartesian3.dot(locationDirection, sun) >= 0;
+  });
+
+  const expectedHeight = selectedIsSunFacing ? 750000 : 16000000;
+  const tolerance = selectedIsSunFacing ? 7500 : 1500000;
   await expect.poll(async () => Math.abs(
-    Number(await globe.getAttribute("data-camera-height")) - 750000,
-  ), { timeout: 6000 }).toBeLessThanOrEqual(7500);
+    Number(await globe.getAttribute("data-camera-height")) - expectedHeight,
+  ), { timeout: 6000 }).toBeLessThanOrEqual(tolerance);
 });
 
 test("selected location opens at a visibly closer globe zoom", async ({ page }) => {
@@ -170,9 +199,38 @@ test("selected location opens at a visibly closer globe zoom", async ({ page }) 
   await expect(page.locator(".cesium-widget canvas")).toBeVisible();
   await expect(globe).toHaveAttribute("data-focus-height", "750000");
   await expect(globe).toHaveAttribute("data-camera-height", /.+/);
+  const selectedIsSunFacing = await page.evaluate(() => {
+    const cesium = (window as any).Cesium;
+    if (!cesium) return true;
+
+    const time = cesium.JulianDate.now();
+    const sunInertial = new cesium.Cartesian3();
+    cesium.Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(time, sunInertial);
+    const matrix = cesium.Transforms.computeIcrfToFixedMatrix(time, new cesium.Matrix3());
+    if (!matrix) return true;
+
+    const sun = cesium.Matrix3.multiplyByVector(matrix, sunInertial, new cesium.Cartesian3());
+    cesium.Cartesian3.normalize(sun, sun);
+
+    const coordinates = document.querySelector(".dawn-copy small.dawn-coordinates")?.textContent;
+    if (!coordinates) return true;
+
+    const [longitudeText, latitudeText] = coordinates.split(",");
+    const longitude = Number(longitudeText?.replace("°", "").trim());
+    const latitude = Number(latitudeText?.replace("°", "").trim());
+    const locationDirection = cesium.Cartesian3.normalize(
+      cesium.Cartesian3.fromDegrees(longitude, latitude, 0),
+      new cesium.Cartesian3(),
+    );
+
+    return cesium.Cartesian3.dot(locationDirection, sun) >= 0;
+  });
+
+  const expectedHeight = selectedIsSunFacing ? 750000 : 16000000;
+  const tolerance = selectedIsSunFacing ? 7500 : 1500000;
   await expect.poll(async () => Math.abs(
-    Number(await globe.getAttribute("data-camera-height")) - 750000,
-  ), { timeout: 8000 }).toBeLessThanOrEqual(7500);
+    Number(await globe.getAttribute("data-camera-height")) - expectedHeight,
+  ), { timeout: 8000 }).toBeLessThanOrEqual(tolerance);
 });
 
 test("atlas location cards render API photos and retain a fallback without one", async ({ page, request }) => {
