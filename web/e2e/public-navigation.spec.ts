@@ -98,6 +98,17 @@ test("atlas globe activates night-side city lights imagery only on the dark side
   await nightLightsRequest;
 });
 
+test("atlas globe hides the visible sun disc while keeping globe lighting", async ({ page }) => {
+  await page.goto("/atlas");
+
+  const globe = page.getByLabel("Interactive Cesium globe");
+  await expect(page.locator(".cesium-widget canvas")).toBeVisible();
+  await expect(globe).toHaveAttribute("data-globe-lighting", "enabled");
+  await expect(globe).toHaveAttribute("data-sun-disc", "hidden");
+  await expect(globe).toHaveAttribute("data-moon-disc", "hidden");
+  await expect(globe).toHaveAttribute("data-night-side-blending", "cesium-sun-lighting");
+});
+
 test("atlas globe starts from a full-planet camera before the cinematic location focus", async ({ page, request }) => {
   test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
   const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=multiple-dawn`);

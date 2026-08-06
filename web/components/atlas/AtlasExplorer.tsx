@@ -305,6 +305,12 @@ function CesiumGlobe({
         setIsWebglUnavailable(false);
 
         viewer.scene.globe.enableLighting = true;
+        if (viewer.scene.sun) {
+          viewer.scene.sun.show = false;
+        }
+        if (viewer.scene.moon) {
+          viewer.scene.moon.show = false;
+        }
         viewer.scene.globe.showGroundAtmosphere = true;
         if (viewer.scene.skyAtmosphere) {
           viewer.scene.skyAtmosphere.show = true;
@@ -759,11 +765,13 @@ function CesiumGlobe({
       data-inertia-zoom="0.8"
       data-imagery-layer="world-imagery"
       data-globe-lighting="enabled"
+      data-moon-disc="hidden"
       data-night-lights-day-alpha={nightLightsDayAlpha}
       data-night-lights-layer={nightLightsLayerId}
       data-night-lights-night-alpha={nightLightsNightAlpha}
       data-night-lights-provider={nightLightsProviderId}
       data-night-side-blending="cesium-sun-lighting"
+      data-sun-disc="hidden"
       data-cinematic-intro-duration={cinematicIntroDurationSeconds}
       data-globe-emphasized-count={activeDawnSlugs.size}
       data-globe-point-count={points.filter(isPoint).length}
