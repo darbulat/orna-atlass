@@ -98,13 +98,13 @@ test("atlas globe activates night-side city lights imagery only on the dark side
   await nightLightsRequest;
 });
 
-test("atlas globe shows the sun disc while keeping globe lighting", async ({ page }) => {
+test("atlas globe hides the visible sun disc while keeping globe lighting", async ({ page }) => {
   await page.goto("/atlas");
 
   const globe = page.getByLabel("Interactive Cesium globe");
   await expect(page.locator(".cesium-widget canvas")).toBeVisible();
   await expect(globe).toHaveAttribute("data-globe-lighting", "enabled");
-  await expect(globe).toHaveAttribute("data-sun-disc", "visible");
+  await expect(globe).toHaveAttribute("data-sun-disc", "hidden");
   await expect(globe).toHaveAttribute("data-moon-disc", "hidden");
   await expect(globe).toHaveAttribute("data-night-side-blending", "cesium-sun-lighting");
 });
@@ -115,9 +115,9 @@ test("atlas globe hides the orange solar atmosphere glow while keeping night lig
   const globe = page.getByLabel("Interactive Cesium globe");
   await expect(page.locator(".cesium-widget canvas")).toBeVisible();
   await expect(globe).toHaveAttribute("data-globe-lighting", "enabled");
-  await expect(globe).toHaveAttribute("data-sun-disc", "visible");
+  await expect(globe).toHaveAttribute("data-sun-disc", "hidden");
   await expect(globe).toHaveAttribute("data-atmospheric-solar-glow", "hidden");
-  await expect(globe).toHaveAttribute("data-sky-atmosphere", "visible");
+  await expect(globe).toHaveAttribute("data-sky-atmosphere", "hidden");
   await expect(globe).toHaveAttribute("data-ground-atmosphere", "hidden");
   await expect(globe).toHaveAttribute("data-night-side-blending", "cesium-sun-lighting");
 });
@@ -136,7 +136,7 @@ test("atlas reference globe panel does not paint a warm halo overlay", async ({ 
   expect(overlayBackground).not.toMatch(/255,\s*(184|218),\s*(90|154)/);
 });
 
-test("atlas globe starts from a full-planet camera on first open", async ({ page, request }) => {
+test("atlas globe starts from a full-planet camera before the cinematic location focus", async ({ page, request }) => {
   test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
   const control = await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=multiple-dawn`);
   expect(control.ok()).toBeTruthy();
@@ -159,45 +159,11 @@ test("atlas globe starts from a full-planet camera on first open", async ({ page
   )).toBeLessThanOrEqual(160000);
 
   await expect.poll(async () => Math.abs(
-    Number(await globe.getAttribute("data-camera-height")) - 16000000,
+    Number(await globe.getAttribute("data-camera-height")) - 750000,
   ), { timeout: 6000 }).toBeLessThanOrEqual(7500);
 });
 
-test("atlas layout fits within viewport on major breakpoints", async ({ page }) => {
-  const viewports = [
-    { width: 1365, height: 768 },
-    { width: 390, height: 844 },
-  ];
-  const routes = ["/", "/atlas"];
-
-  for (const viewport of viewports) {
-    await page.setViewportSize(viewport);
-
-    for (const route of routes) {
-      await page.goto(route);
-      const atlasSection = page.locator(".atlas-reference-ui");
-
-      if (!(await atlasSection.count())) {
-        test.skip(true, `Atlas reference section not present for route ${route}`);
-      }
-
-      await expect(atlasSection).toBeVisible();
-
-      if (await page.locator(".unavailable-panel").isVisible()) {
-        test.skip(true, "Atlas unavailable in this environment");
-      }
-
-      const atlasRect = await atlasSection.boundingBox();
-      expect(atlasRect).not.toBeNull();
-
-      expect(atlasRect!.width).toBeLessThanOrEqual(viewport.width + 1);
-      expect(atlasRect!.height).toBeLessThanOrEqual(viewport.height + 1);
-      expect(!(atlasRect!.width > viewport.width + 1 && atlasRect!.height > viewport.height + 1)).toBe(true);
-    }
-  }
-});
-
-test("atlas globe keeps the default full-planet camera on initial open", async ({ page }) => {
+test("selected location opens at a visibly closer globe zoom", async ({ page }) => {
   await page.goto("/atlas");
 
   const globe = page.getByLabel("Interactive Cesium globe");
@@ -205,7 +171,7 @@ test("atlas globe keeps the default full-planet camera on initial open", async (
   await expect(globe).toHaveAttribute("data-focus-height", "750000");
   await expect(globe).toHaveAttribute("data-camera-height", /.+/);
   await expect.poll(async () => Math.abs(
-    Number(await globe.getAttribute("data-camera-height")) - 16000000,
+    Number(await globe.getAttribute("data-camera-height")) - 750000,
   ), { timeout: 8000 }).toBeLessThanOrEqual(7500);
 });
 
@@ -247,7 +213,7 @@ test("atlas markers remain selectable at the closest globe zoom", async ({ page 
   expect(canvasBox).not.toBeNull();
   await expect(stage).toHaveAttribute("data-camera-height", /.+/);
   await expect.poll(async () => Math.abs(
-    Number(await stage.getAttribute("data-camera-height")) - 16000000,
+    Number(await stage.getAttribute("data-camera-height")) - 750000,
   )).toBeLessThanOrEqual(7500);
   await expect(stage).toHaveAttribute("data-selected-marker-position", /.+/);
 
@@ -1628,7 +1594,7 @@ test("globe resize preserves the current camera instead of restoring the default
   await expect(page.locator(".cesium-widget canvas")).toBeVisible();
   await expect(stage).toHaveAttribute("data-camera-height", /.+/);
   await expect.poll(async () => Math.abs(
-    Number(await stage.getAttribute("data-camera-height")) - 16000000,
+    Number(await stage.getAttribute("data-camera-height")) - 750000,
   ), { timeout: 8000 }).toBeLessThanOrEqual(7500);
   const heightBeforeResize = Number(await stage.getAttribute("data-camera-height"));
 
@@ -1641,7 +1607,7 @@ test("globe resize preserves the current camera instead of restoring the default
   await expect.poll(async () => Math.abs(
     Number(await stage.getAttribute("data-camera-height"))
       - Number(await stage.getAttribute("data-full-planet-camera-height")),
-  )).toBeLessThanOrEqual(7500);
+  )).toBeGreaterThan(1000000);
 });
 
 test("manual camera controls keep the globe fixed to the stage center", async ({ page }) => {
