@@ -31,6 +31,7 @@ import {
 
 type SessionPlayerProps = {
   session: SessionDetail;
+  locationPhotoUrl?: string | null;
   onClose?: () => void;
   onPrevious?: () => void;
   onNext?: () => void;
@@ -42,7 +43,7 @@ function trackPlayerEvent(name: string) {
   }));
 }
 
-export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionPlayerProps) {
+export function SessionPlayer({ session, locationPhotoUrl, onClose, onPrevious, onNext }: SessionPlayerProps) {
   const { currentSession, playbackState, grant, currentTimeSeconds, durationSeconds, play, pause, seek, error } =
     usePlayer();
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -54,6 +55,7 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
   const [favoritePending, setFavoritePending] = useState(true);
   const [favoriteHint, setFavoriteHint] = useState<string | null>(null);
   const [timelineHelpOpen, setTimelineHelpOpen] = useState(false);
+  const [failedPhotoUrl, setFailedPhotoUrl] = useState<string | null>(null);
   const [accountAuthRevision, setAccountAuthRevision] = useState(0);
   const favoriteLoadGenerationRef = useRef(0);
   const favoriteMutationSourceRef = useRef<object | null>(null);
@@ -96,6 +98,12 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
       ? waveformPeaks.slice(0, 52)
       : [0.12, 0.22, 0.18, 0.36, 0.2, 0.48, 0.26, 0.16, 0.3, 0.2, 0.42, 0.24];
   const weatherItems = useMemo(() => buildWeatherItems(session), [session]);
+  const scenicPhotoUrl = locationPhotoUrl ?? session.photo_url;
+  const showScenicPhoto = scenicPhotoUrl != null && failedPhotoUrl !== scenicPhotoUrl;
+
+  useEffect(() => {
+    setFailedPhotoUrl(null);
+  }, [scenicPhotoUrl, session.id]);
 
   useEffect(() => {
     const handleAuthChange = (event: Event) => {
@@ -309,14 +317,15 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
   return (
     <section className="session-listening-console" aria-label="Session player">
       <div className="session-scenic-listener">
-        {session.photo_url ? (
+        {showScenicPhoto ? (
           <Image
             className="session-field-photo"
-            src={session.photo_url}
+            src={scenicPhotoUrl}
             alt={`Field view at ${session.location.name}`}
             width={1200}
             height={675}
             unoptimized
+            onError={() => setFailedPhotoUrl(scenicPhotoUrl)}
           />
         ) : (
           <div className="session-field-photo-placeholder" role="img" aria-label="No field photo available">
