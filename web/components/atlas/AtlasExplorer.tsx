@@ -145,46 +145,6 @@ function useLocationCardCount() {
 
 type CesiumModule = typeof import("cesium");
 
-function computeSunDirection(cesium: CesiumModule): Cartesian3 | null {
-  const {
-    Cartesian3,
-    Matrix3,
-    Simon1994PlanetaryPositions,
-    Transforms,
-    JulianDate,
-  } = cesium;
-
-  const now = JulianDate.now();
-  const sunPositionInertial = new Cartesian3();
-  Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(now, sunPositionInertial);
-
-  const fixedMatrix = Transforms.computeIcrfToFixedMatrix(now, new Matrix3());
-  if (!fixedMatrix) {
-    return null;
-  }
-
-  const sunPosition = Matrix3.multiplyByVector(
-    fixedMatrix,
-    sunPositionInertial,
-    new Cartesian3(),
-  );
-  return Cartesian3.normalize(sunPosition, new Cartesian3());
-}
-
-function getSunFacingLatitudeLongitude(cesium: CesiumModule): { latitude: number; longitude: number } | null {
-  const { Cartographic, Math: CesiumMath } = cesium;
-  const sunDirection = computeSunDirection(cesium);
-  if (!sunDirection) {
-    return null;
-  }
-
-  const cartographic = Cartographic.fromCartesian(sunDirection);
-  return {
-    longitude: CesiumMath.toDegrees(cartographic.longitude),
-    latitude: CesiumMath.toDegrees(cartographic.latitude),
-  };
-}
-
 let cesiumScriptPromise: Promise<CesiumModule> | undefined;
 
 function loadCesiumScript() {
@@ -349,25 +309,17 @@ function CesiumGlobe({
 
         viewer.scene.globe.enableLighting = true;
         if (viewer.scene.sun) {
-          if (viewer.scene.sun.show !== true) {
-            viewer.scene.sun.show = true;
-          }
-          if (viewer.scene.sun.glowFactor !== 0) {
-            viewer.scene.sun.glowFactor = 0;
-          }
+          viewer.scene.sun.show = false;
         }
-        viewer.scene.sunBloom = false;
         if (viewer.scene.moon) {
           viewer.scene.moon.show = false;
-        }
-        if (viewer.scene.skyAtmosphere) {
-          viewer.scene.skyAtmosphere.show = true;
-          viewer.scene.skyAtmosphere.brightnessShift = -1;
-          viewer.scene.skyAtmosphere.saturationShift = -1;
         }
         host.parentElement?.setAttribute("data-sun-disc", viewer.scene.sun?.show === false ? "hidden" : "visible");
         host.parentElement?.setAttribute("data-moon-disc", viewer.scene.moon?.show === false ? "hidden" : "visible");
         viewer.scene.globe.showGroundAtmosphere = false;
+        if (viewer.scene.skyAtmosphere) {
+          viewer.scene.skyAtmosphere.show = false;
+        }
         host.parentElement?.setAttribute("data-ground-atmosphere", viewer.scene.globe.showGroundAtmosphere ? "visible" : "hidden");
         host.parentElement?.setAttribute("data-sky-atmosphere", viewer.scene.skyAtmosphere?.show === false ? "hidden" : "visible");
         host.parentElement?.setAttribute("data-atmospheric-solar-glow", "hidden");
@@ -382,14 +334,10 @@ function CesiumGlobe({
         viewer.scene.screenSpaceCameraController.minimumZoomDistance = minimumGlobeZoomDistance;
         viewer.scene.screenSpaceCameraController.maximumZoomDistance = maximumGlobeZoomDistance;
         viewer.camera.constrainedAxis = Cartesian3.UNIT_Z;
-        const sunFacingCamera = getSunFacingLatitudeLongitude(cesium) ?? {
-          longitude: fullPlanetCameraLongitude,
-          latitude: fullPlanetCameraLatitude,
-        };
         viewer.camera.setView({
           destination: Cartesian3.fromDegrees(
-            sunFacingCamera.longitude,
-            sunFacingCamera.latitude,
+            fullPlanetCameraLongitude,
+            fullPlanetCameraLatitude,
             fullPlanetCameraHeight,
           ),
         });
@@ -459,7 +407,6 @@ function CesiumGlobe({
           }
         };
         removeScenePreRenderListener = viewer.scene.preRender.addEventListener(() => {
-          if (!viewer) return;
           lockCameraToGlobeCenter();
           syncCameraCenterError();
         });
@@ -807,15 +754,11 @@ function CesiumGlobe({
     const viewer = viewerRef.current;
     const cesium = cesiumRef.current;
     if (!viewer || viewer.isDestroyed() || !cesium) return;
-    const sunFacingCamera = getSunFacingLatitudeLongitude(cesium) ?? {
-      longitude: fullPlanetCameraLongitude,
-      latitude: fullPlanetCameraLatitude,
-    };
     cancelWheelZoomRef.current();
     viewer.camera.flyTo({
       destination: cesium.Cartesian3.fromDegrees(
-        sunFacingCamera.longitude,
-        sunFacingCamera.latitude,
+        fullPlanetCameraLongitude,
+        fullPlanetCameraLatitude,
         fullPlanetCameraHeight,
       ),
       duration: 0.65,
