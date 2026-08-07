@@ -55,6 +55,7 @@ export function SessionPlayer({ session, locationPhotoUrl, onClose, onPrevious, 
   const [favoritePending, setFavoritePending] = useState(true);
   const [favoriteHint, setFavoriteHint] = useState<string | null>(null);
   const [timelineHelpOpen, setTimelineHelpOpen] = useState(false);
+  const [failedPhotoUrl, setFailedPhotoUrl] = useState<string | null>(null);
   const [accountAuthRevision, setAccountAuthRevision] = useState(0);
   const favoriteLoadGenerationRef = useRef(0);
   const favoriteMutationSourceRef = useRef<object | null>(null);
@@ -98,6 +99,11 @@ export function SessionPlayer({ session, locationPhotoUrl, onClose, onPrevious, 
       : [0.12, 0.22, 0.18, 0.36, 0.2, 0.48, 0.26, 0.16, 0.3, 0.2, 0.42, 0.24];
   const weatherItems = useMemo(() => buildWeatherItems(session), [session]);
   const scenicPhotoUrl = locationPhotoUrl ?? session.photo_url;
+  const showScenicPhoto = scenicPhotoUrl != null && failedPhotoUrl !== scenicPhotoUrl;
+
+  useEffect(() => {
+    setFailedPhotoUrl(null);
+  }, [scenicPhotoUrl, session.id]);
 
   useEffect(() => {
     const handleAuthChange = (event: Event) => {
@@ -311,7 +317,7 @@ export function SessionPlayer({ session, locationPhotoUrl, onClose, onPrevious, 
   return (
     <section className="session-listening-console" aria-label="Session player">
       <div className="session-scenic-listener">
-        {scenicPhotoUrl ? (
+        {showScenicPhoto ? (
           <Image
             className="session-field-photo"
             src={scenicPhotoUrl}
@@ -319,6 +325,7 @@ export function SessionPlayer({ session, locationPhotoUrl, onClose, onPrevious, 
             width={1200}
             height={675}
             unoptimized
+            onError={() => setFailedPhotoUrl(scenicPhotoUrl)}
           />
         ) : (
           <div className="session-field-photo-placeholder" role="img" aria-label="No field photo available">

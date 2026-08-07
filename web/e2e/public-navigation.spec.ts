@@ -209,6 +209,17 @@ test("atlas location cards render API photos and retain a fallback without one",
   await expect(fallbackCard.getByRole("img")).toHaveCount(0);
 });
 
+test("atlas side player restores its photo fallback when the location image fails", async ({ page }) => {
+  await page.route("http://127.0.0.1:4010/mock-location-photo-v2.png", (route) => route.abort());
+  await page.goto("/atlas?location=pine-marsh");
+
+  await page.locator(".location-card", { hasText: "Pine Marsh" }).click();
+
+  const player = page.getByRole("region", { name: "Session player" });
+  await expect(player.getByRole("img", { name: "No field photo available" })).toBeVisible();
+  await expect(player.getByRole("img", { name: "Field view at Pine Marsh" })).toHaveCount(0);
+});
+
 test("atlas markers remain selectable at the closest globe zoom", async ({ page }) => {
   await page.goto("/atlas");
 
@@ -1177,7 +1188,7 @@ test("time tabs apply distinct mode filtering when mode data is mixed", async ({
   }
 });
 
-test("session search synchronizes the atlas to the result location", async ({ page, request }) => {
+test("session search synchronizes the atlas and reuses the location photo for an older recording", async ({ page, request }) => {
   test.skip(Boolean(process.env.E2E_API_URL), "requires the deterministic mock API control endpoint");
   expect((await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=multiple-dawn`)).ok()).toBeTruthy();
   expect((await request.post(`${mockApiUrl}/__e2e/search-response?mode=session-pine-marsh`)).ok()).toBeTruthy();
@@ -1186,12 +1197,18 @@ test("session search synchronizes the atlas to the result location", async ({ pa
   await page.waitForLoadState("networkidle");
 
   const search = page.locator("#atlas-search");
-  await search.fill("Second");
-  await expect(search).toHaveValue("Second");
-  await page.getByRole("button", { name: /Second Session/ }).click();
+  await search.fill("First");
+  await expect(search).toHaveValue("First");
+  await page.getByRole("button", { name: /First Session/ }).click();
 
   await expect(page.locator(".dawn-copy").getByText("Pine Marsh", { exact: true })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Session player" })).toBeVisible();
+  const player = page.getByRole("region", { name: "Session player" });
+  await expect(player).toBeVisible();
+  const playerPhoto = player.getByRole("img", { name: "Field view at Pine Marsh" });
+  await expect(playerPhoto).toBeVisible();
+  expect(decodeURIComponent((await playerPhoto.getAttribute("src"))!)).toContain(
+    "http://127.0.0.1:4010/mock-location-photo-v2.png",
+  );
 });
 
 test("requested atlas location selects its actual listening mode", async ({ page, request }) => {

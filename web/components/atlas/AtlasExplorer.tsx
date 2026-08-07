@@ -954,9 +954,11 @@ export function AtlasExplorer({
   const sidePanelLocationIndex = sidePanelSessionSlug
     ? navigableLocations.findIndex((location) => location.latest_session?.slug === sidePanelSessionSlug)
     : -1;
-  const sidePanelLocation = sidePanelSessionSlug
-    ? allLocations.find((location: AtlasPoint) => location.latest_session?.slug === sidePanelSessionSlug) ?? null
-    : null;
+  const sidePanelLocation = currentSidePanelSession?.slug === sidePanelSessionSlug
+    ? allLocations.find((location: AtlasPoint) => location.id === currentSidePanelSession.location.id) ?? null
+    : sidePanelSessionSlug
+      ? allLocations.find((location: AtlasPoint) => location.latest_session?.slug === sidePanelSessionSlug) ?? null
+      : null;
 
   useGlobalPlayerSuppression(isLocalPlayerVisible);
 

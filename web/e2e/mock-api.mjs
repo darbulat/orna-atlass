@@ -815,14 +815,14 @@ const server = createServer((request, response) => {
     if (responseMode === "session-pine-marsh") {
       send(response, 200, [{
         type: "session",
-        id: secondSessionId,
+        id: firstSessionId,
         slug: atlasPoint.slug,
-        title: "Second Session",
+        title: "First Session",
         subtitle: atlasPoint.name,
         habitat: atlasPoint.habitat,
         latitude: atlasPoint.latitude,
         longitude: atlasPoint.longitude,
-        session_slug: "second-session",
+        session_slug: "first-session",
         atlas_point: atlasPoint,
       }]);
       return;
