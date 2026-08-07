@@ -98,13 +98,13 @@ test("atlas globe activates night-side city lights imagery only on the dark side
   await nightLightsRequest;
 });
 
-test("atlas globe hides the visible sun disc while keeping globe lighting", async ({ page }) => {
+test("atlas globe shows the sun disc while keeping globe lighting", async ({ page }) => {
   await page.goto("/atlas");
 
   const globe = page.getByLabel("Interactive Cesium globe");
   await expect(page.locator(".cesium-widget canvas")).toBeVisible();
   await expect(globe).toHaveAttribute("data-globe-lighting", "enabled");
-  await expect(globe).toHaveAttribute("data-sun-disc", "hidden");
+  await expect(globe).toHaveAttribute("data-sun-disc", "visible");
   await expect(globe).toHaveAttribute("data-moon-disc", "hidden");
   await expect(globe).toHaveAttribute("data-night-side-blending", "cesium-sun-lighting");
 });
@@ -115,9 +115,9 @@ test("atlas globe hides the orange solar atmosphere glow while keeping night lig
   const globe = page.getByLabel("Interactive Cesium globe");
   await expect(page.locator(".cesium-widget canvas")).toBeVisible();
   await expect(globe).toHaveAttribute("data-globe-lighting", "enabled");
-  await expect(globe).toHaveAttribute("data-sun-disc", "hidden");
+  await expect(globe).toHaveAttribute("data-sun-disc", "visible");
   await expect(globe).toHaveAttribute("data-atmospheric-solar-glow", "hidden");
-  await expect(globe).toHaveAttribute("data-sky-atmosphere", "hidden");
+  await expect(globe).toHaveAttribute("data-sky-atmosphere", "visible");
   await expect(globe).toHaveAttribute("data-ground-atmosphere", "hidden");
   await expect(globe).toHaveAttribute("data-night-side-blending", "cesium-sun-lighting");
 });
