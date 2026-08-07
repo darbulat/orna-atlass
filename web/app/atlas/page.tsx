@@ -46,7 +46,6 @@ export default async function Page({ searchParams }: { searchParams?: Promise<{ 
               ?? dawn.next_locations[0]?.location.slug
               ?? null
           }
-          focusAtStartup={requestedLocationExists}
           sidePanelSession={null}
           showInternalNavigation={false}
         />
