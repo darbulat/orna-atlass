@@ -954,6 +954,9 @@ export function AtlasExplorer({
   const sidePanelLocationIndex = sidePanelSessionSlug
     ? navigableLocations.findIndex((location) => location.latest_session?.slug === sidePanelSessionSlug)
     : -1;
+  const sidePanelLocation = sidePanelSessionSlug
+    ? allLocations.find((location: AtlasPoint) => location.latest_session?.slug === sidePanelSessionSlug) ?? null
+    : null;
 
   useGlobalPlayerSuppression(isLocalPlayerVisible);
 
@@ -1559,6 +1562,7 @@ export function AtlasExplorer({
           {currentSidePanelSession ? (
             <SessionPlayer
               session={currentSidePanelSession}
+              locationPhotoUrl={sidePanelLocation?.photo_url}
               onClose={() => setIsSidePanelOpen(false)}
               onPrevious={sidePanelLocationIndex > 0 ? () => openAdjacentSession(-1) : undefined}
               onNext={

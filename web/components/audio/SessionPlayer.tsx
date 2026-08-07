@@ -31,6 +31,7 @@ import {
 
 type SessionPlayerProps = {
   session: SessionDetail;
+  locationPhotoUrl?: string | null;
   onClose?: () => void;
   onPrevious?: () => void;
   onNext?: () => void;
@@ -42,7 +43,7 @@ function trackPlayerEvent(name: string) {
   }));
 }
 
-export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionPlayerProps) {
+export function SessionPlayer({ session, locationPhotoUrl, onClose, onPrevious, onNext }: SessionPlayerProps) {
   const { currentSession, playbackState, grant, currentTimeSeconds, durationSeconds, play, pause, seek, error } =
     usePlayer();
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -96,6 +97,7 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
       ? waveformPeaks.slice(0, 52)
       : [0.12, 0.22, 0.18, 0.36, 0.2, 0.48, 0.26, 0.16, 0.3, 0.2, 0.42, 0.24];
   const weatherItems = useMemo(() => buildWeatherItems(session), [session]);
+  const scenicPhotoUrl = locationPhotoUrl ?? session.photo_url;
 
   useEffect(() => {
     const handleAuthChange = (event: Event) => {
@@ -309,10 +311,10 @@ export function SessionPlayer({ session, onClose, onPrevious, onNext }: SessionP
   return (
     <section className="session-listening-console" aria-label="Session player">
       <div className="session-scenic-listener">
-        {session.photo_url ? (
+        {scenicPhotoUrl ? (
           <Image
             className="session-field-photo"
-            src={session.photo_url}
+            src={scenicPhotoUrl}
             alt={`Field view at ${session.location.name}`}
             width={1200}
             height={675}

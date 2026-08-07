@@ -192,6 +192,15 @@ test("atlas location cards render API photos and retain a fallback without one",
     return img.complete && img.naturalWidth > 0;
   })).toBe(true);
 
+  await photographedCard.click();
+  const playerPhoto = page
+    .getByRole("complementary")
+    .getByRole("img", { name: "Field view at Pine Marsh" });
+  await expect(playerPhoto).toBeVisible();
+  expect(decodeURIComponent((await playerPhoto.getAttribute("src"))!)).toContain(
+    "http://127.0.0.1:4010/mock-location-photo-v2.png",
+  );
+
   expect((await request.post(`${mockApiUrl}/__e2e/atlas-response?mode=valid-optional-point`)).ok()).toBeTruthy();
   await page.goto("/atlas?location=pine-marsh");
 
