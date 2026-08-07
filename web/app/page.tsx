@@ -68,6 +68,7 @@ export default async function HomePage({
                 ?? atlasResult.value.dawn.next_locations[0]?.location.slug
                 ?? null
               }
+              focusAtStartup={false}
               initialSearchQuery={initialSearchQuery}
               sidePanelSession={null}
               showInternalNavigation={false}

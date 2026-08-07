@@ -43,6 +43,7 @@ type Props = {
   dawn: DawnCurrentResponse;
   initialSelectedSlug?: string | null;
   initialSearchQuery?: string;
+  focusAtStartup?: boolean;
   sidePanelSession: SessionDetail | null;
   showInternalNavigation?: boolean;
 };
@@ -52,6 +53,7 @@ type CesiumGlobeProps = {
   selectedSlug: string | null;
   selectedMode: ListeningMode;
   focusRequest: number;
+  focusAtStartup: boolean;
   activeDawnSlugs: Set<string>;
   onSelectPoint: (point: AtlasPoint) => void;
   entitlementState: EntitlementState;
@@ -183,21 +185,6 @@ function getSunFacingLatitudeLongitude(cesium: CesiumModule): { latitude: number
   };
 }
 
-function isSunFacingLocation(cesium: CesiumModule, location: AtlasPoint): boolean | null {
-  const { Cartesian3 } = cesium;
-  const sunDirection = computeSunDirection(cesium);
-  if (!sunDirection) {
-    return null;
-  }
-
-  const { dot } = Cartesian3;
-  const locationDirection = Cartesian3.normalize(
-    Cartesian3.fromDegrees(location.longitude, location.latitude, 0),
-    new Cartesian3(),
-  );
-  return dot(locationDirection, sunDirection) >= 0;
-}
-
 let cesiumScriptPromise: Promise<CesiumModule> | undefined;
 
 function loadCesiumScript() {
@@ -250,6 +237,7 @@ function CesiumGlobe({
   selectedSlug,
   selectedMode,
   focusRequest,
+  focusAtStartup,
   activeDawnSlugs,
   onSelectPoint,
   entitlementState,
@@ -768,10 +756,8 @@ function CesiumGlobe({
     const selected = points.find((item) => isPoint(item) && item.slug === selectedSlug);
     if (!selected || !isPoint(selected)) return;
 
-    const shouldSkipAutoFocusBecauseTheSunIsHidden =
-      !focusRequest
-      && !initialFocusHandledRef.current
-      && isSunFacingLocation(cesium, selected) === false;
+    const shouldUseFocusedHeight = initialFocusHandledRef.current || focusRequest > 0 || focusAtStartup;
+    const destinationHeight = shouldUseFocusedHeight ? focusedLocationHeight : fullPlanetCameraHeight;
 
     const animationFrame = window.requestAnimationFrame(() => {
       if (viewer.isDestroyed()) return;
@@ -787,18 +773,15 @@ function CesiumGlobe({
       }
       cancelWheelZoomRef.current();
       viewer.resize();
-      if (shouldSkipAutoFocusBecauseTheSunIsHidden) {
-        return;
-      }
       viewer.camera.flyTo({
-        destination: Cartesian3.fromDegrees(selected.longitude, selected.latitude, focusedLocationHeight),
+        destination: Cartesian3.fromDegrees(selected.longitude, selected.latitude, destinationHeight),
         duration: shouldRunIntro ? cinematicIntroDurationSeconds : 0.85,
         easingFunction: shouldRunIntro ? EasingFunction.QUADRATIC_IN_OUT : undefined,
       });
     });
 
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [focusRequest, isViewerReady, points, selectedSlug]);
+  }, [focusAtStartup, focusRequest, isViewerReady, points, selectedSlug]);
 
   function changeZoom(direction: "in" | "out") {
     const viewer = viewerRef.current;
@@ -926,6 +909,7 @@ export function AtlasExplorer({
   dawn,
   initialSelectedSlug: preferredInitialSlug = null,
   initialSearchQuery = "",
+  focusAtStartup = false,
   sidePanelSession,
   showInternalNavigation = true,
 }: Props) {
@@ -1523,6 +1507,7 @@ export function AtlasExplorer({
               selectedSlug={selectedSlug}
               selectedMode={selectedMode}
               focusRequest={globeFocusRequest}
+              focusAtStartup={focusAtStartup}
               activeDawnSlugs={emphasizedGlobeSlugs}
               entitlementState={entitlementState}
               onSelectPoint={(point) => {
